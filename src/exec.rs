@@ -125,32 +125,21 @@ fn remove_file(path: &Path) -> Result<()> {
 }
 
 /// One regular file read out of an archive.
-struct TarFile {
+struct ArchiveFile {
     path: String,
     mode: u32,
     bytes: Vec<u8>,
 }
 
-/// Extract the binary `member` from a gzip-compressed tarball to `dest` with `mode`.
-/// The tarball is decompressed in memory (release tarballs are small) and the member
+/// Extract the binary `member` from a release `archive` to `dest` with `mode`. The
+/// archive is decompressed in memory (release archives are small) and the member
 /// located by [`select_member`]; the archive is assumed already verified (Download).
+///
+/// The container format is chosen from the archive's file name — `.tar.gz`/`.tgz` and
+/// `.zip` are supported. Both decode to the same `ArchiveFile` list, so member
+/// selection and writing are format-agnostic.
 fn extract(archive: &Path, member: &str, dest: &Path, mode: u32) -> Result<()> {
-    let file =
-        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
-    let mut tar = tar::Archive::new(GzDecoder::new(file));
-
-    let mut files: Vec<TarFile> = Vec::new();
-    for entry in tar.entries().map_err(archive_err)? {
-        let mut entry = entry.map_err(archive_err)?;
-        if !entry.header().entry_type().is_file() {
-            continue;
-        }
-        let path = entry.path().map_err(archive_err)?.to_string_lossy().into_owned();
-        let entry_mode = entry.header().mode().unwrap_or(0);
-        let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes).map_err(archive_err)?;
-        files.push(TarFile { path, mode: entry_mode, bytes });
-    }
+    let files = read_archive(archive)?;
 
     let chosen = select_member(&files, member).ok_or_else(|| {
         let entries: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
@@ -163,9 +152,70 @@ fn extract(archive: &Path, member: &str, dest: &Path, mode: u32) -> Result<()> {
     write_with_mode(dest, &chosen.bytes, mode)
 }
 
+/// Read every regular file out of `archive`, dispatching on its file-name extension.
+fn read_archive(archive: &Path) -> Result<Vec<ArchiveFile>> {
+    let name = archive.file_name().map(|n| n.to_string_lossy().to_ascii_lowercase());
+    let name = name.as_deref().unwrap_or_default();
+    if name.ends_with(".zip") {
+        read_zip(archive)
+    } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        read_tar_gz(archive)
+    } else {
+        // The provider only plans Extract for formats we handle; guard anyway.
+        Err(JiiError::Other(anyhow::anyhow!(
+            "unsupported archive format: {}",
+            archive.display()
+        )))
+    }
+}
+
+/// Read a gzip-compressed tarball into archive files.
+fn read_tar_gz(archive: &Path) -> Result<Vec<ArchiveFile>> {
+    let file =
+        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
+    let mut tar = tar::Archive::new(GzDecoder::new(file));
+
+    let mut files = Vec::new();
+    for entry in tar.entries().map_err(archive_err)? {
+        let mut entry = entry.map_err(archive_err)?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry.path().map_err(archive_err)?.to_string_lossy().into_owned();
+        let mode = entry.header().mode().unwrap_or(0);
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).map_err(archive_err)?;
+        files.push(ArchiveFile { path, mode, bytes });
+    }
+    Ok(files)
+}
+
+/// Read a zip archive into archive files. Entries authored on non-unix systems may
+/// carry no mode (0); the exact-name match in [`select_member`] still resolves them.
+fn read_zip(archive: &Path) -> Result<Vec<ArchiveFile>> {
+    let file =
+        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(zip_err)?;
+
+    let mut files = Vec::new();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).map_err(zip_err)?;
+        if !entry.is_file() {
+            continue;
+        }
+        // `name()` is the archive path; skip entries with a suspicious path.
+        let path = entry.name().to_string();
+        let mode = entry.unix_mode().unwrap_or(0);
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).map_err(archive_err)?;
+        files.push(ArchiveFile { path, mode, bytes });
+    }
+    Ok(files)
+}
+
 /// Pick the archive member to install: an exact file-name (basename) match on
 /// `member`, else the sole executable-bit file. Ambiguity yields `None`.
-fn select_member<'a>(files: &'a [TarFile], member: &str) -> Option<&'a TarFile> {
+fn select_member<'a>(files: &'a [ArchiveFile], member: &str) -> Option<&'a ArchiveFile> {
     if let Some(f) = files.iter().find(|f| basename(&f.path) == member) {
         return Some(f);
     }
@@ -197,6 +247,11 @@ fn write_with_mode(dest: &Path, bytes: &[u8], mode: u32) -> Result<()> {
 /// Wrap an archive read error.
 fn archive_err(e: std::io::Error) -> JiiError {
     JiiError::Other(anyhow::anyhow!("archive error: {e}"))
+}
+
+/// Wrap a zip archive error.
+fn zip_err(e: zip::result::ZipError) -> JiiError {
+    JiiError::Other(anyhow::anyhow!("zip archive error: {e}"))
 }
 
 #[cfg(test)]
@@ -266,8 +321,8 @@ mod tests {
         assert!(run_action(&bad, &priv_).await.is_err());
     }
 
-    fn tf(path: &str, mode: u32) -> TarFile {
-        TarFile { path: path.into(), mode, bytes: path.as_bytes().to_vec() }
+    fn tf(path: &str, mode: u32) -> ArchiveFile {
+        ArchiveFile { path: path.into(), mode, bytes: path.as_bytes().to_vec() }
     }
 
     #[test]
@@ -329,5 +384,45 @@ mod tests {
         let archive = dir.path().join("two.tar.gz");
         make_targz(&archive, &[("a", b"a", 0o755), ("b", b"b", 0o755)]);
         assert!(extract(&archive, "missing", &dir.path().join("out"), 0o755).is_err());
+    }
+
+    /// Build a zip archive with the given `(name, bytes, mode)` entries.
+    fn make_zip(path: &Path, entries: &[(&str, &[u8], u32)]) {
+        use std::io::Write;
+        let f = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(f);
+        for (name, bytes, mode) in entries {
+            let opts = zip::write::SimpleFileOptions::default().unix_permissions(*mode);
+            zip.start_file(*name, opts).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn extract_pulls_named_binary_from_zip_and_sets_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("tool.zip");
+        make_zip(
+            &archive,
+            &[
+                ("tool-1.0/README.md", b"docs", 0o644),
+                ("tool-1.0/tool", b"#!/bin/sh\necho hi\n", 0o755),
+            ],
+        );
+        let dest = dir.path().join("bin/tool");
+        extract(&archive, "tool", &dest, 0o755).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), b"#!/bin/sh\necho hi\n");
+        // The install mode is what we set on write, independent of the archive's mode.
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o755);
+    }
+
+    #[test]
+    fn read_archive_rejects_unknown_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let bogus = dir.path().join("thing.rar");
+        std::fs::write(&bogus, b"not an archive").unwrap();
+        assert!(read_archive(&bogus).is_err());
     }
 }

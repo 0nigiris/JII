@@ -28,18 +28,27 @@ cache + doctor).
 
 ## Last completed work
 
-**`jii doctor` health checks** — `Provider::probe()` reports raw facts
-(`reachable`, `rate_limited`, human `detail`; default = local binary availability);
-github overrides it to hit `/rate_limit` (surfacing `remaining/limit` as detail, and
-flagging `RateLimited` at 0), copr pings `project/search` for reachability. The engine
-maps facts + latency to `Health` via a pure, unit-tested `health_from()` (precedence
-Offline → RateLimited → Slow → Healthy) — the decision logic stays in the engine
-(ADR-0015/0019). `SourceHealth` gained `detail`, shown in the human table and `--json`.
-Verified live: github `healthy (58/60 req left)`, copr reachable-but-slow.
+**GitHub `.zip` release assets** — `exec::extract` now dispatches on the archive's
+file-name extension into `read_tar_gz` / `read_zip` (both decode to the same
+`ArchiveFile` list, so member selection + writing stay format-agnostic — the seam
+ADR-0016 predicted). github's `classify` gained `AssetKind::Zip` (ranked below `TarGz`,
+which preserves unix modes) and now rejects delta-patch assets
+(`.bsdiff`/`.patch`/`.delta`/`.zsync`) that used to masquerade as raw binaries —
+surfaced by `denoland/deno`, which ships a `*.bsdiff` next to its Linux `.zip`. Verified:
+real-release dry-run selects `deno-…-linux-gnu.zip` → Extract; zip round-trip
+(create→extract→assert bytes+mode) unit-tested; the untrusted trust barrier correctly
+refused a non-interactive real install (ADR-0006). Added the `zip` crate
+(`default-features=false`, `deflate`). See ADR-0016 (2026-07-04 update).
 
-Prior Phase 4 slices, all verified end-to-end: `jii audit` (ADR-0018); COPR provider
-(ADR-0017); `Action::Extract` + `.tar.gz` (ADR-0016); github `jii remove`
-(`Provider::is_installed`); GitHub Releases provider (raw-binary, ADR-0014); the
+Also this session (docs only): **ADR-0020** (JII is a universal layer, not another
+package manager) and **ADR-0021** (integrate external backends like UPAC only via their
+stable public API, as another `Provider`; implement nothing until that API exists), plus
+new ROADMAP Future ideas (more managers, bootstrapping a missing manager, provider-supplied
+metadata).
+
+Prior Phase 4 slices, all verified end-to-end: `jii doctor` health/rate-limit (ADR-0019);
+`jii audit` (ADR-0018); COPR provider (ADR-0017); `Action::Extract` + `.tar.gz` (ADR-0016);
+github `jii remove` (`Provider::is_installed`); GitHub Releases provider (ADR-0014); the
 execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
@@ -49,12 +58,17 @@ None in progress — pick the next recommended task below.
 ## Next recommended task
 
 Phase 4's core is complete. What remains is polish/hardening (revisit before starting
-Phase 5):
+Phase 5). Note several former "follow-ups" are now **documented future features**, not
+quick tasks — do not implement them as silent heuristics:
 
-1. Broad name→repo resolution and release pagination for github.
-2. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
+1. **GitHub repository selection** (was "broad name→repo resolution") — interactive,
+   "never silently install the wrong repo" (ROADMAP Future ideas). Not blind resolution.
+2. `.tar.xz` archives — deferred; needs an xz decoder dependency for little gain yet.
 3. Better COPR project disambiguation if the chroot-count heuristic proves weak.
 4. Real GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
+
+Otherwise Phase 4 is done; **Phase 5** (user-space sources: cargo/npm/pipx/go) is the
+next phase, only if the architecture stays clean (each is a `Provider`, no core branching).
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -68,13 +82,14 @@ None.
 
 ## Test status
 
-`cargo test` — **71 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **76 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
-verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz
-extract + member selection, run_action), github (owner/repo, release JSON, asset
-selection, checksums, plan shapes), copr (search parsing, exact-name + fedora/arch
-chroot selection, two-step root plan), audit (verification resolution + concern
-logic), and doctor health mapping (`health_from` precedence).
+verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
+zip** extract + member selection, unknown-format rejection, run_action), github
+(owner/repo, release JSON, asset selection incl. `.zip`/tar.gz preference, checksums,
+plan shapes), copr (search parsing, exact-name + fedora/arch chroot selection, two-step
+root plan), audit (verification resolution + concern logic), and doctor health mapping
+(`health_from` precedence).
 
 ## Environment & commands
 
@@ -109,8 +124,10 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   exact-name match building for the most Fedora chroots, but that is a weak signal (a
   fork may build widely). The visible `owner/project` in the plan + confirmation is the
   safety net. A real popularity/quality metric isn't in the search API (ADR-0017).
-- **GitHub archives: only `.tar.gz`/`.tgz`** — `.zip` / `.tar.xz`-only releases still
-  yield no candidate (ADR-0016). Add formats when a real tool needs them.
+- **GitHub archives: `.tar.gz`/`.tgz` + `.zip`** — `.tar.xz`-only releases still yield
+  no candidate (ADR-0016); adding it means an xz decoder dependency. `.zip` entries
+  authored on non-unix systems carry no mode, so the sole-executable fallback can't fire
+  — the exact-basename match still resolves the common single-binary case.
 - **GitHub binary named after the repo** — the placed file is `~/.local/bin/<repo>`;
   when the archive's binary basename differs (e.g. ripgrep's `rg`), it's still
   installed as `<repo>`. Fine for now (repo==binary in the common case).

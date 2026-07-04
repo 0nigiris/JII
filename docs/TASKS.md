@@ -108,8 +108,15 @@ land. Keep tasks small enough to complete and verify in one sitting.
       archive, then extract the binary (found by name, else the sole executable file)
       into `~/.local/bin`. github selects tarballs (raw binary still preferred when
       both exist). Verified: real `sharkdp/fd` install→run→remove. See ADR-0016.
-- [ ] **github follow-ups:** more archive formats (`.zip`, `.tar.xz`); broad name→repo
-      resolution; release pagination.
+- [x] **`.zip` release assets** (exec.rs): `extract` dispatches on the archive's
+      file-name extension into `read_tar_gz` / `read_zip` (both yield `ArchiveFile`, so
+      selection + writing stay format-agnostic); github `classify` gained `AssetKind::Zip`
+      (ranked below `TarGz`), and now rejects delta-patch assets (`.bsdiff`/`.patch`/…)
+      that masqueraded as raw binaries (surfaced by `denoland/deno`). Verified: real-release
+      dry-run picks `deno-…-linux-gnu.zip` → Extract; zip round-trip unit-tested. ADR-0016 update.
+- [ ] **github follow-ups (deferred):** `.tar.xz` (needs an xz decoder dep); broad
+      name→repo resolution + release pagination — reframed as the interactive **GitHub
+      repository selection** future idea (never silently install the wrong repo).
 - [x] `provider/copr.rs`: COPR API `project/search` → exact project-name match that
       builds for the host Fedora/arch (prefer most chroots); two-step root plan
       (`dnf5 -y copr enable owner/project` → `dnf5 -y install <name>`); community trust;

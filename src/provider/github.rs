@@ -289,6 +289,15 @@ enum AssetKind {
     Binary,
     /// A gzip tarball — download then extract the binary.
     TarGz,
+    /// A zip archive — download then extract the binary.
+    Zip,
+}
+
+impl AssetKind {
+    /// Whether the asset must be extracted (vs. placed directly).
+    fn is_archive(self) -> bool {
+        !matches!(self, AssetKind::Binary)
+    }
 }
 
 /// Build a candidate from the selected asset. Name = repo (also the installed binary
@@ -315,13 +324,13 @@ fn candidate(
             "filename": asset.name,
             "size": asset.size,
             "sha256": sha256,
-            "archive": kind == AssetKind::TarGz,
+            "archive": kind.is_archive(),
         }),
     }
 }
 
-/// Pick the best installable asset for `arch` (a raw binary or a `.tar.gz`), or `None`
-/// if the release ships only unsupported archives / other-OS artifacts.
+/// Pick the best installable asset for `arch` (a raw binary, a `.tar.gz`, or a `.zip`),
+/// or `None` if the release ships only unsupported archives / other-OS artifacts.
 fn select_asset<'a>(assets: &'a [Asset], arch: &str) -> Option<(&'a Asset, AssetKind)> {
     let tokens = arch_tokens(arch);
     if tokens.is_empty() {
@@ -343,8 +352,8 @@ fn arch_tokens(arch: &str) -> &'static [&'static str] {
     }
 }
 
-/// Classify a Linux asset for this arch: a raw binary, a supported `.tar.gz`, or
-/// `None` for other OSes/packages, unsupported archives, and metadata/signatures.
+/// Classify a Linux asset for this arch: a raw binary, a supported `.tar.gz` / `.zip`,
+/// or `None` for other OSes/packages, unsupported archives, and metadata/signatures.
 fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
     const REJECT: &[&str] = &[
         // other OSes
@@ -352,8 +361,11 @@ fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
         "freebsd", "netbsd", "openbsd", "android",
         // distro packages
         ".deb", ".rpm", ".apk", ".pkg",
-        // unsupported archives / compression (only .tar.gz/.tgz are handled)
-        ".zip", ".tar.xz", ".tar.bz2", ".tar.zst", ".7z", ".bz2", ".xz", ".zst",
+        // delta/patch artifacts (e.g. deno's `*.bsdiff` auto-update patches) — not
+        // standalone binaries even though they carry no archive extension
+        ".bsdiff", ".patch", ".delta", ".zsync",
+        // unsupported archives / compression (only .tar.gz/.tgz and .zip are handled)
+        ".tar.xz", ".tar.bz2", ".tar.zst", ".7z", ".bz2", ".xz", ".zst",
         // metadata / signatures / checksums
         ".sha256", ".sig", ".asc", ".pem", ".txt", ".json", ".sbom", ".yml", ".yaml",
     ];
@@ -368,6 +380,8 @@ fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
     }
     if n.ends_with(".tar.gz") || n.ends_with(".tgz") {
         Some(AssetKind::TarGz)
+    } else if n.ends_with(".zip") {
+        Some(AssetKind::Zip)
     } else if is_bare_name(&n) {
         Some(AssetKind::Binary)
     } else {
@@ -382,12 +396,14 @@ fn is_bare_name(lower_name: &str) -> bool {
     !ARCHIVE_EXT.iter().any(|ext| lower_name.contains(ext))
 }
 
-/// Lower is better: prefer a raw binary over a tarball (no extraction), then musl over
-/// gnu, then a shorter name (usually the plain binary over a variant).
+/// Lower is better: prefer a raw binary (no extraction), then a `.tar.gz` (preserves
+/// unix modes) over a `.zip` (may lack them), then musl over gnu, then a shorter name
+/// (usually the plain binary over a variant).
 fn asset_score(name: &str, kind: AssetKind) -> (u8, u8, usize) {
     let kind_rank = match kind {
         AssetKind::Binary => 0,
         AssetKind::TarGz => 1,
+        AssetKind::Zip => 2,
     };
     let n = name.to_ascii_lowercase();
     let libc = if n.contains("musl") {
@@ -435,7 +451,7 @@ fn is_sha256(s: &str) -> bool {
 }
 
 /// Assemble the install plan: download (verified) to the cache, then either place the
-/// raw binary or extract it from the tarball into `~/.local/bin`. Pure so it can be
+/// raw binary or extract it from the archive into `~/.local/bin`. Pure so it can be
 /// unit-tested without IO.
 #[allow(clippy::too_many_arguments)]
 fn build_install_plan(
@@ -483,7 +499,7 @@ fn build_install_plan(
         reasons.push(format!("Version {v}"));
     }
     if archive {
-        reasons.push(format!("Extracts '{name}' from the release tarball"));
+        reasons.push(format!("Extracts '{name}' from the release archive"));
     }
     reasons.push(match &sha256 {
         Some(_) => "Verified sha256 checksum".to_string(),
@@ -613,13 +629,39 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_archives_and_packages() {
-        // .zip / .tar.xz are archives we don't handle yet; .deb is a package.
+        // .tar.xz / .tar.zst are archives we don't handle yet; .deb is a package.
         let a = vec![
-            asset("tool-linux-amd64.zip"),
             asset("tool-linux-amd64.tar.xz"),
+            asset("tool-linux-amd64.tar.zst"),
             asset("tool-linux-amd64.deb"),
         ];
         assert!(select_asset(&a, "x86_64").is_none());
+    }
+
+    #[test]
+    fn selects_zip_when_no_binary_or_tarball() {
+        let a = vec![asset("eza_x86_64-unknown-linux-gnu.zip")];
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "eza_x86_64-unknown-linux-gnu.zip");
+        assert_eq!(kind, AssetKind::Zip);
+    }
+
+    #[test]
+    fn prefers_targz_over_zip() {
+        // Both need extraction, but .tar.gz preserves unix modes on Linux.
+        let a = vec![
+            asset("tool-linux-x86_64.zip"),
+            asset("tool-linux-x86_64.tar.gz"),
+        ];
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "tool-linux-x86_64.tar.gz");
+        assert_eq!(kind, AssetKind::TarGz);
+    }
+
+    #[test]
+    fn zip_candidate_is_marked_archive() {
+        let c = candidate("x", "tool", "v1", &asset("tool-linux-x86_64.zip"), AssetKind::Zip, None);
+        assert_eq!(c.raw.get("archive").and_then(|v| v.as_bool()), Some(true));
     }
 
     #[test]

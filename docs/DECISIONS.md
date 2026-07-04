@@ -360,8 +360,8 @@ plans `Download`→`Place` into `~/.local/bin` (no root), and classifies the sou
   integrity, defines the trust tier; the binary is still arbitrary code.
 
 **Consequences:**
-- **Archives:** `.tar.gz`/`.tgz` are now supported via `Action::Extract` (ADR-0016);
-  `.zip`/`.tar.xz`-only releases still yield no candidate.
+- **Archives:** `.tar.gz`/`.tgz` and `.zip` are supported via `Action::Extract`
+  (ADR-0016); `.tar.xz`-only releases still yield no candidate.
 - **`jii remove` for GitHub installs** — resolved via `Provider::is_installed(record)`:
   the default checks `list_installed`, github overrides it to test that
   `~/.local/bin/<name>` exists. This confirms a file-based install without a manifest
@@ -446,6 +446,16 @@ preferred when a release offers both.
   (fine for CLI tools). Revisit with streaming if it ever matters.
 - Adding a format = one more branch in the extractor + widening `classify` in github;
   the action and provider contracts don't change.
+
+**Update (2026-07-04):** `.zip` is now supported exactly as this ADR predicted — the
+executor dispatches on the archive's file-name extension into `read_tar_gz` / `read_zip`
+(both yielding the same `ArchiveFile` list, so member selection and writing are
+format-agnostic); github's `classify` gained an `AssetKind::Zip`, ranked below `TarGz`
+(which preserves unix modes) but above nothing. No change to the `Action`/`Provider`
+contracts, confirming the format seam. Also hardened `classify` to reject delta-patch
+assets (`.bsdiff`/`.patch`/`.delta`/`.zsync`) that otherwise masqueraded as raw binaries
+(surfaced by `denoland/deno`, which ships a `*.bsdiff` alongside its Linux `.zip`).
+`.tar.xz` remains unsupported (would add an xz decoder dependency for little gain yet).
 
 ---
 
