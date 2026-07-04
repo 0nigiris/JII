@@ -132,6 +132,11 @@ pub fn describe_action(action: &Action) -> String {
         Action::Place { dest, mode, .. } => {
             format!("place → {} (mode {mode:o})", dest.display())
         }
+        Action::Extract { archive, member, dest, mode } => format!(
+            "extract {member} from {} → {} (mode {mode:o})",
+            archive.display(),
+            dest.display()
+        ),
         Action::RemoveFile { path } => format!("remove {}", path.display()),
     }
 }
@@ -159,6 +164,9 @@ fn action_to_json(action: &Action) -> serde_json::Value {
         }),
         Action::Place { src, dest, mode } => serde_json::json!({
             "kind": "place", "src": src, "dest": dest, "mode": mode,
+        }),
+        Action::Extract { archive, member, dest, mode } => serde_json::json!({
+            "kind": "extract", "archive": archive, "member": member, "dest": dest, "mode": mode,
         }),
         Action::RemoveFile { path } => serde_json::json!({
             "kind": "remove", "path": path,

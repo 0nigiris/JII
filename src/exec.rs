@@ -6,9 +6,11 @@
 //! `describe_action` used by `--dry-run` is printed for each action as it runs, so
 //! what executes always matches what was previewed.
 
+use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use flate2::read::GzDecoder;
 use sha2::{Digest, Sha256};
 
 use crate::error::{JiiError, Result};
@@ -35,6 +37,7 @@ async fn run_action(action: &Action, privilege: &Privilege) -> Result<()> {
         Action::RunCommand { argv, needs_root } => privilege.run(argv, *needs_root).await,
         Action::Download { url, dest, verify } => download(url, dest, verify).await,
         Action::Place { src, dest, mode } => place(src, dest, *mode),
+        Action::Extract { archive, member, dest, mode } => extract(archive, member, dest, *mode),
         Action::RemoveFile { path } => remove_file(path),
     }
 }
@@ -121,6 +124,81 @@ fn remove_file(path: &Path) -> Result<()> {
     std::fs::remove_file(path).map_err(|e| JiiError::io(path.display().to_string(), e))
 }
 
+/// One regular file read out of an archive.
+struct TarFile {
+    path: String,
+    mode: u32,
+    bytes: Vec<u8>,
+}
+
+/// Extract the binary `member` from a gzip-compressed tarball to `dest` with `mode`.
+/// The tarball is decompressed in memory (release tarballs are small) and the member
+/// located by [`select_member`]; the archive is assumed already verified (Download).
+fn extract(archive: &Path, member: &str, dest: &Path, mode: u32) -> Result<()> {
+    let file =
+        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
+    let mut tar = tar::Archive::new(GzDecoder::new(file));
+
+    let mut files: Vec<TarFile> = Vec::new();
+    for entry in tar.entries().map_err(archive_err)? {
+        let mut entry = entry.map_err(archive_err)?;
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+        let path = entry.path().map_err(archive_err)?.to_string_lossy().into_owned();
+        let entry_mode = entry.header().mode().unwrap_or(0);
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).map_err(archive_err)?;
+        files.push(TarFile { path, mode: entry_mode, bytes });
+    }
+
+    let chosen = select_member(&files, member).ok_or_else(|| {
+        let entries: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        JiiError::Other(anyhow::anyhow!(
+            "could not find binary '{member}' in archive (entries: {})",
+            entries.join(", ")
+        ))
+    })?;
+
+    write_with_mode(dest, &chosen.bytes, mode)
+}
+
+/// Pick the archive member to install: an exact file-name (basename) match on
+/// `member`, else the sole executable-bit file. Ambiguity yields `None`.
+fn select_member<'a>(files: &'a [TarFile], member: &str) -> Option<&'a TarFile> {
+    if let Some(f) = files.iter().find(|f| basename(&f.path) == member) {
+        return Some(f);
+    }
+    let mut execs = files.iter().filter(|f| f.mode & 0o111 != 0);
+    match (execs.next(), execs.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    }
+}
+
+/// The final path component of a (forward-slash) archive entry path.
+fn basename(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
+/// Write `bytes` to `dest` (creating parents) and set its unix `mode`.
+fn write_with_mode(dest: &Path, bytes: &[u8], mode: u32) -> Result<()> {
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| JiiError::io(parent.display().to_string(), e))?;
+    }
+    std::fs::write(dest, bytes).map_err(|e| JiiError::io(dest.display().to_string(), e))?;
+    let mut perms = std::fs::metadata(dest)
+        .map_err(|e| JiiError::io(dest.display().to_string(), e))?
+        .permissions();
+    perms.set_mode(mode);
+    std::fs::set_permissions(dest, perms).map_err(|e| JiiError::io(dest.display().to_string(), e))
+}
+
+/// Wrap an archive read error.
+fn archive_err(e: std::io::Error) -> JiiError {
+    JiiError::Other(anyhow::anyhow!("archive error: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,5 +264,70 @@ mod tests {
         };
         assert!(run_action(&ok, &priv_).await.is_ok());
         assert!(run_action(&bad, &priv_).await.is_err());
+    }
+
+    fn tf(path: &str, mode: u32) -> TarFile {
+        TarFile { path: path.into(), mode, bytes: path.as_bytes().to_vec() }
+    }
+
+    #[test]
+    fn select_member_prefers_exact_basename() {
+        let files = vec![tf("pkg/README", 0o644), tf("pkg/rg", 0o755), tf("pkg/rg.1", 0o644)];
+        assert_eq!(select_member(&files, "rg").unwrap().path, "pkg/rg");
+    }
+
+    #[test]
+    fn select_member_falls_back_to_sole_executable() {
+        let files = vec![tf("LICENSE", 0o644), tf("dir/tool", 0o755)];
+        // No basename match, but exactly one executable → pick it.
+        assert_eq!(select_member(&files, "other").unwrap().path, "dir/tool");
+    }
+
+    #[test]
+    fn select_member_ambiguous_is_none() {
+        let files = vec![tf("a", 0o755), tf("b", 0o755)];
+        assert!(select_member(&files, "none").is_none());
+    }
+
+    /// Build a gzip tarball with the given `(name, bytes, mode)` entries.
+    fn make_targz(path: &Path, entries: &[(&str, &[u8], u32)]) {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        let f = std::fs::File::create(path).unwrap();
+        let mut builder = tar::Builder::new(GzEncoder::new(f, Compression::fast()));
+        for (name, bytes, mode) in entries {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(*mode);
+            header.set_cksum();
+            builder.append_data(&mut header, name, *bytes).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn extract_pulls_named_binary_and_sets_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("tool.tar.gz");
+        make_targz(
+            &archive,
+            &[
+                ("tool-1.0/README.md", b"docs", 0o644),
+                ("tool-1.0/tool", b"#!/bin/sh\necho hi\n", 0o755),
+            ],
+        );
+        let dest = dir.path().join("bin/tool");
+        extract(&archive, "tool", &dest, 0o755).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), b"#!/bin/sh\necho hi\n");
+        assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o755);
+    }
+
+    #[test]
+    fn extract_errors_when_member_absent_and_ambiguous() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("two.tar.gz");
+        make_targz(&archive, &[("a", b"a", 0o755), ("b", b"b", 0o755)]);
+        assert!(extract(&archive, "missing", &dir.path().join("out"), 0o755).is_err());
     }
 }

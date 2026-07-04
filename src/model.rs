@@ -161,6 +161,14 @@ pub enum Action {
     },
     /// Place a file at `dest` with the given unix `mode` (e.g. into ~/.local/bin).
     Place { src: PathBuf, dest: PathBuf, mode: u32 },
+    /// Extract the binary named `member` from a (already-verified) archive to `dest`
+    /// with the given unix `mode`. The handler locates the member inside the archive.
+    Extract {
+        archive: PathBuf,
+        member: String,
+        dest: PathBuf,
+        mode: u32,
+    },
     /// Remove a file (uninstall for file-based sources).
     RemoveFile { path: PathBuf },
 }

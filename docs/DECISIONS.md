@@ -360,8 +360,8 @@ plans `Download`→`Place` into `~/.local/bin` (no root), and classifies the sou
   integrity, defines the trust tier; the binary is still arbitrary code.
 
 **Consequences:**
-- **Archives are skipped** until an `Extract` action exists — the next execution-model
-  slice. `.tar.gz`/`.zip`-only releases currently yield no candidate.
+- **Archives:** `.tar.gz`/`.tgz` are now supported via `Action::Extract` (ADR-0016);
+  `.zip`/`.tar.xz`-only releases still yield no candidate.
 - **`jii remove` for GitHub installs** — resolved via `Provider::is_installed(record)`:
   the default checks `list_installed`, github overrides it to test that
   `~/.local/bin/<name>` exists. This confirms a file-based install without a manifest
@@ -403,3 +403,46 @@ security-sensitive logic in a single audited place.
 - The engine's public API is a supported contract; review it before adding a frontend.
 - Frontend-only concerns the GUI will need (icons, screenshots, progress events) must
   be surfaced *through the model* by providers/engine, not fetched ad hoc in the UI.
+
+---
+
+## ADR-0016 — `Action::Extract`: locate the binary by name, `.tar.gz` first
+
+**Status:** Accepted
+
+**Decision:** Add an `Extract { archive, member, dest, mode }` action to the execution
+model. The handler decompresses a **gzip tarball** in memory and installs one member:
+the entry whose file-name matches `member`, or — failing that — the sole executable
+file in the archive. The `Download` step verifies the archive first, so extraction
+runs on trusted bytes. Only `.tar.gz`/`.tgz` is handled for now; a raw binary is still
+preferred when a release offers both.
+
+**Reason:**
+- **Extract by binary name, not internal path** — release tarballs have wildly varying
+  layouts (`rg`, `bin/rg`, `ripgrep-14.1.0-.../rg`). The provider can't know the layout
+  without downloading during `search` (which we forbid, ADR-0014). Naming the wanted
+  binary and letting the executor find it keeps the plan declarative and network-free.
+- **Sole-executable fallback** — most CLI tarballs contain one binary plus docs/
+  completions; the executable bit disambiguates when the name doesn't match (e.g. repo
+  `ripgrep` → binary `rg`).
+- **`.tar.gz` first** — by far the dominant format for Linux release binaries. Doing
+  one format well (with `flate2` + `tar`, both pure-Rust) beats a shallow multi-format
+  attempt. `.zip`/`.tar.xz` slot in behind the same action later.
+- **Verify before extract** — reusing `Download`'s checksum enforcement means the
+  archive is trusted before we read it; no new verification surface.
+
+**Alternatives considered:**
+- Encode the internal member path in the plan — rejected: requires inspecting the
+  archive at plan time (network in `search`) and is brittle across releases.
+- Shell out to `tar`/`gunzip` in a `RunCommand` — rejected: unverifiable, leaks to the
+  system tool, and breaks the "each action has a focused, testable handler" rule.
+- Support `.zip`/`.tar.xz` now — deferred: more deps and surface for little immediate
+  gain; add when a real target tool needs them.
+
+**Consequences:**
+- The installed file is named after the repo (`~/.local/bin/<repo>`), even when the
+  archive's binary basename differs — acceptable while repo==binary is the common case.
+- Extraction is in-memory; pathologically huge tarballs would use proportional memory
+  (fine for CLI tools). Revisit with streaming if it ever matters.
+- Adding a format = one more branch in the extractor + widening `classify` in github;
+  the action and provider contracts don't change.

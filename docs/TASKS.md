@@ -104,8 +104,12 @@ land. Keep tasks small enough to complete and verify in one sitting.
       (default = list lookup; github overrides to check `~/.local/bin/<name>` exists),
       so `resolve_installed` confirms file-based installs without a manifest. No core
       branching, no new record field. Verified: real jq install→remove cycle.
-- [ ] **github follow-ups:** archive assets (`.tar.gz`/`.zip`) via a new `Extract`
-      action; broad name→repo resolution; release pagination.
+- [x] **`Action::Extract` + `.tar.gz` release assets** (exec.rs): download+verify the
+      archive, then extract the binary (found by name, else the sole executable file)
+      into `~/.local/bin`. github selects tarballs (raw binary still preferred when
+      both exist). Verified: real `sharkdp/fd` install→run→remove. See ADR-0016.
+- [ ] **github follow-ups:** more archive formats (`.zip`, `.tar.xz`); broad name→repo
+      resolution; release pagination.
 - [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
 - [ ] `cli/commands/audit.rs`; rate-limit health in `doctor`.
 - [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —

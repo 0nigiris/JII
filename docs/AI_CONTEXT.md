@@ -28,27 +28,17 @@ cache + doctor).
 
 ## Last completed work
 
-**`jii remove` for GitHub (file-based) installs** — added `Provider::is_installed(record)`
-(default = list lookup; github overrides to check `~/.local/bin/<name>` exists), so
-`resolve_installed` confirms file-based installs without a manifest or a new record
-field, and with no source branching in the core. Verified with a real jq install→remove
-cycle (file removed, registry + history updated).
+**`Action::Extract` + `.tar.gz` archive releases** — the execution model gained an
+`Extract` action (`exec.rs`): download+verify the archive, then extract the binary
+(located by name, else the sole executable file) into `~/.local/bin`. The github
+provider now selects tarballs too (a raw binary is still preferred when both exist).
+Verified end-to-end with a real `sharkdp/fd` install→run→remove. See ADR-0016.
 
-Prior slice — **GitHub Releases provider** (`provider/github.rs`), raw-binary,
-verified end-to-end:
-
-- Query `owner/repo` → latest release; selects a raw executable asset for the host
-  arch (Linux, musl preferred over gnu); rejects other-OS/packages/archives.
-- **All network in `search`** (release + checksums), so `plan_install` is pure and
-  unit-tested. sha256 is resolved from a checksums asset and **enforced** by the
-  executor; `⚠ unverified` shown when none is published.
-- Plans `Download`→`Place` into `~/.local/bin` (mode 0o755, **no root**).
-- Trust `untrusted` → always confirmed, even under `--auto` (verified: `--auto`
-  aborts non-interactively). `GITHUB_TOKEN` supported via `network.github_token_env`.
-- Verified with a real `jqlang/jq` install in an isolated `$HOME`: checksum matched,
-  binary runs (`jq-1.8.2`), registry recorded. See [DECISIONS.md](DECISIONS.md) ADR-0014.
-
-Prior slice: the execution model (`Action` enum + `exec.rs`), ADR-0007.
+Prior slices this builds on: `jii remove` for github file-based installs
+(`Provider::is_installed`); the GitHub Releases provider (raw-binary — `owner/repo` →
+latest release, arch/OS asset filter, network-in-search, sha256 enforced, untrusted
+trust, `GITHUB_TOKEN`; ADR-0014); the execution model (`Action` enum + `exec.rs`,
+ADR-0007). All verified end-to-end.
 
 ## Current task
 
@@ -58,11 +48,10 @@ None in progress — pick the next recommended task below.
 
 Continue Phase 4. In rough priority order:
 
-1. **`Extract` action + archive assets** — most releases ship `.tar.gz`/`.zip`; add a
-   focused `Extract` action to the execution model and let github select archives.
-2. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
-3. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
-4. Broad name→repo resolution and release pagination for github.
+1. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
+2. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
+3. Broad name→repo resolution and release pagination for github.
+4. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -76,11 +65,12 @@ None.
 
 ## Test status
 
-`cargo test` — **50 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **58 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
-verification accept/reject/case-insensitive/fail-closed, place+mode+remove,
-run_action success/failure), and github (owner/repo parsing, release JSON, asset
-selection incl. musl preference + archive rejection, checksums parsing, plan shape).
+verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz
+extract + member selection, run_action), and github (owner/repo parsing, release
+JSON, asset selection incl. musl preference + binary-over-tarball + archive kinds,
+checksums parsing, plan shape for binary and archive).
 
 ## Environment & commands
 
@@ -111,8 +101,11 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 
 ## Known technical debt
 
-- **GitHub archives unsupported** — no `Extract` action yet, so `.tar.gz`/`.zip`-only
-  releases yield no candidate (ADR-0014). Next task #1.
+- **GitHub archives: only `.tar.gz`/`.tgz`** — `.zip` / `.tar.xz`-only releases still
+  yield no candidate (ADR-0016). Add formats when a real tool needs them.
+- **GitHub binary named after the repo** — the placed file is `~/.local/bin/<repo>`;
+  when the archive's binary basename differs (e.g. ripgrep's `rg`), it's still
+  installed as `<repo>`. Fine for now (repo==binary in the common case).
 - **Flatpak identified by appid** (`org.gimp.GIMP`): `jii remove gimp` may not resolve
   a Flatpak by friendly name. Revisit with a name/id split if it becomes painful.
 - **`latest`/`minimal` profiles + freshness/health ranking tie-breakers** are reserved

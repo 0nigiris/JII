@@ -85,7 +85,7 @@ impl Provider for Github {
         let token = self.token();
         let release = fetch_release(&client, &owner, &repo, token.as_deref()).await?;
 
-        let Some(asset) = select_asset(&release.assets, self.arch) else {
+        let Some((asset, kind)) = select_asset(&release.assets, self.arch) else {
             return Ok(Vec::new());
         };
 
@@ -98,7 +98,7 @@ impl Provider for Github {
             None => None,
         };
 
-        Ok(vec![candidate(&owner, &repo, &release.tag_name, asset, sha256)])
+        Ok(vec![candidate(&owner, &repo, &release.tag_name, asset, kind, sha256)])
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
@@ -111,6 +111,7 @@ impl Provider for Github {
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let size = candidate.raw.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+        let archive = candidate.raw.get("archive").and_then(|v| v.as_bool()).unwrap_or(false);
 
         Ok(build_install_plan(
             &candidate.name,
@@ -118,6 +119,7 @@ impl Provider for Github {
             candidate.version.as_ref(),
             &url,
             &filename,
+            archive,
             sha256,
             size,
             &bin_dir()?,
@@ -233,6 +235,15 @@ async fn fetch_text(client: &reqwest::Client, url: &str, token: Option<&str>) ->
         .map_err(|e| JiiError::Other(anyhow::anyhow!("github: {e}")))
 }
 
+/// How a chosen asset is turned into an installed binary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AssetKind {
+    /// A directly-runnable executable — download then place.
+    Binary,
+    /// A gzip tarball — download then extract the binary.
+    TarGz,
+}
+
 /// Build a candidate from the selected asset. Name = repo (also the installed binary
 /// name); everything the plan needs is stashed in `raw`.
 fn candidate(
@@ -240,6 +251,7 @@ fn candidate(
     repo: &str,
     tag: &str,
     asset: &Asset,
+    kind: AssetKind,
     sha256: Option<String>,
 ) -> PackageCandidate {
     PackageCandidate {
@@ -256,21 +268,22 @@ fn candidate(
             "filename": asset.name,
             "size": asset.size,
             "sha256": sha256,
+            "archive": kind == AssetKind::TarGz,
         }),
     }
 }
 
-/// Pick the best installable raw binary for `arch`, or `None` if the release ships
-/// only archives / other-OS artifacts.
-fn select_asset<'a>(assets: &'a [Asset], arch: &str) -> Option<&'a Asset> {
+/// Pick the best installable asset for `arch` (a raw binary or a `.tar.gz`), or `None`
+/// if the release ships only unsupported archives / other-OS artifacts.
+fn select_asset<'a>(assets: &'a [Asset], arch: &str) -> Option<(&'a Asset, AssetKind)> {
     let tokens = arch_tokens(arch);
     if tokens.is_empty() {
         return None;
     }
     assets
         .iter()
-        .filter(|a| is_installable_binary(&a.name, tokens))
-        .min_by_key(|a| asset_score(&a.name))
+        .filter_map(|a| classify(&a.name, tokens).map(|kind| (a, kind)))
+        .min_by_key(|(a, kind)| asset_score(&a.name, *kind))
 }
 
 /// Asset-name tokens that indicate the given host architecture.
@@ -283,32 +296,52 @@ fn arch_tokens(arch: &str) -> &'static [&'static str] {
     }
 }
 
-/// Whether an asset looks like a directly-runnable Linux binary for this arch.
-/// Rejects other OSes, distro packages, archives, and metadata/signature files.
-fn is_installable_binary(name: &str, arch_tokens: &[&str]) -> bool {
+/// Classify a Linux asset for this arch: a raw binary, a supported `.tar.gz`, or
+/// `None` for other OSes/packages, unsupported archives, and metadata/signatures.
+fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
     const REJECT: &[&str] = &[
         // other OSes
         "windows", "win32", "win64", ".exe", ".msi", "darwin", "macos", "apple", ".dmg",
         "freebsd", "netbsd", "openbsd", "android",
         // distro packages
         ".deb", ".rpm", ".apk", ".pkg",
-        // archives / compressed (no extractor yet)
-        ".tar", ".tgz", ".zip", ".gz", ".bz2", ".xz", ".zst",
+        // unsupported archives / compression (only .tar.gz/.tgz are handled)
+        ".zip", ".tar.xz", ".tar.bz2", ".tar.zst", ".7z", ".bz2", ".xz", ".zst",
         // metadata / signatures / checksums
         ".sha256", ".sig", ".asc", ".pem", ".txt", ".json", ".sbom", ".yml", ".yaml",
     ];
     let n = name.to_ascii_lowercase();
     if REJECT.iter().any(|tok| n.contains(tok)) {
-        return false;
+        return None;
     }
-    // Require an explicit linux marker and a matching arch token, so we never place a
-    // binary for the wrong OS/arch.
-    n.contains("linux") && arch_tokens.iter().any(|t| n.contains(t))
+    // Require an explicit linux marker and a matching arch token, so we never install
+    // an artifact for the wrong OS/arch.
+    if !n.contains("linux") || !arch_tokens.iter().any(|t| n.contains(t)) {
+        return None;
+    }
+    if n.ends_with(".tar.gz") || n.ends_with(".tgz") {
+        Some(AssetKind::TarGz)
+    } else if is_bare_name(&n) {
+        Some(AssetKind::Binary)
+    } else {
+        // A leftover archive/compression form (e.g. plain `.tar`, bare `.gz`).
+        None
+    }
 }
 
-/// Lower is better: prefer statically-linked musl, then gnu, then unknown; break ties
-/// by shorter name (usually the plain binary over a variant).
-fn asset_score(name: &str) -> (u8, usize) {
+/// Whether a name has no archive/compression extension left (i.e. a raw binary).
+fn is_bare_name(lower_name: &str) -> bool {
+    const ARCHIVE_EXT: &[&str] = &[".tar", ".gz", ".zip", ".xz", ".bz2", ".zst", ".7z"];
+    !ARCHIVE_EXT.iter().any(|ext| lower_name.contains(ext))
+}
+
+/// Lower is better: prefer a raw binary over a tarball (no extraction), then musl over
+/// gnu, then a shorter name (usually the plain binary over a variant).
+fn asset_score(name: &str, kind: AssetKind) -> (u8, u8, usize) {
+    let kind_rank = match kind {
+        AssetKind::Binary => 0,
+        AssetKind::TarGz => 1,
+    };
     let n = name.to_ascii_lowercase();
     let libc = if n.contains("musl") {
         0
@@ -317,7 +350,7 @@ fn asset_score(name: &str) -> (u8, usize) {
     } else {
         2
     };
-    (libc, name.len())
+    (kind_rank, libc, name.len())
 }
 
 /// Find a checksums asset (a shared `checksums.txt`/`SHA256SUMS`, or a per-asset
@@ -354,8 +387,9 @@ fn is_sha256(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// Assemble the install plan: download (verified) to the cache, then place as an
-/// executable in `~/.local/bin`. Pure so it can be unit-tested without IO.
+/// Assemble the install plan: download (verified) to the cache, then either place the
+/// raw binary or extract it from the tarball into `~/.local/bin`. Pure so it can be
+/// unit-tested without IO.
 #[allow(clippy::too_many_arguments)]
 fn build_install_plan(
     name: &str,
@@ -363,6 +397,7 @@ fn build_install_plan(
     version: Option<&PkgVersion>,
     url: &str,
     filename: &str,
+    archive: bool,
     sha256: Option<String>,
     size: u64,
     bin_dir: &Path,
@@ -375,9 +410,33 @@ fn build_install_plan(
         None => Verification::None,
     };
 
+    // Download always verifies the artifact (archive or binary) before it is used.
+    let download = Action::Download {
+        url: url.to_string(),
+        dest: staged.clone(),
+        verify,
+    };
+    let install = if archive {
+        Action::Extract {
+            archive: staged,
+            member: name.to_string(),
+            dest: dest.clone(),
+            mode: 0o755,
+        }
+    } else {
+        Action::Place {
+            src: staged,
+            dest: dest.clone(),
+            mode: 0o755,
+        }
+    };
+
     let mut reasons = vec![format!("GitHub release ({slug})")];
     if let Some(v) = version {
         reasons.push(format!("Version {v}"));
+    }
+    if archive {
+        reasons.push(format!("Extracts '{name}' from the release tarball"));
     }
     reasons.push(match &sha256 {
         Some(_) => "Verified sha256 checksum".to_string(),
@@ -388,18 +447,7 @@ fn build_install_plan(
     InstallPlan {
         candidate_ref: name.to_string(),
         source_id: ID.to_string(),
-        actions: vec![
-            Action::Download {
-                url: url.to_string(),
-                dest: staged.clone(),
-                verify,
-            },
-            Action::Place {
-                src: staged,
-                dest,
-                mode: 0o755,
-            },
-        ],
+        actions: vec![download, install],
         download_size: (size > 0).then_some(size),
         reasons,
     }
@@ -474,43 +522,56 @@ mod tests {
         assert_eq!(release.assets.len(), 6);
     }
 
-    #[test]
-    fn selects_linux_binary_for_arch_rejecting_other_os_and_archives() {
-        let a = assets();
-        let picked = select_asset(&a, "x86_64").unwrap();
-        assert_eq!(picked.name, "jq-linux-amd64");
+    fn asset(name: &str) -> Asset {
+        Asset { name: name.into(), browser_download_url: "https://x/a".into(), size: 1 }
+    }
 
-        let picked = select_asset(&a, "aarch64").unwrap();
-        assert_eq!(picked.name, "jq-linux-arm64");
+    #[test]
+    fn selects_linux_binary_for_arch_rejecting_other_os() {
+        let a = assets();
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "jq-linux-amd64");
+        assert_eq!(kind, AssetKind::Binary);
+
+        assert_eq!(select_asset(&a, "aarch64").unwrap().0.name, "jq-linux-arm64");
 
         // Unknown arch → nothing selectable.
         assert!(select_asset(&a, "riscv64").is_none());
     }
 
     #[test]
-    fn prefers_musl_over_gnu() {
+    fn prefers_raw_binary_over_tarball() {
         let a = vec![
-            Asset {
-                name: "tool-linux-x86_64-gnu".into(),
-                browser_download_url: "https://x/gnu".into(),
-                size: 1,
-            },
-            Asset {
-                name: "tool-linux-x86_64-musl".into(),
-                browser_download_url: "https://x/musl".into(),
-                size: 1,
-            },
+            asset("tool-linux-x86_64.tar.gz"),
+            asset("tool-linux-x86_64"),
         ];
-        assert_eq!(select_asset(&a, "x86_64").unwrap().name, "tool-linux-x86_64-musl");
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "tool-linux-x86_64");
+        assert_eq!(kind, AssetKind::Binary);
     }
 
     #[test]
-    fn no_asset_when_only_archives() {
-        let a = vec![Asset {
-            name: "ripgrep-14-x86_64-unknown-linux-musl.tar.gz".into(),
-            browser_download_url: "https://x/tgz".into(),
-            size: 1,
-        }];
+    fn selects_targz_when_no_raw_binary() {
+        let a = vec![asset("ripgrep-14-x86_64-unknown-linux-musl.tar.gz")];
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "ripgrep-14-x86_64-unknown-linux-musl.tar.gz");
+        assert_eq!(kind, AssetKind::TarGz);
+    }
+
+    #[test]
+    fn prefers_musl_over_gnu() {
+        let a = vec![asset("tool-linux-x86_64-gnu"), asset("tool-linux-x86_64-musl")];
+        assert_eq!(select_asset(&a, "x86_64").unwrap().0.name, "tool-linux-x86_64-musl");
+    }
+
+    #[test]
+    fn rejects_unsupported_archives_and_packages() {
+        // .zip / .tar.xz are archives we don't handle yet; .deb is a package.
+        let a = vec![
+            asset("tool-linux-amd64.zip"),
+            asset("tool-linux-amd64.tar.xz"),
+            asset("tool-linux-amd64.deb"),
+        ];
         assert!(select_asset(&a, "x86_64").is_none());
     }
 
@@ -549,6 +610,7 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
             Some(&PkgVersion::new("jq-1.7.1")),
             "https://x/lin",
             "jq-linux-amd64",
+            false,
             Some("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".into()),
             42,
             bin,
@@ -576,6 +638,33 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
     }
 
     #[test]
+    fn build_plan_extracts_from_archive() {
+        let bin = Path::new("/home/u/.local/bin");
+        let cache = Path::new("/home/u/.cache/jii/downloads");
+        let plan = build_install_plan(
+            "rg",
+            "BurntSushi/ripgrep",
+            Some(&PkgVersion::new("14.1.0")),
+            "https://x/tgz",
+            "ripgrep-14.1.0-x86_64-unknown-linux-musl.tar.gz",
+            true,
+            None,
+            99,
+            bin,
+            cache,
+        );
+        match &plan.actions[1] {
+            Action::Extract { archive, member, dest, mode } => {
+                assert_eq!(archive, &cache.join("ripgrep-14.1.0-x86_64-unknown-linux-musl.tar.gz"));
+                assert_eq!(member, "rg");
+                assert_eq!(dest, &bin.join("rg"));
+                assert_eq!(*mode, 0o755);
+            }
+            other => panic!("expected extract, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn is_placed_reflects_file_existence() {
         let dir = tempfile::tempdir().unwrap();
         assert!(!is_placed(dir.path(), "jq"));
@@ -591,6 +680,7 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
             None,
             "https://x/bin",
             "tool-linux-amd64",
+            false,
             None,
             0,
             Path::new("/b"),
