@@ -150,7 +150,7 @@ impl Cli {
         }
     }
 
-    /// Install path: search → rank → plan → confirm → execute (Phase 1: DNF).
+    /// Install path: search → rank → plan → confirm → execute.
     async fn install(
         &self,
         package: &str,
@@ -159,7 +159,7 @@ impl Cli {
     ) -> crate::error::Result<()> {
         crate::platform::Platform::detect().require_supported()?;
 
-        let mut engine = Engine::new(config)?;
+        let mut engine = Engine::new(self.apply_profile(config))?;
         if !engine.has_providers() {
             renderer.error("No installation sources are enabled.");
             return Ok(());
@@ -173,17 +173,20 @@ impl Cli {
             renderer.warn(&format!("✗ {source}: {reason}"));
         }
 
-        let ranked = engine.rank(result.candidates);
-        let best = match ranked.into_iter().next() {
-            Some(c) => c,
-            None => {
-                renderer.error(&format!("No installation candidate found for '{package}'."));
-                return Ok(());
-            }
-        };
+        let mut ranked = engine.rank(result.candidates);
+        if let Some(source) = &self.global.source {
+            ranked.retain(|c| &c.source_id == source);
+        }
+        if ranked.is_empty() {
+            renderer.error(&self.no_candidate_message(package));
+            return Ok(());
+        }
 
+        // First is the recommendation; the rest are alternatives.
+        let best = ranked.remove(0);
         let plan = engine.plan_install(&best).await?;
         renderer.plan(&plan);
+        self.show_alternatives(&ranked, renderer);
 
         if self.global.dry_run {
             renderer.info("(dry-run: nothing was installed)");
@@ -199,6 +202,43 @@ impl Cli {
         engine.install(&plan, &best, renderer).await?;
         renderer.success(&format!("Installed {package} via {}.", plan.source_id));
         Ok(())
+    }
+
+    /// Print the non-recommended candidates as a compact "also available" list.
+    fn show_alternatives(&self, alternatives: &[crate::model::PackageCandidate], renderer: &Renderer) {
+        if alternatives.is_empty() || renderer.is_json() {
+            return;
+        }
+        renderer.info("Also available:");
+        for candidate in alternatives {
+            let version = candidate
+                .version
+                .as_ref()
+                .map(|v| format!("v{v}, "))
+                .unwrap_or_default();
+            renderer.info(&format!(
+                "  {} ({}{})",
+                candidate.source_id,
+                version,
+                candidate.trust.label()
+            ));
+        }
+    }
+
+    /// Error message for an empty candidate list, mentioning `--source` if set.
+    fn no_candidate_message(&self, package: &str) -> String {
+        match &self.global.source {
+            Some(source) => format!("'{package}' is not available via source '{source}'."),
+            None => format!("No installation candidate found for '{package}'."),
+        }
+    }
+
+    /// Fold the `--profile` flag into the config.
+    fn apply_profile(&self, mut config: Config) -> Config {
+        if let Some(profile) = self.global.profile {
+            config.install.profile = profile;
+        }
+        config
     }
 
     /// Remove path: resolve the owning source (registry + verification), plan, and
