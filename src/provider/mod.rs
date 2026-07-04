@@ -6,9 +6,13 @@
 use async_trait::async_trait;
 use tokio::process::Command;
 
+use serde::de::DeserializeOwned;
+
 use crate::config::Config;
 use crate::error::{JiiError, Result};
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
+use crate::model::{
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+};
 
 pub mod cargo;
 pub mod copr;
@@ -169,6 +173,53 @@ pub(crate) fn http_client() -> Result<reqwest::Client> {
         .user_agent(concat!("jii/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| JiiError::Other(anyhow::anyhow!("http client: {e}")))
+}
+
+/// GET `url` and deserialize the body as `T`, treating **404 as "no such item"**
+/// (`Ok(None)`) rather than an error. Shared by exact-name registry providers
+/// (cargo/npm/pipx/go…), so the network + not-found + error-formatting policy lives in
+/// one place; `source_id` prefixes error messages. Providers with a different request
+/// shape (github's authed release fetch, copr's query search) use `http_client` directly.
+pub(crate) async fn get_json_opt<T: DeserializeOwned>(
+    source_id: &str,
+    url: &str,
+) -> Result<Option<T>> {
+    let resp = http_client()?
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: {e}")))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let resp = resp
+        .error_for_status()
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: {e}")))?;
+    let body = resp
+        .json::<T>()
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: malformed json: {e}")))?;
+    Ok(Some(body))
+}
+
+/// Build a plan of **one** command action. Shared by the single-step providers
+/// (dnf/cargo/npm/pipx/go…): each assembles its own `argv`, this centralises the
+/// `InstallPlan` shape so a model change is a one-line edit, not a per-provider one.
+/// (copr's two-step enable+install plan is genuinely different and stays local.)
+pub(crate) fn command_plan(
+    source_id: &str,
+    name: &str,
+    argv: Vec<String>,
+    needs_root: bool,
+    reasons: Vec<String>,
+) -> InstallPlan {
+    InstallPlan {
+        candidate_ref: name.to_string(),
+        source_id: source_id.to_string(),
+        actions: vec![Action::RunCommand { argv, needs_root }],
+        download_size: None,
+        reasons,
+    }
 }
 
 // ---- Shared helpers for CLI-backed providers (dnf, flatpak, …) ----

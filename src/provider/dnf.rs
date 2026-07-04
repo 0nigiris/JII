@@ -8,10 +8,10 @@
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::{Provider, nonempty_lines, run_capture, which};
+use super::{Provider, command_plan, nonempty_lines, run_capture, which};
 use crate::error::Result;
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 /// Field separator embedded in the `--queryformat`. A real tab is sent to dnf5
@@ -107,21 +107,12 @@ impl Provider for Dnf {
     }
 }
 
-/// Build a single-command, root-requiring `dnf5 <args>` plan. Shared by
-/// install/remove/update so the plan boilerplate lives in one place.
+/// Build a single-command, root-requiring `dnf5 <args>` plan (the plan shape itself is
+/// the shared [`command_plan`]; `dnf5` needs root).
 fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     let mut argv = vec![BIN.to_string()];
     argv.extend(args.iter().map(|s| s.to_string()));
-    InstallPlan {
-        candidate_ref: name.to_string(),
-        source_id: ID.to_string(),
-        actions: vec![Action::RunCommand {
-            argv,
-            needs_root: true,
-        }],
-        download_size: None,
-        reasons,
-    }
+    command_plan(ID, name, argv, true, reasons)
 }
 
 /// Parse `repoquery` search output into candidates. Lines are

@@ -15,10 +15,10 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, http_client, which};
+use super::{Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 const ID: &str = "npm";
@@ -56,26 +56,11 @@ impl Provider for Npm {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let client = http_client()?;
         // `/<pkg>/latest` returns just the latest manifest — small, with bin/version.
         let url = format!("{REGISTRY}/{}/latest", query.raw.trim());
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("npm: {e}")))?;
-        // A 404 means "no such package" — not an error, just nothing to offer.
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(Vec::new());
-        }
-        let resp = resp
-            .error_for_status()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("npm: {e}")))?;
-        let manifest: Manifest = resp
-            .json()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("npm: malformed json: {e}")))?;
-
+        let Some(manifest) = get_json_opt::<Manifest>(ID, &url).await? else {
+            return Ok(Vec::new()); // no such package
+        };
         Ok(candidate(&manifest).into_iter().collect())
     }
 
@@ -185,7 +170,9 @@ fn user_prefix() -> Result<String> {
         .ok_or_else(|| JiiError::Other(anyhow::anyhow!("cannot resolve home directory for npm --prefix")))
 }
 
-/// Assemble a single unprivileged `npm <verb> -g --prefix <prefix> <name>` plan.
+/// A single unprivileged `npm <verb> -g --prefix <prefix> <name>` plan. The forced
+/// user prefix is npm's quirk (keeps installs out of root-owned dirs); the plan shape
+/// itself is the shared [`command_plan`].
 fn npm_plan(name: &str, verb: &str, prefix: &str, reasons: Vec<String>) -> InstallPlan {
     let argv = vec![
         BIN.to_string(),
@@ -195,16 +182,7 @@ fn npm_plan(name: &str, verb: &str, prefix: &str, reasons: Vec<String>) -> Insta
         prefix.to_string(),
         name.to_string(),
     ];
-    InstallPlan {
-        candidate_ref: name.to_string(),
-        source_id: ID.to_string(),
-        actions: vec![Action::RunCommand {
-            argv,
-            needs_root: false,
-        }],
-        download_size: None,
-        reasons,
-    }
+    command_plan(ID, name, argv, false, reasons)
 }
 
 /// Parse `npm ls -g --json` output into installed records (top-level deps only).
@@ -277,7 +255,7 @@ mod tests {
         assert!(!plan.needs_root());
         assert_eq!(plan.actions.len(), 1);
         match &plan.actions[0] {
-            Action::RunCommand { argv, needs_root } => {
+            crate::model::Action::RunCommand { argv, needs_root } => {
                 assert_eq!(
                     argv,
                     &["npm", "install", "--global", "--prefix", "/home/u/.local", "prettier"]

@@ -17,10 +17,10 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, http_client, which};
+use super::{Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 const ID: &str = "pipx";
@@ -58,25 +58,10 @@ impl Provider for Pipx {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let client = http_client()?;
         let url = format!("{API}/{}/json", query.raw.trim());
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("pipx: {e}")))?;
-        // A 404 means "no such package" — not an error, just nothing to offer.
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(Vec::new());
-        }
-        let resp = resp
-            .error_for_status()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("pipx: {e}")))?;
-        let body: PypiResponse = resp
-            .json()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("pipx: malformed json: {e}")))?;
-
+        let Some(body) = get_json_opt::<PypiResponse>(ID, &url).await? else {
+            return Ok(Vec::new()); // no such package
+        };
         Ok(vec![candidate(&body)])
     }
 
@@ -89,18 +74,18 @@ impl Provider for Pipx {
             "Installs {} into ~/.local/bin (no root; ensure it is on PATH)",
             candidate.name
         ));
-        Ok(user_plan(&candidate.name, &["install", &candidate.name], reasons))
+        Ok(pipx_plan(&candidate.name, "install", reasons))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Remove {} (installed via pipx)", record.name)];
-        Ok(user_plan(&record.name, &["uninstall", &record.name], reasons))
+        Ok(pipx_plan(&record.name, "uninstall", reasons))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // pipx has a first-class upgrade (unlike cargo/npm where update == reinstall).
         let reasons = vec![format!("Update {} via pipx", record.name)];
-        Ok(user_plan(&record.name, &["upgrade", &record.name], reasons))
+        Ok(pipx_plan(&record.name, "upgrade", reasons))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -179,20 +164,10 @@ fn candidate(resp: &PypiResponse) -> PackageCandidate {
     }
 }
 
-/// Assemble a single unprivileged `pipx <args>` plan. Shared by install/remove/update.
-fn user_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
-    let mut argv = vec![BIN.to_string()];
-    argv.extend(args.iter().map(|s| s.to_string()));
-    InstallPlan {
-        candidate_ref: name.to_string(),
-        source_id: ID.to_string(),
-        actions: vec![Action::RunCommand {
-            argv,
-            needs_root: false,
-        }],
-        download_size: None,
-        reasons,
-    }
+/// A single unprivileged `pipx <verb> <name>` plan (install/uninstall/upgrade).
+fn pipx_plan(name: &str, verb: &str, reasons: Vec<String>) -> InstallPlan {
+    let argv = vec![BIN.to_string(), verb.to_string(), name.to_string()];
+    command_plan(ID, name, argv, false, reasons)
 }
 
 /// Parse `pipx list --json` into installed records. Tolerant: malformed JSON yields no
@@ -252,20 +227,22 @@ mod tests {
 
     #[test]
     fn install_and_upgrade_are_unprivileged_pipx_commands() {
-        let install = user_plan("black", &["install", "black"], vec![]);
+        let install = pipx_plan("black", "install", vec![]);
         assert_eq!(install.source_id, "pipx");
         assert!(!install.needs_root());
         match &install.actions[0] {
-            Action::RunCommand { argv, needs_root } => {
+            crate::model::Action::RunCommand { argv, needs_root } => {
                 assert_eq!(argv, &["pipx", "install", "black"]);
                 assert!(!needs_root);
             }
             other => panic!("expected run, got {other:?}"),
         }
         // Update uses pipx's first-class upgrade.
-        let upgrade = user_plan("black", &["upgrade", "black"], vec![]);
+        let upgrade = pipx_plan("black", "upgrade", vec![]);
         match &upgrade.actions[0] {
-            Action::RunCommand { argv, .. } => assert_eq!(argv, &["pipx", "upgrade", "black"]),
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["pipx", "upgrade", "black"])
+            }
             other => panic!("expected run, got {other:?}"),
         }
     }

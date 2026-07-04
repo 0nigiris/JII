@@ -15,10 +15,10 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, http_client, run_capture, which};
-use crate::error::{JiiError, Result};
+use super::{Provider, command_plan, get_json_opt, run_capture, which};
+use crate::error::Result;
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 const ID: &str = "cargo";
@@ -56,25 +56,10 @@ impl Provider for Cargo {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let client = http_client()?;
         let url = format!("{API}/crates/{}", query.raw.trim());
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("cargo: {e}")))?;
-        // A 404 means "no such crate" — not an error, just nothing to offer.
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(Vec::new());
-        }
-        let resp = resp
-            .error_for_status()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("cargo: {e}")))?;
-        let body: CrateResponse = resp
-            .json()
-            .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("cargo: malformed json: {e}")))?;
-
+        let Some(body) = get_json_opt::<CrateResponse>(ID, &url).await? else {
+            return Ok(Vec::new()); // no such crate
+        };
         Ok(candidate(&body).into_iter().collect())
     }
 
@@ -87,18 +72,18 @@ impl Provider for Cargo {
             "Builds {} into ~/.cargo/bin (no root; ensure it is on PATH)",
             candidate.name
         ));
-        Ok(user_plan(&candidate.name, &["install", &candidate.name], reasons))
+        Ok(cargo_plan(&candidate.name, "install", reasons))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Remove {} (installed via cargo)", record.name)];
-        Ok(user_plan(&record.name, &["uninstall", &record.name], reasons))
+        Ok(cargo_plan(&record.name, "uninstall", reasons))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `cargo install` reinstalls the newest published version if one exists.
         let reasons = vec![format!("Update {} via cargo (reinstall newest)", record.name)];
-        Ok(user_plan(&record.name, &["install", &record.name], reasons))
+        Ok(cargo_plan(&record.name, "install", reasons))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -165,20 +150,10 @@ fn candidate(resp: &CrateResponse) -> Option<PackageCandidate> {
     })
 }
 
-/// Assemble a single unprivileged `cargo <args>` plan. Shared by install/remove/update.
-fn user_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
-    let mut argv = vec![BIN.to_string()];
-    argv.extend(args.iter().map(|s| s.to_string()));
-    InstallPlan {
-        candidate_ref: name.to_string(),
-        source_id: ID.to_string(),
-        actions: vec![Action::RunCommand {
-            argv,
-            needs_root: false,
-        }],
-        download_size: None,
-        reasons,
-    }
+/// A single unprivileged `cargo <verb> <name>` plan (install/uninstall).
+fn cargo_plan(name: &str, verb: &str, reasons: Vec<String>) -> InstallPlan {
+    let argv = vec![BIN.to_string(), verb.to_string(), name.to_string()];
+    command_plan(ID, name, argv, false, reasons)
 }
 
 /// Parse `cargo install --list` into installed records. A crate header is at column 0
@@ -261,12 +236,12 @@ mod tests {
     #[test]
     fn install_plan_is_one_unprivileged_cargo_command() {
         let c = candidate(&parse(BINARY_CRATE)).unwrap();
-        let plan = user_plan(&c.name, &["install", &c.name], vec![]);
+        let plan = cargo_plan(&c.name, "install", vec![]);
         assert_eq!(plan.source_id, "cargo");
         assert!(!plan.needs_root());
         assert_eq!(plan.actions.len(), 1);
         match &plan.actions[0] {
-            Action::RunCommand { argv, needs_root } => {
+            crate::model::Action::RunCommand { argv, needs_root } => {
                 assert_eq!(argv, &["cargo", "install", "ripgrep"]);
                 assert!(!needs_root);
             }
