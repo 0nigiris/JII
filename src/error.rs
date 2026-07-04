@@ -44,4 +44,9 @@ impl JiiError {
             source,
         }
     }
+
+    /// Error for an external command that could not be spawned.
+    pub fn spawn(cmd: &str, source: std::io::Error) -> Self {
+        JiiError::Other(anyhow::anyhow!("failed to run {cmd}: {source}"))
+    }
 }

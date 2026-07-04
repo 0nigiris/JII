@@ -67,7 +67,7 @@ impl Privilege {
             .arg("-v")
             .status()
             .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("failed to run sudo: {e}")))?;
+            .map_err(|e| JiiError::spawn("sudo", e))?;
         if !status.success() {
             return Err(JiiError::Other(anyhow::anyhow!(
                 "privilege escalation was declined"
@@ -87,7 +87,7 @@ impl Privilege {
         let status = cmd
             .status()
             .await
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("failed to run {}: {e}", argv[0])))?;
+            .map_err(|e| JiiError::spawn(&argv[0], e))?;
         if !status.success() {
             return Err(JiiError::Other(anyhow::anyhow!(
                 "command failed: {}",

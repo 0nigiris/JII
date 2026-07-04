@@ -22,6 +22,9 @@ const SEP: char = '\t';
 /// The dnf5 binary name.
 const BIN: &str = "dnf5";
 
+/// This provider's stable source id.
+const ID: &str = "dnf";
+
 /// The DNF installation source.
 pub struct Dnf;
 
@@ -40,7 +43,7 @@ impl Default for Dnf {
 #[async_trait]
 impl Provider for Dnf {
     fn id(&self) -> &'static str {
-        "dnf"
+        ID
     }
 
     fn trust(&self) -> TrustLevel {
@@ -83,44 +86,19 @@ impl Provider for Dnf {
             reasons.push(format!("Version {v}"));
         }
 
-        Ok(InstallPlan {
-            candidate_ref: candidate.name.clone(),
-            source_id: self.id().to_string(),
-            steps: vec![Step {
-                argv: vec![
-                    BIN.to_string(),
-                    "install".to_string(),
-                    "-y".to_string(),
-                    candidate.name.clone(),
-                ],
-                needs_root: true,
-                cwd: None,
-            }],
-            verification: Vec::new(),
-            download_size: None,
-            needs_root: true,
-            reasons,
-        })
+        Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
     }
 
     // plan_remove / plan_update / list_installed are part of the Provider contract,
     // implemented now and exercised from Phase 2+ (remove, update, list).
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        Ok(single_step_plan(
-            self.id(),
-            &record.name,
-            &["remove", "-y", &record.name],
-            vec![format!("Remove {} (installed via dnf)", record.name)],
-        ))
+        let reasons = vec![format!("Remove {} (installed via dnf)", record.name)];
+        Ok(root_plan(&record.name, &["remove", "-y", &record.name], reasons))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        Ok(single_step_plan(
-            self.id(),
-            &record.name,
-            &["upgrade", "-y", &record.name],
-            vec![format!("Update {} via dnf", record.name)],
-        ))
+        let reasons = vec![format!("Update {} via dnf", record.name)];
+        Ok(root_plan(&record.name, &["upgrade", "-y", &record.name], reasons))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -130,14 +108,14 @@ impl Provider for Dnf {
     }
 }
 
-/// Build a simple one-command root plan (used for remove/update in Phase 2).
-#[allow(dead_code)]
-fn single_step_plan(source: &str, name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
+/// Build a single-step, root-requiring `dnf5 <args>` plan. Shared by
+/// install/remove/update so the plan boilerplate lives in one place.
+fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     let mut argv = vec![BIN.to_string()];
     argv.extend(args.iter().map(|s| s.to_string()));
     InstallPlan {
         candidate_ref: name.to_string(),
-        source_id: source.to_string(),
+        source_id: ID.to_string(),
         steps: vec![Step {
             argv,
             needs_root: true,
@@ -150,12 +128,15 @@ fn single_step_plan(source: &str, name: &str, args: &[&str], reasons: Vec<String
     }
 }
 
+/// Non-blank lines of a command's output, in order.
+fn nonempty_lines(stdout: &str) -> impl Iterator<Item = &str> {
+    stdout.lines().filter(|l| !l.trim().is_empty())
+}
+
 /// Parse `repoquery` search output into candidates. Lines are
 /// `name<TAB>evr<TAB>repoid<TAB>summary`; malformed lines are skipped.
 fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<PackageCandidate> {
-    stdout
-        .lines()
-        .filter(|l| !l.trim().is_empty())
+    nonempty_lines(stdout)
         .filter_map(|line| {
             let mut fields = line.splitn(4, SEP);
             let name = fields.next()?.trim();
@@ -185,9 +166,7 @@ fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
 #[allow(dead_code)]
 fn parse_installed(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
     let now = chrono::Utc::now();
-    stdout
-        .lines()
-        .filter(|l| !l.trim().is_empty())
+    nonempty_lines(stdout)
         .filter_map(|line| {
             let mut fields = line.splitn(2, SEP);
             let name = fields.next()?.trim();
@@ -212,7 +191,7 @@ async fn run_capture(argv: &[&str]) -> Result<String> {
         .args(&argv[1..])
         .output()
         .await
-        .map_err(|e| JiiError::Other(anyhow::anyhow!("failed to run {}: {e}", argv[0])))?;
+        .map_err(|e| JiiError::spawn(argv[0], e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
