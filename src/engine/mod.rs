@@ -6,6 +6,8 @@
 
 pub mod ranking;
 
+use std::time::Duration;
+
 use chrono::Utc;
 
 use crate::config::Config;
@@ -51,24 +53,47 @@ impl Engine {
         !self.providers.is_empty()
     }
 
-    /// Search all available providers. Unavailable/erroring sources are collected
-    /// into `failed` rather than aborting the search.
+    /// Search all providers concurrently, each bounded by the configured timeout.
+    /// Unavailable/slow/erroring sources are collected into `failed` (tagged, e.g.
+    /// "timeout") rather than aborting the search.
     pub async fn search(&self, query: &Query) -> SearchResult {
+        let timeout = Duration::from_secs(self.config.network.timeout_secs);
+        let results =
+            futures::future::join_all(self.providers.iter().map(|p| self.search_one(p, query, timeout)))
+                .await;
+
         let mut candidates = Vec::new();
         let mut failed = Vec::new();
-
-        for provider in self.providers.iter() {
-            if !provider.is_available().await {
-                failed.push((provider.id().to_string(), "unavailable".to_string()));
-                continue;
-            }
-            match provider.search(query).await {
+        for result in results {
+            match result {
                 Ok(mut found) => candidates.append(&mut found),
-                Err(e) => failed.push((provider.id().to_string(), e.to_string())),
+                Err(failure) => failed.push(failure),
             }
         }
-
         SearchResult { candidates, failed }
+    }
+
+    /// Search one provider with per-call timeouts. On failure returns
+    /// `(source_id, reason)` so the caller can report it.
+    async fn search_one(
+        &self,
+        provider: &dyn crate::provider::Provider,
+        query: &Query,
+        timeout: Duration,
+    ) -> std::result::Result<Vec<PackageCandidate>, (String, String)> {
+        let id = provider.id().to_string();
+        let fail = |reason: &str| (id.clone(), reason.to_string());
+
+        match tokio::time::timeout(timeout, provider.is_available()).await {
+            Ok(true) => {}
+            Ok(false) => return Err(fail("unavailable")),
+            Err(_) => return Err(fail("timeout")),
+        }
+        match tokio::time::timeout(timeout, provider.search(query)).await {
+            Ok(Ok(candidates)) => Ok(candidates),
+            Ok(Err(e)) => Err(fail(&e.to_string())),
+            Err(_) => Err(fail("timeout")),
+        }
     }
 
     /// Rank candidates, best first.

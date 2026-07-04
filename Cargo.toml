@@ -16,6 +16,7 @@ directories = "5"
 owo-colors = "4"
 indicatif = "0.17"
 async-trait = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"] }
+futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
