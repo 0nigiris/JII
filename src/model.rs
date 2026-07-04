@@ -105,7 +105,7 @@ pub enum Verification {
 }
 
 /// A single installation candidate produced by a provider's `search`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageCandidate {
     pub name: String,
     pub source_id: String,

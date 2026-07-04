@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 
+use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, Query};
@@ -32,19 +33,22 @@ pub struct Engine {
     providers: ProviderRegistry,
     privilege: Privilege,
     registry: Registry,
+    cache: Cache,
 }
 
 impl Engine {
     /// Build the engine from config, instantiating the enabled providers and
-    /// loading the install registry.
+    /// loading the install registry and search cache.
     pub fn new(config: Config) -> Result<Self> {
         let providers = ProviderRegistry::from_config(&config);
         let registry = Registry::load()?;
+        let cache = Cache::load(config.network.cache_ttl_secs);
         Ok(Engine {
             config,
             providers,
             privilege: Privilege::detect(),
             registry,
+            cache,
         })
     }
 
@@ -70,11 +74,15 @@ impl Engine {
                 Err(failure) => failed.push(failure),
             }
         }
+        self.cache.save();
         SearchResult { candidates, failed }
     }
 
-    /// Search one provider with per-call timeouts. On failure returns
-    /// `(source_id, reason)` so the caller can report it.
+    /// Search one provider with per-call timeouts, backed by the cache.
+    ///
+    /// A fresh cache hit skips the provider entirely; on failure/timeout a stale
+    /// cache entry is used if present (offline resilience), otherwise the failure
+    /// is returned as `(source_id, reason)`.
     async fn search_one(
         &self,
         provider: &dyn crate::provider::Provider,
@@ -84,15 +92,28 @@ impl Engine {
         let id = provider.id().to_string();
         let fail = |reason: &str| (id.clone(), reason.to_string());
 
+        if let Some(cached) = self.cache.get_fresh(&id, &query.raw) {
+            return Ok(cached);
+        }
+
+        // On any failure, fall back to a stale cache entry if we have one.
+        let or_stale = |failure: (String, String)| match self.cache.get_stale(&id, &query.raw) {
+            Some(stale) => Ok(stale),
+            None => Err(failure),
+        };
+
         match tokio::time::timeout(timeout, provider.is_available()).await {
             Ok(true) => {}
-            Ok(false) => return Err(fail("unavailable")),
-            Err(_) => return Err(fail("timeout")),
+            Ok(false) => return or_stale(fail("unavailable")),
+            Err(_) => return or_stale(fail("timeout")),
         }
         match tokio::time::timeout(timeout, provider.search(query)).await {
-            Ok(Ok(candidates)) => Ok(candidates),
-            Ok(Err(e)) => Err(fail(&e.to_string())),
-            Err(_) => Err(fail("timeout")),
+            Ok(Ok(candidates)) => {
+                self.cache.put(&id, &query.raw, candidates.clone());
+                Ok(candidates)
+            }
+            Ok(Err(e)) => or_stale(fail(&e.to_string())),
+            Err(_) => or_stale(fail("timeout")),
         }
     }
 
