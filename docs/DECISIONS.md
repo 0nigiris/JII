@@ -368,3 +368,37 @@ plans `Download`→`Place` into `~/.local/bin` (no root), and classifies the sou
   `InstalledRecord`. `install`/`list`/`why`/`history` already work (registry-backed).
 - `is_available` returns `true` (GitHub is remote, no local binary); real rate-limit /
   reachability health for `doctor` is a later slice.
+
+---
+
+## ADR-0015 — Frontend-agnostic engine; frontends stay thin
+
+**Status:** Accepted
+
+**Decision:** All business logic — search, ranking, planning, the trust model,
+execution, and the registry — lives in the engine and operates purely on the model.
+Frontends are **thin**: they parse input, call the engine, and render results. The CLI
+(`cli/` + `ui/`) is exactly this today, and any future frontend (notably the GUI in
+[ROADMAP.md](ROADMAP.md) "Future ideas") must be the same. A frontend **never**
+duplicates or reimplements engine logic; if it needs behavior the engine doesn't
+expose, the *engine* grows and both frontends share it.
+
+**Reason:** Recorded now — while there is only one frontend — because the value of the
+rule shows up the moment there are two. A GUI that reimplements ranking or the trust
+barrier would drift from the CLI, doubling bugs and splitting the security model. One
+engine, many thin frontends keeps behavior identical everywhere and keeps the
+security-sensitive logic in a single audited place.
+
+**Alternatives considered:**
+- Let each frontend own some logic for convenience — rejected: guarantees drift and
+  duplicate trust/verification code paths (the exact thing that must stay singular).
+- A cross-process API (daemon) as the only integration path — deferred: the engine is
+  already a library operating on the model; a GUI can link it directly. Introduce a
+  service only if a real need (privilege separation, multi-client) appears.
+
+**Consequences:**
+- Keep `cli/` and `ui/` free of decision-making: no ranking, trust, or plan logic
+  there — only input parsing and presentation. New behavior belongs in the engine.
+- The engine's public API is a supported contract; review it before adding a frontend.
+- Frontend-only concerns the GUI will need (icons, screenshots, progress events) must
+  be surfaced *through the model* by providers/engine, not fetched ad hoc in the UI.

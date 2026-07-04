@@ -122,4 +122,54 @@ problem.
 - Semantic / AI search (Stage 4).
 - Cross-distro: apt, pacman, zypper, nix, AUR, snap.
 - Windows (winget), macOS (Homebrew).
-- GUI frontend, plugin SDK.
+- Plugin SDK.
+- **GUI frontend** — see "Future ideas" below.
+
+---
+
+## Future ideas
+
+Captured so they are not forgotten. **Not scheduled and not started.** Before acting
+on any of these, revisit the engine's public API and record decisions in
+[DECISIONS.md](DECISIONS.md).
+
+### GUI frontend — a cross-provider "Discover"
+
+**Vision:** a Discover-like desktop application that is *not* limited to a single
+ecosystem. It transparently searches, compares, and installs across every enabled
+provider (DNF, Flatpak, GitHub, COPR, Cargo, npm…), showing the same recommendation
+and "why" the CLI gives.
+
+**Non-goal:** the GUI does **not** replace the CLI, and it is **not** a second
+implementation. It is *another frontend over the same engine*.
+
+```
+CLI ─┐
+     ├── Core Engine  (search · rank · plan · trust · execute · registry)
+GUI ─┘
+```
+
+**Hard architectural rule:** the GUI is a **thin frontend**. It reuses the exact
+search, ranking, planning, trust model, and execution logic of the engine and
+**never duplicates business logic**. Any behavior it needs must live in the engine
+and be shared with the CLI — if the GUI wants something the engine can't express, the
+engine grows, not the GUI. (See [DECISIONS.md](DECISIONS.md) ADR-0015.)
+
+**Potential features** (all backed by existing or extended engine capabilities):
+
+- Universal Linux software catalog; search across every enabled provider.
+- Rich listings: application icons, screenshots, descriptions, version info.
+- Source comparison side-by-side, with the engine's **"why this source?"** rationale.
+- Trust indicators (official / community / untrusted) and signature/verification status.
+- Dry-run preview of the plan before anything runs.
+- Update management, installed applications, history, and audit — the same commands
+  the CLI exposes, rendered visually.
+
+**Implications to weigh when it is time (not now):**
+
+- Metadata the CLI doesn't need yet — icons, screenshots, long descriptions — must be
+  produced by providers through the model, not fetched ad hoc in the GUI.
+- The engine's API must be callable as a library (it already operates purely on the
+  model); a GUI likely links the crate directly or talks to a thin local service.
+- Long-running/streamed operations (download progress) may need the engine to surface
+  progress events without the GUI reaching into execution internals.
