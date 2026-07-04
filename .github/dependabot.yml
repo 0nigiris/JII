@@ -1,0 +1,20 @@
+# JII downloads and installs software, so dependency hygiene is a security
+# concern. Dependabot proposes weekly updates for Cargo crates and GitHub
+# Actions, grouped into one PR each to keep the noise low.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

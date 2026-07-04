@@ -88,6 +88,9 @@ run_action success/failure).
   surrounding code style by hand; do not rely on `cargo fmt`.
 - External tools invoked at runtime: `dnf5`, `flatpak`, `sudo`/`pkexec`. GitHub
   provider (next) will use HTTPS via `reqwest` and optionally `GITHUB_TOKEN`.
+- **CI** (`.github/workflows/ci.yml`) runs clippy (`-D warnings`) + tests on every
+  push/PR — the automated Definition of Done (ADR-0013). The runner has no
+  dnf5/flatpak, so end-to-end `--dry-run` checks stay manual on Fedora.
 
 ## Important architectural decisions (quick reference)
 

@@ -1,0 +1,21 @@
+# Keeps hand-formatting consistent across editors and agents. rustfmt is not
+# installed on the dev host (see docs/AI_CONTEXT.md), so this is our style floor.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+[*.{toml,yml,yaml,json}]
+indent_size = 2
+
+# Markdown: two trailing spaces are a hard line break, so don't trim them.
+[*.md]
+trim_trailing_whitespace = false

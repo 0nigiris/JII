@@ -283,3 +283,41 @@ none stable enough for dnf5/flatpak today; the CLI machine formats are the contr
 part of the Definition of Done (see [TASKS.md](TASKS.md)). Runtime tool invocation is
 funneled through shared helpers (`run_capture`, `which`, `nonempty_lines`) in
 `provider/mod.rs`.
+
+---
+
+## ADR-0013 — Minimal CI enforces the DoD; other infra deferred deliberately
+
+**Status:** Accepted
+
+**Decision:** Add GitHub Actions CI that runs, on every push/PR,
+`cargo clippy --all-targets -- -D warnings` (which also proves the build) and
+`cargo test`, both `--locked`. Add Dependabot (weekly, grouped) for Cargo crates and
+Actions. Add `.editorconfig`. **Deliberately do not add** (for now): a rustfmt check,
+`rust-toolchain.toml`, `CONTRIBUTING.md`, `SECURITY.md`, issue/PR templates,
+`CODEOWNERS`, `deny.toml`/`cargo-audit`, or a release workflow.
+
+**Reason:** The handoff guarantee ("build clean, clippy clean, tests pass") was
+enforced only by discipline; CI makes it automatic and visible to any future agent.
+Dependabot matters because JII downloads and installs software (supply-chain
+hygiene). `.editorconfig` keeps hand-formatting consistent because rustfmt is not on
+the dev host.
+
+**Alternatives considered / why the rest is skipped:**
+- **rustfmt check in CI** — rustfmt is not installed on the dev host and the code is
+  hand-formatted; a fmt gate would fail and fmt is not part of our DoD.
+- **`rust-toolchain.toml`** — the dev host uses system Rust (no rustup), so the file
+  is inert locally; CI already pins the toolchain via `dtolnay/rust-toolchain@stable`.
+- **`CONTRIBUTING.md`** — [AGENTS.md](../AGENTS.md) already is the onboarding/workflow
+  doc; a second one would duplicate and drift.
+- **`SECURITY.md`, issue/PR templates, `CODEOWNERS`** — the repo is private,
+  pre-release, single-maintainer; these pay off with external contributors/a public
+  release. The security *model* already lives in ADR-0005/0006/0007.
+- **`deny.toml` / `cargo-audit`** — overlaps Dependabot and adds config upkeep and
+  false-positive CI failures; revisit if supply-chain risk grows.
+- **Release workflow** — no releases yet; distribution is planned for Phase 7.
+
+**Consequences:** CI is the automated backbone of the DoD. The runner has no
+dnf5/flatpak, so CI covers unit logic only (parsers, ranking, exec fileops, elevation
+prefixing); end-to-end `--dry-run`/install verification stays a manual step on
+Fedora. Revisit the deferred items when JII goes public or starts cutting releases.

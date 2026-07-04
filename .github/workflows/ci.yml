@@ -1,0 +1,37 @@
+name: CI
+
+# Enforces the Definition of Done automatically: the tree must build, be
+# clippy-clean, and pass tests on every push and pull request. See
+# docs/DECISIONS.md ADR-0013 for what these gates are (and are not, e.g. no
+# rustfmt check — rustfmt is not part of our DoD).
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: build · clippy · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # clippy compiles everything, so a clean clippy also proves the build.
+      - name: Clippy (build + lint, warnings are errors)
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # Providers shell out to dnf5/flatpak, which are absent on the runner; the
+      # unit tests deliberately cover only pure logic (parsers, ranking, exec
+      # fileops, elevation prefixing) and need no Fedora tooling.
+      - name: Test
+        run: cargo test --locked
