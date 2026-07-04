@@ -28,18 +28,18 @@ cache + doctor).
 
 ## Last completed work
 
-**COPR provider** (`provider/copr.rs`) — COPR API `project/search` → the exact
-project-name match that builds for the host Fedora/arch (preferring the most chroots
-as a rough maintenance signal); plans the two privileged steps `dnf5 -y copr enable
-owner/project` → `dnf5 -y install <name>`; `community` trust; `is_installed` verifies
-via rpm; `list_installed` empty (COPR packages are ordinary RPMs). All network in
-`search`, so `plan_install` is pure. Integrates through the existing ranking with no
-engine special-case. Verified via real API search + `--dry-run` (the privileged
-install was **not** run — it modifies the system). See ADR-0017.
+**`jii audit`** — per installed package, report source, trust, how it was verified,
+and any concerns (untrusted source / no checksum / disabled source). Human table +
+`--json`. Verification is now recorded at install time on `InstalledRecord` (from the
+plan's `Download` step; `None` = a self-verifying manager installed it). The engine
+owns the logic (`audit()` + pure `resolve_verification`/`audit_concerns`); the CLI
+renders. Verified end-to-end with mixed real installs (dnf-style manager-signed, a
+sha256-verified github binary, an unverified one) and back-compat with pre-existing
+registry entries. See ADR-0018.
 
-Prior Phase 4 slices, all verified end-to-end: `Action::Extract` + `.tar.gz` (ADR-0016);
-github `jii remove` (`Provider::is_installed`); GitHub Releases provider (raw-binary,
-ADR-0014); the execution model (`Action` enum + `exec.rs`, ADR-0007).
+Prior Phase 4 slices, all verified end-to-end: COPR provider (ADR-0017); `Action::Extract`
++ `.tar.gz` (ADR-0016); github `jii remove` (`Provider::is_installed`); GitHub Releases
+provider (raw-binary, ADR-0014); the execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
@@ -47,14 +47,18 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Re-evaluate remaining Phase 4 before adding new providers** (per the user). What's
-left in Phase 4:
+Phase 4 is nearly complete. Remaining:
 
-1. **`jii audit`** — signatures/sha256/GPG/sigstore, source, trust per installed item.
-2. **Rate-limit health in `doctor`** (GitHub); COPR/GitHub reachability in `doctor`.
-3. Broad name→repo resolution and release pagination for github.
-4. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
-5. Better COPR project disambiguation if the chroot-count heuristic proves weak.
+1. **Rate-limit / reachability health in `doctor`** (GitHub 60/h + `RateLimited`
+   health; GitHub/COPR API reachability). The next core task.
+
+Then Phase 4 is essentially done; the rest is polish/hardening (revisit before
+starting Phase 5):
+
+2. Broad name→repo resolution and release pagination for github.
+3. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
+4. Better COPR project disambiguation if the chroot-count heuristic proves weak.
+5. Real GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -68,13 +72,13 @@ None.
 
 ## Test status
 
-`cargo test` — **65 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **70 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz
-extract + member selection, run_action), github (owner/repo parsing, release JSON,
-asset selection incl. musl + binary-over-tarball + archive kinds, checksums, plan
-shapes), and copr (search parsing, exact-name + fedora/arch chroot selection,
-community candidate, two-step root plan).
+extract + member selection, run_action), github (owner/repo, release JSON, asset
+selection, checksums, plan shapes), copr (search parsing, exact-name + fedora/arch
+chroot selection, two-step root plan), and audit (verification resolution + concern
+logic).
 
 ## Environment & commands
 

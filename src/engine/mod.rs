@@ -8,12 +8,14 @@ pub mod ranking;
 
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
-use crate::model::{Health, InstallPlan, InstalledRecord, PackageCandidate, Query};
+use crate::model::{
+    Health, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+};
 use crate::privilege::Privilege;
 use crate::provider::ProviderRegistry;
 use crate::registry::Registry;
@@ -33,6 +35,63 @@ pub struct SourceHealth {
     pub available: bool,
     pub latency: Duration,
     pub health: Health,
+}
+
+/// One row of `jii audit`: where an installed package came from, its trust, how it
+/// was verified, and any concerns worth attention.
+pub struct AuditEntry {
+    pub name: String,
+    pub source_id: String,
+    pub version: Option<PkgVersion>,
+    pub installed_at: DateTime<Utc>,
+    /// Trust of the owning source, or `None` if that source is no longer enabled.
+    pub trust: Option<TrustLevel>,
+    pub verification: AuditVerification,
+    pub concerns: Vec<AuditConcern>,
+}
+
+/// How an installed artifact was verified.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AuditVerification {
+    /// Verified by jii at download time with the named method (e.g. "sha256").
+    Checksum(String),
+    /// Installed via a self-verifying package manager (dnf/copr GPG, flatpak).
+    ManagerSigned,
+    /// Downloaded with no checksum/signature available.
+    Unverified,
+}
+
+impl AuditVerification {
+    /// Short human/JSON label.
+    pub fn label(&self) -> String {
+        match self {
+            AuditVerification::Checksum(method) => method.clone(),
+            AuditVerification::ManagerSigned => "manager-signed".to_string(),
+            AuditVerification::Unverified => "unverified".to_string(),
+        }
+    }
+}
+
+/// Something about an installed package that may warrant attention.
+#[derive(Debug, PartialEq, Eq)]
+pub enum AuditConcern {
+    /// From an untrusted source (an arbitrary third-party binary).
+    UntrustedSource,
+    /// Installed without any checksum/signature verification.
+    Unverified,
+    /// The owning source is no longer enabled, so jii can't manage/vouch for it.
+    SourceUnavailable,
+}
+
+impl AuditConcern {
+    /// Short human/JSON message.
+    pub fn message(&self) -> &'static str {
+        match self {
+            AuditConcern::UntrustedSource => "untrusted source",
+            AuditConcern::Unverified => "no checksum verification",
+            AuditConcern::SourceUnavailable => "source no longer enabled",
+        }
+    }
 }
 
 /// The orchestrator.
@@ -154,6 +213,7 @@ impl Engine {
             source_id: candidate.source_id.clone(),
             version: candidate.version.clone(),
             installed_at: Utc::now(),
+            verification: plan_verification(plan),
         });
         self.registry.save()
     }
@@ -246,6 +306,32 @@ impl Engine {
         out
     }
 
+    /// Audit every recorded install: provenance, trust, verification and concerns.
+    /// Registry-based and fast (no live provider calls).
+    pub fn audit(&self) -> Vec<AuditEntry> {
+        self.registry
+            .installed()
+            .iter()
+            .map(|record| self.audit_entry(record))
+            .collect()
+    }
+
+    /// Build one audit row from a registry record.
+    fn audit_entry(&self, record: &InstalledRecord) -> AuditEntry {
+        let trust = self.source_trust(&record.source_id);
+        let verification = resolve_verification(record.verification.as_deref());
+        let concerns = audit_concerns(trust, &verification);
+        AuditEntry {
+            name: record.name.clone(),
+            source_id: record.source_id.clone(),
+            version: record.version.clone(),
+            installed_at: record.installed_at,
+            trust,
+            verification,
+            concerns,
+        }
+    }
+
     /// Access the effective configuration.
     pub fn config(&self) -> &Config {
         &self.config
@@ -256,5 +342,84 @@ impl Engine {
         self.providers
             .get(source_id)
             .ok_or_else(|| JiiError::UnknownSource(source_id.to_string()))
+    }
+}
+
+/// The verification label to record for an install, taken from the plan's download
+/// step. Command-based installs (no download) return `None` — their package manager
+/// verifies the artifact itself (dnf/copr GPG, flatpak signatures).
+fn plan_verification(plan: &InstallPlan) -> Option<String> {
+    plan.actions.iter().find_map(|action| match action {
+        crate::model::Action::Download { verify, .. } => Some(verify.label().to_string()),
+        _ => None,
+    })
+}
+
+/// Interpret a recorded verification label into an audit category.
+fn resolve_verification(recorded: Option<&str>) -> AuditVerification {
+    match recorded {
+        Some("unverified") => AuditVerification::Unverified,
+        Some(method) => AuditVerification::Checksum(method.to_string()),
+        // No download step was recorded: a self-verifying manager installed it.
+        None => AuditVerification::ManagerSigned,
+    }
+}
+
+/// Concerns implied by an install's trust and verification.
+fn audit_concerns(trust: Option<TrustLevel>, verification: &AuditVerification) -> Vec<AuditConcern> {
+    let mut concerns = Vec::new();
+    if matches!(trust, Some(TrustLevel::Untrusted)) {
+        concerns.push(AuditConcern::UntrustedSource);
+    }
+    if *verification == AuditVerification::Unverified {
+        concerns.push(AuditConcern::Unverified);
+    }
+    if trust.is_none() {
+        concerns.push(AuditConcern::SourceUnavailable);
+    }
+    concerns
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verification_resolution() {
+        assert_eq!(resolve_verification(None), AuditVerification::ManagerSigned);
+        assert_eq!(resolve_verification(Some("unverified")), AuditVerification::Unverified);
+        assert_eq!(
+            resolve_verification(Some("sha256")),
+            AuditVerification::Checksum("sha256".to_string())
+        );
+    }
+
+    #[test]
+    fn official_verified_install_has_no_concerns() {
+        let v = resolve_verification(None); // manager-signed
+        assert!(audit_concerns(Some(TrustLevel::Official), &v).is_empty());
+    }
+
+    #[test]
+    fn untrusted_unverified_flags_both() {
+        let v = resolve_verification(Some("unverified"));
+        let concerns = audit_concerns(Some(TrustLevel::Untrusted), &v);
+        assert!(concerns.contains(&AuditConcern::UntrustedSource));
+        assert!(concerns.contains(&AuditConcern::Unverified));
+    }
+
+    #[test]
+    fn untrusted_but_checksum_verified_flags_only_source() {
+        let v = resolve_verification(Some("sha256"));
+        assert_eq!(
+            audit_concerns(Some(TrustLevel::Untrusted), &v),
+            vec![AuditConcern::UntrustedSource]
+        );
+    }
+
+    #[test]
+    fn disabled_source_is_flagged() {
+        let v = resolve_verification(None);
+        assert_eq!(audit_concerns(None, &v), vec![AuditConcern::SourceUnavailable]);
     }
 }

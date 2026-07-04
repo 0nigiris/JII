@@ -168,6 +168,8 @@ pub(crate) fn parse_installed_records(stdout: &str, source_id: &str) -> Vec<Inst
                 source_id: source_id.to_string(),
                 version: (!version.is_empty()).then(|| PkgVersion::new(version)),
                 installed_at: now,
+                // Live-queried from the manager, not a jii install record.
+                verification: None,
             })
         })
         .collect()

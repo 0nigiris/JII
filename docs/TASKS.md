@@ -116,7 +116,11 @@ land. Keep tasks small enough to complete and verify in one sitting.
       `is_installed` via rpm. Integrates through ranking, no engine special-case.
       Verified via real API search + `--dry-run` (privileged install not run — system
       change). See ADR-0017.
-- [ ] `cli/commands/audit.rs`; rate-limit health in `doctor`.
+- [x] `jii audit`: per installed record show source, trust, verification and concerns
+      (human table + `--json`). Verification is recorded at install time on
+      `InstalledRecord` (from the plan's Download step; `None` = manager-verified).
+      Engine owns the logic (`audit()`), CLI renders. See ADR-0018.
+- [ ] Rate-limit / reachability health in `doctor` (GitHub, COPR).
 - [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —
       real `jqlang/jq` install in an isolated HOME: sha256 matched, binary runs, registry
       recorded; `--dry-run`/`-n`/`--auto` paths checked. 49 unit tests pass.

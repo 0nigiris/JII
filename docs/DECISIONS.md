@@ -490,3 +490,42 @@ is empty (COPR packages are ordinary RPMs and can't be attributed to COPR).
   package, not a version.
 - `search` hits the COPR API on every query; results are cached by the engine and the
   call is bounded by the per-source timeout with graceful degradation (ADR-0010).
+
+---
+
+## ADR-0018 — `jii audit`: record verification at install time
+
+**Status:** Accepted
+
+**Decision:** Add a `verification: Option<String>` field to `InstalledRecord`, set at
+install time from the plan's `Download` step (`Verification::label()`), and back it
+with `jii audit`, which reports per install: source, trust (from the owning source),
+verification, and any concerns (untrusted source / no checksum / disabled source).
+`None` verification means the install ran through a self-verifying package manager
+(dnf/copr GPG, flatpak). The engine computes the audit (`audit()` plus pure
+`resolve_verification`/`audit_concerns`); the CLI only renders (human table + `--json`).
+
+**Reason:**
+- **Record provenance, don't guess it** — whether a github binary was sha256-verified
+  or unverified depends on what the release published; it is only known at install
+  time. Storing it is the only way `audit` can report it faithfully.
+- **`None` = manager-verified** — command-based installs have no `Download` step, and
+  all our command-based sources self-verify (rpm GPG, flatpak signatures). So `None`
+  is a truthful, source-agnostic category, and old registry entries (pre-field) read
+  correctly via `#[serde(default)]`.
+- **Engine owns the logic** (ADR-0015) — trust resolution and concern rules are
+  business logic; the CLI stays a thin renderer.
+
+**Alternatives considered:**
+- Derive verification purely from the source at audit time — rejected: can't
+  distinguish a verified from an unverified github install, which is the whole point.
+- A separate audit store — rejected: the registry already records installs; one more
+  optional field is simpler and versioned with the record.
+
+**Consequences:**
+- The registry schema grew one optional field; existing state files still load.
+- `audit` is registry-based and fast (no live provider calls); it does not currently
+  verify the package is still present (that would need provider calls) — a possible
+  future "installed but missing" check.
+- New verification methods (GPG/sigstore) flow through automatically: their label is
+  recorded and shown, and they count as `Checksum` (verified) in concerns.

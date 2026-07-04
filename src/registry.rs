@@ -144,6 +144,7 @@ mod tests {
             source_id: source.into(),
             version: Some(PkgVersion::new("1.0")),
             installed_at: Utc::now(),
+            verification: None,
         }
     }
 

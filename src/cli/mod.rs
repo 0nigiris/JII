@@ -103,6 +103,8 @@ pub enum Commands {
     },
     /// Report source availability, latency and health.
     Doctor,
+    /// Audit installed software: source, trust, verification and concerns.
+    Audit,
     /// List software installed via JII.
     List,
     /// Show installation history.
@@ -143,6 +145,7 @@ impl Cli {
             Some(Commands::History) => self.history(config, &renderer),
 
             Some(Commands::Doctor) => self.doctor(config, &renderer).await,
+            Some(Commands::Audit) => self.audit(config, &renderer),
 
             // Stubbed until their phase (ROADMAP.md).
             Some(Commands::Update { .. }) => not_yet(&renderer, "update", "Phase 5"),
@@ -392,6 +395,67 @@ impl Cli {
                 event.name,
                 event.source_id
             ));
+        }
+        Ok(())
+    }
+
+    /// Audit installed software: where each came from, its trust, how it was
+    /// verified, and anything that needs attention.
+    fn audit(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let entries = engine.audit();
+
+        if renderer.is_json() {
+            let rows: Vec<_> = entries
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "name": e.name,
+                        "source": e.source_id,
+                        "version": e.version.as_ref().map(|v| v.to_string()),
+                        "installed_at": e.installed_at,
+                        "trust": e.trust.map(|t| t.label()),
+                        "verification": e.verification.label(),
+                        "concerns": e.concerns.iter().map(|c| c.message()).collect::<Vec<_>>(),
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        if entries.is_empty() {
+            renderer.info("Nothing installed via jii yet.");
+            return Ok(());
+        }
+
+        renderer.info(&format!(
+            "{:20} {:8} {:10} {:14} {}",
+            "NAME", "SOURCE", "TRUST", "VERIFIED", "STATUS"
+        ));
+        let mut flagged = 0;
+        for e in &entries {
+            let trust = e.trust.map(|t| t.label()).unwrap_or("unknown");
+            let status = if e.concerns.is_empty() {
+                "ok".to_string()
+            } else {
+                flagged += 1;
+                let reasons: Vec<&str> = e.concerns.iter().map(|c| c.message()).collect();
+                format!("⚠ {}", reasons.join(", "))
+            };
+            renderer.info(&format!(
+                "{:20} {:8} {:10} {:14} {status}",
+                e.name,
+                e.source_id,
+                trust,
+                e.verification.label(),
+            ));
+        }
+
+        if flagged > 0 {
+            renderer.warn(&format!("{flagged} of {} need attention.", entries.len()));
+        } else {
+            renderer.success(&format!("All {} install(s) look fine.", entries.len()));
         }
         Ok(())
     }
