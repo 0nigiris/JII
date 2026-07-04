@@ -5,19 +5,23 @@ land. Keep tasks small enough to complete and verify in one sitting.
 
 ---
 
-## Phase 0 — Skeleton 🎯
+## Phase 0 — Skeleton 🎯 ✅
 
-- [ ] `cargo init` single crate; add deps (clap, tokio, serde, toml, reqwest+rustls,
-      anyhow, thiserror, indicatif, owo-colors, directories, async-trait).
-- [ ] `error.rs`: `JiiError` (thiserror) + `Result` alias.
-- [ ] `model.rs`: `Query`, `QueryKind`, `TrustLevel`, `Health`, `PackageCandidate`,
+- [x] `cargo init` single crate; add deps (clap, tokio, serde, toml, reqwest+rustls,
+      anyhow, thiserror, indicatif, owo-colors, directories, async-trait; + chrono, semver).
+- [x] `error.rs`: `JiiError` (thiserror) + `Result` alias.
+- [x] `model.rs`: `Query`, `QueryKind`, `TrustLevel`, `Health`, `PackageCandidate`,
       `Step`, `Verification`, `InstallPlan`, `InstalledRecord`.
-- [ ] `platform.rs`: detect distro (Fedora), arch, PATH entries, TTY vs graphical.
-- [ ] `config.rs`: struct + defaults + TOML load/merge + validation (unknown source id → error).
-- [ ] `cli/mod.rs`: clap commands + global flags (`-y/-n/--auto/--source/--profile/--dry-run/-v/--json/--no-color`).
-- [ ] `ui/mod.rs`: renderer facade (respects `--json`, `--no-color`).
-- [ ] `main.rs`: wire config → engine → cli.
-- [ ] **Verify:** `jii fastfetch` runs, prints placeholder; `--json` emits JSON; config loads.
+- [x] `platform.rs`: detect distro (Fedora), arch, PATH entries, TTY vs graphical.
+- [x] `config.rs`: struct + defaults + TOML load/merge + validation (unknown source id → error).
+- [x] `cli/mod.rs`: clap commands + global flags (`-y/-n/--auto/--source/--profile/--dry-run/-v/--json/--no-color`).
+- [x] `ui/mod.rs`: renderer facade (respects `--json`, `--no-color`).
+- [x] `main.rs`: wire config → engine → cli.
+- [x] **Verify:** `jii fastfetch` runs, prints placeholder; `--json` emits JSON; config loads. 8 unit tests pass.
+
+> Notes: crate-level `#![allow(dead_code)]` is set during scaffolding (model/provider
+> API defined ahead of use); tighten as later phases consume it. `cargo clippy` is not
+> installed on this host (Fedora system Rust) — `cargo build` is warning-clean instead.
 
 ## Phase 1 — DNF end-to-end 🎯
 
