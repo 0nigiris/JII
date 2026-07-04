@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. Its constraints and the AI Handoff Policy below apply to **every** agent (AI or human), not only Claude Code — see [AGENTS.md](AGENTS.md) for the tool-neutral onboarding entry point.
 
 ## What this is
 
@@ -46,8 +46,17 @@ window.
 - Build the MVP **incrementally, phase by phase** per `docs/TASKS.md`.
 - Prefer machine-readable tool output (dnf5 structured output, `flatpak --columns`)
   over parsing human text; isolate parsers and unit-test them on fixed samples.
-- Definition of Done: `cargo clippy` clean, `cargo fmt`, tests for non-trivial logic,
-  behavior verified at least via `--dry-run`.
+- Keep commits **small and focused**; keep `cargo build` and `cargo clippy` clean and
+  all tests passing at every commit.
+- Solve problems **within the existing design first**; only propose an architectural
+  change when a concrete implementation problem requires it, and then justify it and
+  record it in `docs/DECISIONS.md`. Never silently introduce complexity.
+- Remove temporary `#[allow(dead_code)]` as later phases consume the API. Fix small
+  tech debt immediately; if you can't, document it (in code and in AI_CONTEXT.md).
+- Never break existing behavior without explaining why.
+- Definition of Done: `cargo clippy` clean, tests for non-trivial logic, behavior
+  verified at least via `--dry-run`. Run `cargo fmt` when available — note it is **not
+  installed on the current dev host**, so match the surrounding style by hand.
 - **Respond in Russian.**
 
 ## AI Handoff Policy (mandatory — every session)

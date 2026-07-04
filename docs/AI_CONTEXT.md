@@ -77,6 +77,18 @@ registry, cache, privilege elevation prefixing, and the new executor (sha256 dig
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove,
 run_action success/failure).
 
+## Environment & commands
+
+- **Target/dev OS:** Fedora (dnf5). Rust edition 2024.
+- **Build:** `cargo build` (must be warning-clean).
+- **Lint:** `cargo clippy` (installed; must be clean).
+- **Test:** `cargo test`.
+- **Preview a plan:** `cargo run -- install <pkg> --dry-run` (no side effects).
+- **`cargo fmt` / `rustfmt` are NOT installed** on this dev host — match the
+  surrounding code style by hand; do not rely on `cargo fmt`.
+- External tools invoked at runtime: `dnf5`, `flatpak`, `sudo`/`pkexec`. GitHub
+  provider (next) will use HTTPS via `reqwest` and optionally `GITHUB_TOKEN`.
+
 ## Important architectural decisions (quick reference)
 
 Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
@@ -113,6 +125,8 @@ src/
   registry.rs    JSON install registry
   cli/, ui/, config.rs, platform.rs, error.rs
 docs/            ARCHITECTURE (canonical) · ROADMAP · TASKS · DECISIONS · this file
+AGENTS.md        tool-neutral onboarding entry (read first); CLAUDE.md = Claude's copy
+LICENSE          MIT
 ```
 
 To add a source: implement `Provider` (or a declarative TOML later) — never edit the

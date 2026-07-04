@@ -123,7 +123,10 @@ land. Keep tasks small enough to complete and verify in one sitting.
 ### Definition of Done (every task)
 
 1. Compiles with no warnings (`cargo clippy` clean).
-2. Formatted (`cargo fmt`).
+2. Formatted (`cargo fmt` — **not installed on the current dev host**; match the
+   surrounding style by hand until it is available).
 3. Has a test where logic is non-trivial (parsers, ranking).
 4. Behavior verified end-to-end (`--dry-run` at minimum).
 5. No provider-specific branching leaked into the core.
+6. AI Handoff Policy done: `AI_CONTEXT.md` updated, any decision recorded in
+   `DECISIONS.md`, small descriptive commit (see [../CLAUDE.md](../CLAUDE.md)).

@@ -257,3 +257,29 @@ lost on context reset, not shared across tools or people, not reviewable.
 **Consequences:** Every work session ends by updating TASKS.md and AI_CONTEXT.md,
 recording any architectural decision here, and committing — the mandatory **AI
 Handoff Policy** in [CLAUDE.md](../CLAUDE.md).
+
+---
+
+## ADR-0012 — Machine-readable tool output; parsers are pure and unit-tested
+
+**Status:** Accepted
+
+**Decision:** Providers drive underlying tools in their machine-readable mode and
+parse *structured* output, never human-formatted text. Concretely: `dnf5 repoquery`
+with an explicit `--queryformat` using a real tab separator; `flatpak search
+--columns=…`. All parsing lives in pure functions (e.g. `parse_candidates`,
+`parse_rows`, `parse_installed_records`) that are unit-tested on fixed sample output.
+
+**Reason:** Human-facing output is unstable across tool versions and locales and is
+painful to parse reliably. Structured output is stable and testable, and pure parsers
+can be verified without invoking the real tool.
+
+**Alternatives considered:** Scrape default human output — rejected: brittle,
+locale-sensitive, untestable offline. A structured library/API binding per tool —
+none stable enough for dnf5/flatpak today; the CLI machine formats are the contract.
+
+**Consequences:** Every new provider must (a) request the tool's machine format and
+(b) put parsing in a pure function with a unit test over a captured sample. This is
+part of the Definition of Done (see [TASKS.md](TASKS.md)). Runtime tool invocation is
+funneled through shared helpers (`run_capture`, `which`, `nonempty_lines`) in
+`provider/mod.rs`.
