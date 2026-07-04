@@ -177,20 +177,20 @@ impl Engine {
     /// the package is not actually installed.
     pub async fn resolve_installed(&self, name: &str) -> Result<InstalledRecord> {
         // 1. Registry hint, verified against the owning provider.
-        if let Some(record) = self.registry.get(name) {
-            if self.is_installed_via(&record.source_id, name).await {
-                return Ok(record.clone());
-            }
+        if let Some(record) = self.registry.get(name)
+            && self.is_installed_via(&record.source_id, name).await
+        {
+            return Ok(record.clone());
         }
         // 2. Registry absent or stale: scan providers for the package.
         for provider in self.providers.iter() {
             if !provider.is_available().await {
                 continue;
             }
-            if let Ok(installed) = provider.list_installed().await {
-                if let Some(found) = installed.into_iter().find(|r| r.name == name) {
-                    return Ok(found);
-                }
+            if let Ok(installed) = provider.list_installed().await
+                && let Some(found) = installed.into_iter().find(|r| r.name == name)
+            {
+                return Ok(found);
             }
         }
         Err(JiiError::Other(anyhow::anyhow!(

@@ -19,7 +19,7 @@ pub const KNOWN_SOURCES: &[&str] = &[
 ];
 
 /// Top-level configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub sources: SourcesConfig,
@@ -94,18 +94,6 @@ pub enum ColorChoice {
     Auto,
     Always,
     Never,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            sources: SourcesConfig::default(),
-            install: InstallConfig::default(),
-            trust: TrustConfig::default(),
-            network: NetworkConfig::default(),
-            ui: UiConfig::default(),
-        }
-    }
 }
 
 impl Default for SourcesConfig {

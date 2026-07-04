@@ -93,10 +93,10 @@ impl Cache {
         let Some(path) = &self.path else {
             return;
         };
-        if let Some(parent) = path.parent() {
-            if std::fs::create_dir_all(parent).is_err() {
-                return;
-            }
+        if let Some(parent) = path.parent()
+            && std::fs::create_dir_all(parent).is_err()
+        {
+            return;
         }
         let entries = self.entries.lock().unwrap();
         if let Ok(text) = serde_json::to_string(&*entries) {
