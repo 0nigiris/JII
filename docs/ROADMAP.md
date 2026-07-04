@@ -52,28 +52,39 @@ Legend: 🎯 MVP · 🔭 post-MVP · 🌅 future
 
 ---
 
-## Phase 3 — Multiple sources & ranking 🎯
+## Phase 3 — Multiple sources & ranking 🎯 ✅
 
 **Goal:** real choice between sources; tie-breakers matter.
 
-- `provider/flatpak.rs`, `provider/copr.rs`.
-- `engine/ranking.rs`: priority + tie-breakers + mandatory explanations.
+- `provider/flatpak.rs` (installs via Flatpak's own polkit — no JII root).
+- `engine/ranking.rs`: source priority + trust tie-breaker + profiles, with an
+  "also available" explanation in the CLI.
 - Parallel fan-out with per-source timeouts + graceful degradation.
 - `cache.rs`: TTL cache, stale-on-error.
 - `jii doctor` (availability, latency, health).
 
-**Done when:** a package present in DNF+Flatpak+COPR is ranked with a clear "why".
+**COPR moved to Phase 4:** `dnf5 copr` has no search, so finding which COPR provides
+a package needs the COPR web API — the same fuzzy name→project resolution problem as
+GitHub Releases, plus root repo-enable and trust handling. Best done alongside GitHub.
+
+**Reserved:** `latest`/`minimal` profiles and freshness/health ranking tie-breakers
+need comparable versions / dependency-footprint data we do not collect yet.
+
+**Done:** a package in DNF+Flatpak is ranked with a clear recommendation + alternatives.
 
 ---
 
-## Phase 4 — GitHub Releases & trust 🎯
+## Phase 4 — GitHub Releases, COPR & trust 🎯
 
-**Goal:** the hard, security-sensitive source.
+**Goal:** the hard, security-sensitive sources that share a name→source resolution
+problem.
 
 - `provider/github.rs`: name→repo resolution, arch/libc asset filtering,
   checksum/signature verification, `GITHUB_TOKEN` support.
+- `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
 - Trust levels enforced end-to-end; `untrusted` always confirmed even in `--auto`.
 - `jii audit` (signatures, sha256, GPG, sigstore, source, trust).
+- Rate-limit health in `doctor` (GitHub).
 
 **Done when:** installing a GitHub release verifies the artifact and respects trust.
 

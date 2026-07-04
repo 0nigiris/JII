@@ -240,6 +240,14 @@ Profiles are simply named priority/tie-breaker presets:
 | `sandbox` | Prefer Flatpak. |
 | `minimal` | Prefer smallest dependency footprint. |
 
+> **Implemented as of Phase 3:** ranking is `source priority → trust`, with a profile
+> adjustment (`sandbox` floats Flatpak up; `stable` is the default). The
+> freshness/official/size/health terms above are the target design; `latest` and
+> `minimal` are reserved until comparable version and dependency-footprint data are
+> collected. Flatpak performs its own polkit elevation, so its steps are not marked
+> `needs_root` (JII does not wrap them in sudo/pkexec). Flatpak packages are
+> identified by application id (e.g. `org.gimp.GIMP`).
+
 ---
 
 ## 7. Trust & security model

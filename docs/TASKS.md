@@ -59,23 +59,38 @@ land. Keep tasks small enough to complete and verify in one sitting.
 > `cli/mod.rs` rather than separate `cli/commands/*.rs` files — the command surface is
 > still small. Split into per-command modules if `cli/mod.rs` grows unwieldy.
 
-## Phase 3 — Multiple sources & ranking 🎯
+## Phase 3 — Multiple sources & ranking 🎯 ✅
 
-- [ ] `provider/flatpak.rs` (`--columns` machine output, `--user` = no root).
-- [ ] `provider/copr.rs`.
-- [ ] `engine/ranking.rs`: priority + tie-breakers + `reasons` on every candidate.
-- [ ] Parallel fan-out with per-source timeouts; failed source tagged `✗ timeout`.
-- [ ] `cache.rs`: TTL cache + stale-on-error.
-- [ ] `cli/commands/doctor.rs`: availability, latency, health.
-- [ ] Unit tests for ranking (fixed candidate sets → expected order + reasons).
-- [ ] **Verify:** a multi-source package ranks correctly with a printed "why".
+- [x] `provider/flatpak.rs` (`--columns` machine output; best-match selector; installs
+      via Flatpak's own polkit, so `needs_root=false` — no JII sudo/pkexec).
+- [x] `engine/ranking.rs`: source priority + trust tie-breaker + profile adjustment;
+      CLI prints the recommendation plus an "also available" list (+ ranking tests).
+- [x] Parallel fan-out with per-source timeouts; failed source tagged (e.g. `timeout`).
+- [x] `cache.rs`: TTL cache + stale-on-error (search results per source/query).
+- [x] `jii doctor`: availability, latency, health.
+- [x] Unit tests for ranking + flatpak parser/best-match + shared installed parser.
+- [x] **Verify:** gimp → dnf recommended + flatpak alternative; `--source`/`--profile`
+      honored; warm cache ~4 ms. 31 unit tests pass.
+- [~] `provider/copr.rs` — **moved to Phase 4** (see note).
 
-## Phase 4 — GitHub Releases & trust 🎯
+> Notes:
+> - **COPR deferred to Phase 4:** `dnf5 copr` has no search; resolving which COPR
+>   provides a package needs the COPR web API — the same fuzzy name→project problem as
+>   GitHub, plus root repo-enable + trust. Grouped with GitHub in Phase 4.
+> - **Flatpak identified by appid** (`org.gimp.GIMP`): `jii remove org.gimp.GIMP`
+>   works, but `jii remove gimp` for a Flatpak may not resolve. Documented tech debt —
+>   revisit with a name/id split if it becomes painful.
+> - **`latest`/`minimal` profiles + freshness/health ranking tie-breakers** are
+>   reserved: they need comparable versions / dependency-footprint data not yet collected.
+> - `cli.rs` is ~410 lines; still readable. Split into `cli/commands/*` if it grows.
+
+## Phase 4 — GitHub Releases, COPR & trust 🎯
 
 - [ ] `provider/github.rs`: name→repo resolution, arch/libc asset filter, pagination.
+- [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
 - [ ] Artifact verification: sha256 / GPG / sigstore where available; `⚠ unsigned` tag.
 - [ ] Trust enforcement: `untrusted` always confirmed, even with `--auto`.
-- [ ] `GITHUB_TOKEN` support to lift rate limits.
+- [ ] `GITHUB_TOKEN` support to lift rate limits; rate-limit health in `doctor`.
 - [ ] `cli/commands/audit.rs`.
 - [ ] **Verify:** installing a GitHub release verifies the artifact & respects trust.
 
