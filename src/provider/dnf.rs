@@ -7,10 +7,9 @@
 
 use async_trait::async_trait;
 use serde_json::json;
-use tokio::process::Command;
 
-use super::Provider;
-use crate::error::{JiiError, Result};
+use super::{Provider, nonempty_lines, run_capture, which};
+use crate::error::Result;
 use crate::model::{
     InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, Step, TrustLevel,
 };
@@ -104,7 +103,7 @@ impl Provider for Dnf {
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let qf = format!("%{{name}}{SEP}%{{evr}}\n");
         let out = run_capture(&[BIN, "repoquery", "-q", "--installed", "--qf", &qf]).await?;
-        Ok(parse_installed(&out, self.id()))
+        Ok(super::parse_installed_records(&out, self.id()))
     }
 }
 
@@ -126,11 +125,6 @@ fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
         needs_root: true,
         reasons,
     }
-}
-
-/// Non-blank lines of a command's output, in order.
-fn nonempty_lines(stdout: &str) -> impl Iterator<Item = &str> {
-    stdout.lines().filter(|l| !l.trim().is_empty())
 }
 
 /// Parse `repoquery` search output into candidates. Lines are
@@ -159,57 +153,6 @@ fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
             })
         })
         .collect()
-}
-
-/// Parse `repoquery --installed` output into records. Lines are `name<TAB>evr`.
-fn parse_installed(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
-    let now = chrono::Utc::now();
-    nonempty_lines(stdout)
-        .filter_map(|line| {
-            let mut fields = line.splitn(2, SEP);
-            let name = fields.next()?.trim();
-            if name.is_empty() {
-                return None;
-            }
-            let evr = fields.next().unwrap_or("").trim();
-            Some(InstalledRecord {
-                name: name.to_string(),
-                source_id: source_id.to_string(),
-                version: (!evr.is_empty()).then(|| PkgVersion::new(evr)),
-                installed_at: now,
-            })
-        })
-        .collect()
-}
-
-/// Run a command and return its stdout as a string. Errors if the binary cannot be
-/// spawned or exits non-zero.
-async fn run_capture(argv: &[&str]) -> Result<String> {
-    let output = Command::new(argv[0])
-        .args(&argv[1..])
-        .output()
-        .await
-        .map_err(|e| JiiError::spawn(argv[0], e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(JiiError::Other(anyhow::anyhow!(
-            "{} failed: {}",
-            argv.join(" "),
-            stderr.trim()
-        )));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-/// Whether an executable is found on PATH.
-async fn which(bin: &str) -> bool {
-    Command::new(bin)
-        .arg("--version")
-        .output()
-        .await
-        .map(|o| o.status.success())
-        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -251,15 +194,5 @@ mod tests {
         assert_eq!(cands[0].name, "lonely");
         assert!(cands[0].version.is_none());
         assert!(cands[0].summary.is_none());
-    }
-
-    #[test]
-    fn parses_installed_lines() {
-        let sample = "bash\t5.3.9-3.fc44\nfastfetch\t2.63.1-1.fc44\n";
-        let recs = parse_installed(sample, "dnf");
-        assert_eq!(recs.len(), 2);
-        assert_eq!(recs[0].name, "bash");
-        assert_eq!(recs[0].version.as_ref().unwrap().0, "5.3.9-3.fc44");
-        assert_eq!(recs[1].name, "fastfetch");
     }
 }

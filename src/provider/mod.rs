@@ -4,12 +4,14 @@
 //! never branches on a concrete source id (see `docs/ARCHITECTURE.md` §5).
 
 use async_trait::async_trait;
+use tokio::process::Command;
 
 use crate::config::Config;
-use crate::error::Result;
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, Query, TrustLevel};
+use crate::error::{JiiError, Result};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 pub mod dnf;
+pub mod flatpak;
 
 /// A source of installable software (a package manager, a repo, a registry).
 ///
@@ -55,9 +57,12 @@ impl ProviderRegistry {
     pub fn from_config(config: &Config) -> Self {
         let mut providers: Vec<Box<dyn Provider>> = Vec::new();
 
-        // Phase 1: DNF only. Later phases register more here.
+        // Register known providers; later phases add more here.
         if config.is_enabled("dnf") {
             providers.push(Box::new(dnf::Dnf::new()));
+        }
+        if config.is_enabled("flatpak") {
+            providers.push(Box::new(flatpak::Flatpak::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));
@@ -83,5 +88,87 @@ impl ProviderRegistry {
     /// Whether no providers are enabled.
     pub fn is_empty(&self) -> bool {
         self.providers.is_empty()
+    }
+}
+
+// ---- Shared helpers for CLI-backed providers (dnf, flatpak, …) ----
+
+/// Non-blank lines of a command's output, in order.
+pub(crate) fn nonempty_lines(stdout: &str) -> impl Iterator<Item = &str> {
+    stdout.lines().filter(|l| !l.trim().is_empty())
+}
+
+/// Run a command and return its stdout as a string. Errors if the binary cannot be
+/// spawned or exits non-zero.
+pub(crate) async fn run_capture(argv: &[&str]) -> Result<String> {
+    let output = Command::new(argv[0])
+        .args(&argv[1..])
+        .output()
+        .await
+        .map_err(|e| JiiError::spawn(argv[0], e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(JiiError::Other(anyhow::anyhow!(
+            "{} failed: {}",
+            argv.join(" "),
+            stderr.trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Whether an executable is runnable (used for `is_available`).
+pub(crate) async fn which(bin: &str) -> bool {
+    Command::new(bin)
+        .arg("--version")
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Parse tab-separated `name<TAB>version` lines into installed records. Shared by
+/// providers whose "list installed" output has that shape (dnf, flatpak).
+pub(crate) fn parse_installed_records(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
+    let now = chrono::Utc::now();
+    nonempty_lines(stdout)
+        .filter_map(|line| {
+            let mut fields = line.splitn(2, '\t');
+            let name = fields.next()?.trim();
+            if name.is_empty() {
+                return None;
+            }
+            let version = fields.next().unwrap_or("").trim();
+            Some(InstalledRecord {
+                name: name.to_string(),
+                source_id: source_id.to_string(),
+                version: (!version.is_empty()).then(|| PkgVersion::new(version)),
+                installed_at: now,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_installed_records() {
+        let sample = "bash\t5.3.9-3.fc44\nfastfetch\t2.63.1-1.fc44\n";
+        let recs = parse_installed_records(sample, "dnf");
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].name, "bash");
+        assert_eq!(recs[0].version.as_ref().unwrap().0, "5.3.9-3.fc44");
+        assert_eq!(recs[1].name, "fastfetch");
+    }
+
+    #[test]
+    fn skips_blank_and_nameless_lines() {
+        let recs = parse_installed_records("\n\t1.0\nvalid\t2.0\n", "flatpak");
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].name, "valid");
+        assert_eq!(recs[0].source_id, "flatpak");
     }
 }

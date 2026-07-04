@@ -1,0 +1,261 @@
+//! Flatpak provider.
+//!
+//! Uses `flatpak search --columns=…` for stable machine output. Flatpak performs
+//! its own privilege handling (polkit) for system installs, so its steps are not
+//! marked `needs_root` — JII does not wrap them in sudo/pkexec.
+//!
+//! Flatpak packages are identified by application id (e.g. `org.gimp.GIMP`); that
+//! id is used as the candidate/record `name`. (Known limitation: removing a Flatpak
+//! by a friendly name like `gimp` may not resolve — see docs/TASKS.md Phase 3.)
+
+use async_trait::async_trait;
+use serde_json::json;
+
+use super::{Provider, nonempty_lines, parse_installed_records, run_capture, which};
+use crate::error::Result;
+use crate::model::{
+    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, Step, TrustLevel,
+};
+
+const BIN: &str = "flatpak";
+const ID: &str = "flatpak";
+
+/// The Flatpak installation source.
+pub struct Flatpak;
+
+impl Flatpak {
+    pub fn new() -> Self {
+        Flatpak
+    }
+}
+
+impl Default for Flatpak {
+    fn default() -> Self {
+        Flatpak::new()
+    }
+}
+
+#[async_trait]
+impl Provider for Flatpak {
+    fn id(&self) -> &'static str {
+        ID
+    }
+
+    fn trust(&self) -> TrustLevel {
+        // Flathub is community-maintained (not distro-official), but sandboxed.
+        TrustLevel::Community
+    }
+
+    async fn is_available(&self) -> bool {
+        which(BIN).await
+    }
+
+    async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
+        let out = run_capture(&[
+            BIN,
+            "search",
+            &query.raw,
+            "--columns=name,application,version,branch,remotes",
+        ])
+        .await?;
+
+        let rows = parse_rows(&out);
+        Ok(best_match(&query.raw, &rows)
+            .map(|row| candidate_from(&row))
+            .into_iter()
+            .collect())
+    }
+
+    async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
+        let remote = candidate
+            .raw
+            .get("remote")
+            .and_then(|v| v.as_str())
+            .unwrap_or("flathub");
+        let appid = &candidate.name;
+
+        let mut reasons = vec!["Flatpak (sandboxed)".to_string(), format!("Remote: {remote}")];
+        if let Some(v) = &candidate.version {
+            reasons.push(format!("Version {v}"));
+        }
+
+        Ok(user_plan(appid, &["install", "-y", remote, appid], reasons))
+    }
+
+    async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
+        let reasons = vec![format!("Remove {} (installed via flatpak)", record.name)];
+        Ok(user_plan(&record.name, &["uninstall", "-y", &record.name], reasons))
+    }
+
+    async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
+        let reasons = vec![format!("Update {} via flatpak", record.name)];
+        Ok(user_plan(&record.name, &["update", "-y", &record.name], reasons))
+    }
+
+    async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
+        let out = run_capture(&[BIN, "list", "--app", "--columns=application,version"]).await?;
+        Ok(parse_installed_records(&out, self.id()))
+    }
+}
+
+/// A parsed `flatpak search` row.
+#[derive(Debug, Clone)]
+struct Row {
+    name: String,
+    appid: String,
+    version: String,
+    branch: String,
+    remotes: Vec<String>,
+}
+
+/// Build a single-step Flatpak plan. Steps are not root — Flatpak handles its own
+/// elevation via polkit.
+fn user_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
+    let mut argv = vec![BIN.to_string()];
+    argv.extend(args.iter().map(|s| s.to_string()));
+    InstallPlan {
+        candidate_ref: name.to_string(),
+        source_id: ID.to_string(),
+        steps: vec![Step {
+            argv,
+            needs_root: false,
+            cwd: None,
+        }],
+        verification: Vec::new(),
+        download_size: None,
+        needs_root: false,
+        reasons,
+    }
+}
+
+/// Convert a matched row into a candidate (identified by appid).
+fn candidate_from(row: &Row) -> PackageCandidate {
+    let remote = choose_remote(&row.remotes);
+    PackageCandidate {
+        name: row.appid.clone(),
+        source_id: ID.to_string(),
+        version: (!row.version.is_empty()).then(|| PkgVersion::new(&row.version)),
+        trust: TrustLevel::Community,
+        arch_ok: true,
+        signed: true,
+        summary: (!row.name.is_empty()).then(|| row.name.clone()),
+        raw: json!({ "remote": remote, "branch": row.branch, "appid": row.appid }),
+    }
+}
+
+/// Parse `flatpak search` output. Columns: `name<TAB>appid<TAB>version<TAB>branch<TAB>remotes`.
+/// Lines without an appid (e.g. "No matches found") are skipped.
+fn parse_rows(stdout: &str) -> Vec<Row> {
+    nonempty_lines(stdout)
+        .filter_map(|line| {
+            let mut fields = line.splitn(5, '\t');
+            let name = fields.next()?.trim().to_string();
+            let appid = fields.next().unwrap_or("").trim().to_string();
+            if appid.is_empty() {
+                return None;
+            }
+            let version = fields.next().unwrap_or("").trim().to_string();
+            let branch = fields.next().unwrap_or("").trim().to_string();
+            let remotes = fields
+                .next()
+                .unwrap_or("")
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            Some(Row {
+                name,
+                appid,
+                version,
+                branch,
+                remotes,
+            })
+        })
+        .collect()
+}
+
+/// Pick the best row for a query. Prefers exact name / appid-tail matches over
+/// substring matches; returns `None` if nothing matches.
+fn best_match(query: &str, rows: &[Row]) -> Option<Row> {
+    rows.iter()
+        .filter_map(|row| match_score(query, row).map(|score| (score, row)))
+        .min_by_key(|(score, _)| *score)
+        .map(|(_, row)| row.clone())
+}
+
+/// Lower score = better match. `None` = no match.
+fn match_score(query: &str, row: &Row) -> Option<u8> {
+    let q = query.to_ascii_lowercase();
+    let name = row.name.to_ascii_lowercase();
+    let appid = row.appid.to_ascii_lowercase();
+    let tail = appid.rsplit('.').next().unwrap_or(&appid);
+
+    if name == q || tail == q {
+        Some(0)
+    } else if appid == q {
+        Some(1)
+    } else if tail.contains(&q) {
+        Some(2)
+    } else if name.contains(&q) {
+        Some(3)
+    } else if appid.contains(&q) {
+        Some(4)
+    } else {
+        None
+    }
+}
+
+/// Prefer flathub, else the first available remote.
+fn choose_remote(remotes: &[String]) -> String {
+    if remotes.iter().any(|r| r == "flathub") {
+        "flathub".to_string()
+    } else {
+        remotes.first().cloned().unwrap_or_else(|| "flathub".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = "GIMP User Manual\torg.gimp.GIMP.Manual\t2.10\t2.10\tflathub\n\
+GNU Image Manipulation Program\torg.gimp.GIMP\t3.2.4\tstable\tfedora,flathub\n\
+Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
+
+    #[test]
+    fn parses_rows_and_remotes() {
+        let rows = parse_rows(SAMPLE);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[1].appid, "org.gimp.GIMP");
+        assert_eq!(rows[1].version, "3.2.4");
+        assert_eq!(rows[1].remotes, vec!["fedora", "flathub"]);
+    }
+
+    #[test]
+    fn skips_no_matches_line() {
+        assert!(parse_rows("No matches found\n").is_empty());
+    }
+
+    #[test]
+    fn best_match_prefers_the_app_over_plugins_and_manual() {
+        let rows = parse_rows(SAMPLE);
+        let best = best_match("gimp", &rows).unwrap();
+        assert_eq!(best.appid, "org.gimp.GIMP");
+    }
+
+    #[test]
+    fn best_match_none_when_unrelated() {
+        let rows = parse_rows(SAMPLE);
+        assert!(best_match("firefox", &rows).is_none());
+    }
+
+    #[test]
+    fn candidate_uses_appid_as_name_and_prefers_flathub() {
+        let rows = parse_rows(SAMPLE);
+        let c = candidate_from(&best_match("gimp", &rows).unwrap());
+        assert_eq!(c.name, "org.gimp.GIMP");
+        assert_eq!(c.source_id, "flatpak");
+        assert_eq!(c.trust, TrustLevel::Community);
+        assert_eq!(c.raw.get("remote").unwrap().as_str(), Some("flathub"));
+    }
+}
