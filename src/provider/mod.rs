@@ -151,6 +151,18 @@ impl ProviderRegistry {
     }
 }
 
+// ---- Shared helpers for network providers (crates.io, npm, COPR, GitHub…) ----
+
+/// The HTTP client network providers use. Sends the User-Agent registries expect and
+/// gives us one place to evolve UA / transport policy. Per-request auth/headers stay in
+/// the provider (e.g. github's bearer token).
+pub(crate) fn http_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .user_agent(concat!("jii/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("http client: {e}")))
+}
+
 // ---- Shared helpers for CLI-backed providers (dnf, flatpak, …) ----
 
 /// Non-blank lines of a command's output, in order.

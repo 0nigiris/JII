@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, run_capture, which};
+use super::{Provider, http_client, run_capture, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -31,14 +31,6 @@ pub struct Cargo;
 impl Cargo {
     pub fn new() -> Self {
         Cargo
-    }
-
-    fn client(&self) -> Result<reqwest::Client> {
-        // crates.io asks clients to send a User-Agent that identifies the app.
-        reqwest::Client::builder()
-            .user_agent(concat!("jii/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("http client: {e}")))
     }
 }
 
@@ -64,7 +56,7 @@ impl Provider for Cargo {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let client = self.client()?;
+        let client = http_client()?;
         let url = format!("{API}/crates/{}", query.raw.trim());
         let resp = client
             .get(&url)

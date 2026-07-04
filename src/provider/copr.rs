@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
-use super::{Probe, Provider, run_capture, which};
+use super::{Probe, Provider, http_client, run_capture, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, Query, TrustLevel,
@@ -39,13 +39,6 @@ pub struct Copr {
 impl Copr {
     pub fn new(arch: &'static str) -> Self {
         Copr { arch }
-    }
-
-    fn client(&self) -> Result<reqwest::Client> {
-        reqwest::Client::builder()
-            .user_agent(concat!("jii/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("http client: {e}")))
     }
 }
 
@@ -66,7 +59,7 @@ impl Provider for Copr {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let client = self.client()?;
+        let client = http_client()?;
         let url = format!("{API}/project/search");
         let resp = client
             .get(&url)
@@ -131,7 +124,7 @@ impl Provider for Copr {
     async fn probe(&self) -> Probe {
         // Any HTTP response from the API means it is reachable (search will work);
         // a lightweight query keeps it cheap. COPR has no client rate limit for us.
-        let Ok(client) = self.client() else {
+        let Ok(client) = http_client() else {
             return Probe::unreachable();
         };
         let url = format!("{API}/project/search");

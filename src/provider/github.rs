@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Probe, Provider};
+use super::{Probe, Provider, http_client};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -48,13 +48,6 @@ impl Github {
         std::env::var(&self.token_env).ok().filter(|s| !s.is_empty())
     }
 
-    /// HTTP client with the User-Agent the GitHub API requires.
-    fn client(&self) -> Result<reqwest::Client> {
-        reqwest::Client::builder()
-            .user_agent(concat!("jii/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .map_err(|e| JiiError::Other(anyhow::anyhow!("http client: {e}")))
-    }
 }
 
 #[async_trait]
@@ -81,7 +74,7 @@ impl Provider for Github {
             return Ok(Vec::new());
         };
 
-        let client = self.client()?;
+        let client = http_client()?;
         let token = self.token();
         let release = fetch_release(&client, &owner, &repo, token.as_deref()).await?;
 
@@ -161,7 +154,7 @@ impl Provider for Github {
 
     async fn probe(&self) -> Probe {
         // GET /rate_limit — cheap and it does not itself count against the limit.
-        let Ok(client) = self.client() else {
+        let Ok(client) = http_client() else {
             return Probe::unreachable();
         };
         match fetch_rate_limit(&client, self.token().as_deref()).await {
