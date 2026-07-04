@@ -165,11 +165,23 @@ land. Keep tasks small enough to complete and verify in one sitting.
       JII (prettier offered v3.9.4, lodash rejected), dry-run, multi-source ranking. 6 tests.
 - [x] **Shared `provider::http_client()`** extracted (was copied 3× in copr/github/cargo;
       npm would be the 4th) — one place for the registry User-Agent / transport policy.
-- [ ] `provider/{pipx,go}.rs` (no root; user-prefix PATH warning). **When these land** (the
-      3rd/4th single-command user provider) extract a shared `command_plan(source_id,
-      argv, needs_root, reasons)` — cargo/npm each have a near-identical one-`RunCommand`
-      plan builder; do **not** copy it a 4th time (ADR-0022: small internal helper, no new
-      abstraction/model). dnf/copr's `root_plan` can fold in if it stays simpler.
+- [x] `provider/pipx.rs`: mirrors cargo (PyPI `/<pkg>/json`, `pipx install`/`uninstall`,
+      first-class `pipx upgrade`, `pipx list --json`, installs to `~/.local/bin`, no root,
+      community trust). **No app-filter** — PyPI exposes no reliable program signal (the
+      `Environment :: Console` classifier is ~40% unreliable, measured), so it offers the
+      package and lets `pipx install` reject non-apps (ADR-0023: prefer a visible false
+      positive over silently hiding a real app). Verified: real PyPI search via JII
+      (black + requests both offered), dry-run. 4 tests.
+- [ ] `provider/go.rs` (no root; `go install <pkg>@latest`, `~/go/bin` or `GOBIN`). Same
+      no-app-filter rule as pipx (only `main` packages are installable; module proxy can't
+      cheaply tell — ADR-0023). **At go, do the helper evaluation** (below).
+- [ ] **Helper evaluation (scheduled for `go`, the 4th user-space provider):** cargo/pipx
+      share an identical one-`RunCommand` `user_plan`; npm's differs only by threading a
+      `--prefix`. Extract a shared `provider::command_plan(source_id, argv, needs_root,
+      reasons)` (each provider assembles its own argv) **only if it genuinely shrinks
+      code** — it can also absorb dnf's `root_plan`. Also emerging: a tolerant "read stdout
+      regardless of exit status" spawn (npm + pipx = 2×) — extract to a `run_stdout` helper
+      if `go` needs it too. No new abstraction/model (ADR-0022).
 - [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 

@@ -748,3 +748,56 @@ be handled so later work stays honest.
 - The engine's public API gains a documented constraint: **no `ui` types in engine
   signatures** going forward; the existing `Renderer` parameter is grandfathered debt
   tracked in AI_CONTEXT until the pre-frontend decoupling.
+
+---
+
+## ADR-0023 — Program-vs-library detection is best-effort per provider (prefer false positives)
+
+**Status:** Accepted
+
+**Decision:** JII installs *programs*, so a source provider should offer only candidates
+that install an executable — but **how well it can tell a program from a library depends
+on the source's metadata, and JII does not force a uniform filter.** Two rules:
+
+1. **Filter when the registry exposes it reliably.** crates.io gives `bin_names` and npm
+   gives `bin`, so `cargo`/`npm` drop library-only packages (e.g. `serde`, `lodash`)
+   before offering them.
+2. **When it does not, offer the package and let the underlying tool be the authority.**
+   The PyPI JSON API exposes no entry-points/console-scripts field; the only proxy,
+   the `Environment :: Console` classifier, is ~40% unreliable (measured: `poetry`,
+   `twine`, `pre-commit`, `awscli` are real pipx apps that omit it). So `pipx` does **not**
+   pre-filter — it offers the package and `pipx install` rejects a non-app at execution
+   with a clear message (the plan is fully previewable first).
+
+The governing principle: **a false positive (offering a library that the tool then
+rejects, visibly) is safer than a false negative (silently hiding a real, installable
+app).** Silently hiding an installable program violates "never hide"; a visible,
+previewable plan that the tool declines does not.
+
+**Reason:**
+- **Discoverability beats tidiness.** Filtering pipx on the unreliable classifier would
+  make JII silently omit ~40% of legitimate Python CLIs — a worse failure than showing a
+  library candidate the user can see and that pipx will refuse.
+- **It stays per-provider, no core change.** The filter (or its absence) lives entirely
+  in the provider's `search`; the engine and model are untouched (ADR-0004/0022).
+- **It generalizes.** `go install` only builds `main` packages, and the module proxy
+  doesn't cheaply reveal which are `main`; `go` will follow the same rule (offer, let
+  `go install` be the authority) rather than invent an unreliable heuristic.
+
+**Alternatives considered:**
+- Filter pipx on `Environment :: Console` — rejected: ~40% false negatives, silently
+  hiding real apps.
+- Download the wheel/module to read entry points during `search` — rejected: network in
+  `search` must stay light (ADR-0014); downloading every candidate's artifact to classify
+  it is far too heavy.
+- Offer nothing unless certain — rejected: PyPI/Go can never be "certain" cheaply, so
+  this would neuter two whole ecosystems.
+
+**Consequences:**
+- A new contributor sees an intentional asymmetry (cargo/npm filter; pipx/go don't) with
+  the rationale recorded here, so they won't "fix" it by adding a brittle classifier
+  filter.
+- pipx/go may surface a library candidate; it is honest (a previewable plan) and the tool
+  rejects it clearly at install. Documented as a known, accepted limitation.
+- If PyPI/Go ever expose reliable entry-point metadata, the provider can add a filter
+  with no core change — the rule is "filter when reliable", not "never filter".

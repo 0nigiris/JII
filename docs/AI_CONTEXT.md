@@ -24,12 +24,26 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 **Phase 5 — user-space sources & update (in progress).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
-these providers. **`cargo` and `npm` are done** — pure `Provider`s, no core change.
-Next: `pipx`, then `go`, then `jii update`.
+these providers. **`cargo`, `npm`, `pipx` are done** — pure `Provider`s, no core change.
+Next: `go` (and at `go`, evaluate extracting a shared `command_plan` helper), then
+`jii update`.
 
 ## Last completed work
 
-**`provider/npm.rs` (npm registry)** + a shared-`http_client()` refactor. npm mirrors
+**`provider/pipx.rs` (PyPI, via pipx).** Third Phase 5 provider, mirrors cargo:
+`pipx install/uninstall`, first-class `pipx upgrade`, `pipx list --json`, installs to
+`~/.local/bin` (no root), community trust. **Key decision — ADR-0023:** PyPI's API exposes
+no reliable program-vs-library signal (the `Environment :: Console` classifier is ~40%
+unreliable — measured on 10 popular CLIs), so pipx does **not** pre-filter (unlike cargo's
+`bin_names` / npm's `bin`); it offers the package and lets `pipx install` reject non-apps.
+Principle: a visible false positive beats silently hiding a real app. No core change, no
+engine special-case. Verified: real PyPI search through JII (black + requests both offered),
+dry-run (single unprivileged command), via a stubbed `pipx` on PATH (pipx not installed
+here). Before writing pipx: assessed duplication — nothing hit the 3× threshold beyond the
+already-extracted `http_client`, so no pre-pipx refactor (the `command_plan` extraction is
+scheduled for `go`, the 4th user-space provider).
+
+**Prior — `provider/npm.rs` (npm registry)** + a shared-`http_client()` refactor. npm mirrors
 cargo: `search` hits the npm registry `/<pkg>/latest` and **only offers packages that
 install a CLI** (non-empty `bin`), so a library like `lodash` yields no candidate.
 Installs are unprivileged and forced into `$HOME/.local` via `--prefix` (binaries →
@@ -93,16 +107,16 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Phase 5 — next provider: `provider/pipx.rs`.** Same shape as cargo/npm: `is_available`
-(`pipx`), `search` (PyPI JSON `https://pypi.org/pypi/<pkg>/json` — pipx installs apps, so
-offer packages that expose console entry points / are apps; PyPI's JSON has
-`info.summary`/`info.version`, and entry-point detection is less direct than cargo/npm —
-assess whether to just offer any package and let pipx fail, or check for scripts),
-`plan_install` = `pipx install <pkg>` (no root; pipx installs to `~/.local/bin`),
-`list_installed` (`pipx list --json`), `plan_remove` (`pipx uninstall`). Community trust.
-**When writing pipx** (3rd single-command user provider): extract the shared
-`command_plan` helper cargo/npm duplicate — don't copy it a 4th time in `go` (see TASKS).
-Then `go`, then `jii update`.
+**Phase 5 — next provider: `provider/go.rs`.** Same shape as cargo/pipx: `is_available`
+(`go`), `search` — resolve a module path (query is likely `host/user/repo`, e.g.
+`github.com/junegunn/fzf`); the Go module proxy (`https://proxy.golang.org/<mod>/@latest`)
+gives the version. Only `main` packages are installable and the proxy can't cheaply tell,
+so **no app-filter** (ADR-0023) — offer it, let `go install` be the authority.
+`plan_install` = `go install <mod>@latest` (no root; installs to `~/go/bin` or `$GOBIN` —
+PATH-warn), `list_installed` (Go has no clean global list — likely scan `~/go/bin`, or
+accept an empty list like copr and rely on the registry hint), `plan_remove` (remove the
+binary from the bin dir). Community trust. **At go, run the helper evaluation** (extract
+`command_plan` if it shrinks code — see TASKS). Then `jii update` (wire `plan_update`).
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):
@@ -124,7 +138,7 @@ None.
 
 ## Test status
 
-`cargo test` — **87 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **91 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
 zip** extract + member selection, unknown-format rejection, run_action), github
@@ -132,8 +146,9 @@ zip** extract + member selection, unknown-format rejection, run_action), github
 plan shapes), copr (search parsing, exact-name + fedora/arch chroot selection, two-step
 root plan), cargo (binary-crate vs library-only candidate filtering, unprivileged plan
 shape, `cargo install --list` parsing), npm (CLI vs library-only filter incl. bin-as-
-string, user-prefixed plan shape, `npm ls -g --json` parsing), audit (verification
-resolution + concern logic), and doctor health mapping (`health_from` precedence).
+string, user-prefixed plan shape, `npm ls -g --json` parsing), pipx (candidate shape,
+install/upgrade plans, `pipx list --json` parsing), audit (verification resolution +
+concern logic), and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands
 
@@ -183,6 +198,10 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   — implement when a source needs them (GitHub).
 - **`cli/mod.rs`** (~410 lines) holds command handlers inline; split into
   `cli/commands/*` if it grows unwieldy.
+- **pipx/go offer libraries (ADR-0023, by design):** PyPI/Go expose no reliable
+  program-vs-library signal, so `pipx`/`go` don't pre-filter (cargo/npm do). They offer
+  the package; the tool rejects a non-app at install. Accepted — a visible false positive
+  beats silently hiding a real app. Add a filter only if reliable metadata appears.
 - **Engine↔UI seam (ADR-0022):** `Engine::install`/`remove` take `&crate::ui::Renderer`
   so the executor can print progress — the one `ui` type reaching into the engine. Fine
   now (single CLI frontend), but it must be decoupled (a progress-event/`ProgressSink`
@@ -194,7 +213,7 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + http_client + dnf, copr, flatpak, github, cargo, npm
+  provider/      Provider trait + http_client + dnf, copr, flatpak, github, cargo, npm, pipx
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)
