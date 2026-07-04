@@ -139,8 +139,18 @@ land. Keep tasks small enough to complete and verify in one sitting.
 
 ## Phase 5 — User-space sources & update 🔭
 
-- [ ] `provider/{cargo,npm,pipx,go}.rs` (no root; `~/.local/bin` PATH warning).
-- [ ] `cli/commands/update.rs` across managers.
+> **Readiness (ADR-0022):** the pre-Phase-5 architecture re-evaluation confirmed the
+> model needs **no change** — cargo/npm/pipx/go are pure new `Provider`s (user-space, no
+> root), same shape as github. New *capabilities* (versions, metadata, bootstrap) go in
+> as **optional trait methods with defaults**, never a fat trait or core branch. Keep the
+> engine **UI-free** (no new `ui` types in engine signatures).
+
+- [ ] `provider/cargo.rs` (**start here**): `is_available` (cargo present), `search`
+      (crates.io API), `plan_install` = `RunCommand cargo install <crate>` (`needs_root=false`),
+      `list_installed` (`cargo install --list`), `plan_remove` (`cargo uninstall`),
+      community trust. Installs into `~/.cargo/bin` (PATH warning if absent).
+- [ ] `provider/{npm,pipx,go}.rs` (no root; `~/.local/bin`/manager-bin PATH warning).
+- [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 
 ## Phase 6 — Declarative sources & catalog 🔭

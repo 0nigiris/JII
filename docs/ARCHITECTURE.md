@@ -170,6 +170,15 @@ pub trait Provider: Send + Sync {
 }
 ```
 
+> **Evolved since Phase 4.** The trait has grown **optional methods with safe defaults**
+> — `is_installed(record)` (default: look up in `list_installed`; file-based sources
+> like github override it) and `probe()` (default: local availability; network sources
+> report reachability/rate-limit). This **default-method pattern is how the trait grows
+> in breadth without a fat interface or core branching** (ADR-0022): future capabilities
+> — version enumeration, provider metadata, manager bootstrap — are added the same way,
+> and a provider that can't do one inherits the default. `plan_install` returns a plan
+> of declarative `Action`s (see §9), not raw `Step`s.
+
 ### Two kinds of providers
 
 1. **Native (code).** `dnf`, `flatpak`, `github`, `cargo`… implement the trait
@@ -285,16 +294,16 @@ tag and a raised barrier.
 
 ## 9. Privilege escalation
 
-Centralized in `privilege.rs`. Providers return steps flagged `needs_root`; they
-never call sudo themselves.
+Centralized in `privilege.rs`. Providers emit declarative **`Action`s** (see §11); a
+`RunCommand` action flagged `needs_root` requests elevation. Providers never call sudo
+themselves — the executor (`exec.rs`) does, via `privilege.rs` (`prime()` + `run()`).
 
-```rust
-pub struct Step {
-    pub argv: Vec<String>,   // exact command
-    pub needs_root: bool,
-    pub cwd: Option<PathBuf>,
-}
-```
+> **Evolved (ADR-0007).** The original `Step { argv, needs_root, cwd }` became the
+> `Action` enum (`RunCommand` / `Download` / `Place` / `Extract` / `RemoveFile`), each
+> with a focused handler in `exec.rs`. `Download` enforces artifact verification before
+> the bytes are used; there is no generic "do anything" step. `needs_root` is now a
+> derived property of a plan (`InstallPlan::needs_root()`), computed from its
+> `RunCommand` actions.
 
 Algorithm:
 1. Build the plan. If **no** step needs root (cargo/npm/pipx/`flatpak --user`) →
@@ -323,54 +332,78 @@ Algorithm:
 
 ## 11. Internal API (core model)
 
+> The block below reflects the **current** code (`src/model.rs`, `src/engine/mod.rs`).
+> It evolved from the original design via ADR-0007 (`Action` execution model),
+> ADR-0016 (`Extract`) and ADR-0018 (verification recorded on the install record).
+
 ```rust
 pub struct Query { pub raw: String, pub kind: QueryKind } // Name | Description
 pub enum QueryKind { Name, Description }
-pub enum TrustLevel { Official, Community, Untrusted }
+pub enum TrustLevel { Official, Community, Untrusted }    // Ord: Official < … < Untrusted
 pub enum Health { Healthy, Slow, Offline, RateLimited }
+pub struct PkgVersion(pub String);                        // raw string, NOT semver (ADR-0009)
 
 pub struct PackageCandidate {
     pub name: String,
     pub source_id: String,
-    pub version: Option<Version>,
+    pub version: Option<PkgVersion>,
     pub trust: TrustLevel,
     pub arch_ok: bool,
     pub signed: bool,
     pub summary: Option<String>,
-    pub raw: serde_json::Value,   // source-specific payload for plan_install
+    pub raw: serde_json::Value,   // source-specific payload for plan_install (opaque to core)
 }
 
-pub enum Verification { Gpg, Sha256(String), Sigstore, None }
+pub enum Verification { Sha256(String), Gpg, Sigstore, None }
+
+/// One declarative step of a plan; each has a focused handler in exec.rs (ADR-0007).
+pub enum Action {
+    RunCommand { argv: Vec<String>, needs_root: bool },
+    Download   { url: String, dest: PathBuf, verify: Verification },
+    Place      { src: PathBuf, dest: PathBuf, mode: u32 },
+    Extract    { archive: PathBuf, member: String, dest: PathBuf, mode: u32 }, // .tar.gz/.zip
+    RemoveFile { path: PathBuf },
+}
 
 pub struct InstallPlan {
     pub candidate_ref: String,
-    pub steps: Vec<Step>,
-    pub verification: Vec<Verification>,
+    pub source_id: String,
+    pub actions: Vec<Action>,       // verification lives inside Download; needs_root() is derived
     pub download_size: Option<u64>,
-    pub needs_root: bool,
-    pub reasons: Vec<String>,     // WHY this was recommended
+    pub reasons: Vec<String>,       // WHY this was recommended
 }
 
 pub struct InstalledRecord {
     pub name: String,
     pub source_id: String,
-    pub version: Option<Version>,
+    pub version: Option<PkgVersion>,
     pub installed_at: DateTime<Utc>,
+    pub verification: Option<String>, // how it was verified at install (None = manager-signed)
 }
 
-pub struct Engine { /* providers, config, registry, cache */ }
+pub struct Engine { /* providers, config, registry, cache, privilege */ }
 impl Engine {
-    pub async fn search(&self, q: &Query) -> SearchResult;             // parallel, graceful
-    pub fn rank(&self, cands: Vec<PackageCandidate>) -> Ranked;        // priority + tie-breakers
-    pub async fn plan(&self, c: &PackageCandidate) -> Result<InstallPlan>;
-    pub async fn execute(&self, p: InstallPlan, d: Decision) -> Result<Outcome>;
+    pub async fn search(&self, q: &Query) -> SearchResult;                 // parallel, graceful
+    pub fn rank(&self, cands: Vec<PackageCandidate>) -> Vec<PackageCandidate>;
+    pub async fn plan_install(&self, c: &PackageCandidate) -> Result<InstallPlan>;
+    pub async fn plan_remove(&self, r: &InstalledRecord) -> Result<InstallPlan>;
+    pub async fn install(&mut self, p: &InstallPlan, c: &PackageCandidate, r: &Renderer) -> Result<()>;
+    pub async fn remove(&mut self, p: &InstallPlan, rec: &InstalledRecord, r: &Renderer) -> Result<()>;
     pub async fn resolve_installed(&self, name: &str) -> Result<InstalledRecord>;
+    pub async fn diagnose(&self) -> Vec<SourceHealth>;                     // backs `doctor`
+    pub fn audit(&self) -> Vec<AuditEntry>;                                // backs `audit`
 }
 ```
 
 `Engine::search` fans out over providers via `tokio`, each with a timeout; failed
-sources are tagged, not fatal. `execute` is the **only** place with privileges and
-the only place that writes the registry.
+sources are tagged, not fatal. `install`/`remove` run the plan through `exec.rs` — the
+**only** place with privileges and the only place that writes the registry (on success).
+
+> **Known seam (ADR-0022).** `install`/`remove` currently take a `&Renderer` so the
+> executor can print progress — the one place a `ui` type reaches into the engine. To
+> enable multiple frontends (GUI, Discover, TUI, Web), this is to be replaced by a small
+> progress-event/`ProgressSink` trait **before** a second frontend lands — not earlier
+> (YAGNI). No new `ui` types may enter engine signatures meanwhile.
 
 ---
 
@@ -440,4 +473,7 @@ wears shoes."
 
 - Semantic / AI search (Stage 4) — architecturally reserved, not built.
 - Non-Fedora distros — reserved behind the `platform` abstraction.
-- SQLite, workspace split, GUI, plugin SDK — future, no architecture change needed.
+- SQLite, workspace split, plugin SDK — future, no architecture change needed.
+- GUI / other frontends — future; the model is ready, but the engine must first be made
+  **UI-free** (decouple the `Renderer` execution seam) and likely exposed as a library
+  (workspace split). Tracked in ADR-0022; not started.

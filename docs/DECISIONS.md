@@ -673,3 +673,78 @@ just **another `Provider`** (or a small adapter behind an existing trait). Concr
   with no reference to UPAC internals.
 - The same rule governs any future "use library X as a backend" (e.g. a compatibility
   layer for the experimental cross-distro idea): public API only.
+
+---
+
+## ADR-0022 — Phase 5 readiness: grow via optional Provider capabilities; keep the engine UI-free
+
+**Status:** Accepted (architecture re-evaluation before Phase 5)
+
+**Context:** Before starting Phase 5 (user-space sources), a full re-evaluation checked
+the live code against the design. Finding: the load-bearing structure is sound
+(`Provider` seam, plan-as-`Action`, trust threshold, registry-as-hint). Adding
+cargo/npm/pipx/go needs **no model change** — they are the same shape as github
+(user-space, no root, `Download`/`Place`/`RunCommand` into `~/.local/bin`). The
+re-evaluation also named the future pressure points, and this ADR records how they must
+be handled so later work stays honest.
+
+**Decision:**
+
+1. **New capabilities are optional `Provider` methods with safe defaults, never a fat
+   required trait and never core branching.** This follows the existing precedent
+   (`probe`, `is_installed` are already default methods). Concretely, when they land:
+   version management (`list_versions` / install-at-version), provider metadata
+   (`fetch_metadata`), and manager bootstrap (`bootstrap_plan`) are added this way — a
+   provider that can't do one simply inherits the default (empty / "not supported"),
+   and the engine/CLI need no per-source `if`.
+
+2. **The engine stays UI-free.** The multi-frontend future (GUI, KDE Discover, GNOME
+   Software, TUI, Web — ideas 4/5/12) requires the engine to be a library any frontend
+   can drive. The one identified coupling is that `Engine::install`/`remove` currently
+   take a `&crate::ui::Renderer` to print execution progress. That seam must be
+   decoupled (execution emits progress via a small `ProgressSink`/event trait the CLI
+   implements) **before a second frontend or a workspace split** — **not now** (YAGNI;
+   there is no second consumer yet, and adding the abstraction early is exactly the
+   over-complication ADR-0020's test forbids). Until then: **do not add new `ui`
+   dependencies to the engine**, so the eventual decoupling stays a one-seam change.
+
+3. **Versioning, metadata and rollback live in the provider or the registry, not the
+   core.** Version *ordering* is a provider capability (sources are heterogeneous —
+   reaffirms ADR-0009, no core version algebra). Rollback is a **registry-model
+   extension** (retain enough to reinstall a prior version), added only when version
+   management is built. Metadata is a lazy, on-demand fetch for frontends that need it —
+   it is **not** eagerly loaded in `search` nor stored on `PackageCandidate`, so CLI
+   startup stays fast (design principle §1).
+
+4. **`ARCHITECTURE.md` is synced to the evolved execution model** (this session):
+   `Step` → `Action` enum + `exec.rs` (ADR-0007), verification inside `Download` and
+   recorded on `InstalledRecord` (ADR-0016/0018). A stale *canonical* doc is an active
+   hazard, so it is corrected rather than left describing the pre-Phase-4 model.
+
+**Reason:**
+- **The default-method pattern already proved itself** (`probe`/`is_installed`): it lets
+  the trait grow in breadth without forcing every provider to implement everything, and
+  without leaking capability checks into the core.
+- **Naming the UI seam now, fixing it later** is the disciplined middle path: the risk is
+  recorded so it can't rot silently, but the abstraction isn't paid for before it earns
+  its place.
+- **Keeping versions/metadata out of the core** preserves the "small, understandable,
+  modular" engine that the whole platform vision (one engine, many frontends) depends on.
+
+**Alternatives considered:**
+- Add version/metadata/bootstrap as required trait methods now — rejected: fat trait,
+  stubs everywhere, and speculative (no consumer yet).
+- Decouple `Renderer` from the engine in this pass — rejected as premature: it adds an
+  abstraction with a single existing caller shape; revisit when a second frontend or
+  Phase 5 `update` makes it concrete.
+- Give `PkgVersion` a global ordering in the core — rejected: reaffirms ADR-0009;
+  heterogeneous sources make a core version algebra wrong.
+
+**Consequences:**
+- **Phase 5 can start with no model change** — cargo/npm/pipx/go are pure new
+  `Provider`s. This is the recommended next work.
+- Future capability work has a prescribed shape (optional method + default), so reviews
+  can reject fat-trait or core-branch approaches by citing this ADR.
+- The engine's public API gains a documented constraint: **no `ui` types in engine
+  signatures** going forward; the existing `Renderer` parameter is grandfathered debt
+  tracked in AI_CONTEXT until the pre-frontend decoupling.

@@ -22,13 +22,27 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Phase 4 — GitHub Releases, COPR & trust** (in progress). Phases 0–3 are complete
-and verified (skeleton → DNF end-to-end → state/remove/why → multi-source ranking +
-cache + doctor).
+**Phase 4 complete → entering Phase 5 (user-space sources).** Phases 0–4 are done and
+verified (skeleton → DNF → state/remove/why → multi-source ranking + cache + doctor →
+GitHub/COPR/trust/audit/health/.zip). A full **architecture re-evaluation** (ADR-0022)
+gated Phase 5: the model needs **no change** to add cargo/npm/pipx/go — they are pure
+new `Provider`s. Growth is additive; the core does not branch on source.
 
 ## Last completed work
 
-**GitHub `.zip` release assets** — `exec::extract` now dispatches on the archive's
+**Architecture re-evaluation before Phase 5 (docs only).** Checked the live code against
+the design. Verdict: load-bearing structure is sound (`Provider` seam, plan-as-`Action`,
+trust threshold, registry-as-hint); **Phase 5 needs no model change**. Recorded **ADR-0022**
+with three forward rules — (1) new capabilities (version mgmt, metadata, manager bootstrap)
+are **optional `Provider` methods with safe defaults**, following the `probe`/`is_installed`
+precedent, never a fat trait or core branch; (2) keep the **engine UI-free** — the
+`&Renderer` in `Engine::install`/`remove` is the one `ui` coupling, to be decoupled via a
+progress-event trait **before** a second frontend (not now, YAGNI); (3) versions/metadata/
+rollback live in the provider/registry, not the core (reaffirms ADR-0009). Also **synced
+`ARCHITECTURE.md`** §5/§9/§11/§15 to the evolved execution model (`Action`+`exec.rs`,
+verification on `InstalledRecord`) — a stale canonical doc was an active hazard.
+
+**Prior — GitHub `.zip` release assets** — `exec::extract` now dispatches on the archive's
 file-name extension into `read_tar_gz` / `read_zip` (both decode to the same
 `ArchiveFile` list, so member selection + writing stay format-agnostic — the seam
 ADR-0016 predicted). github's `classify` gained `AssetKind::Zip` (ranked below `TarGz`,
@@ -57,18 +71,21 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-Phase 4's core is complete. What remains is polish/hardening (revisit before starting
-Phase 5). Note several former "follow-ups" are now **documented future features**, not
-quick tasks — do not implement them as silent heuristics:
+**Phase 5 — first user-space provider: `provider/cargo.rs`.** The re-evaluation
+(ADR-0022) confirmed the model is ready; `cargo install <crate>` is the cleanest start
+(no root, no network parsing beyond the crates.io API, installs into `~/.cargo/bin`).
+Shape it exactly like github: `is_available` (cargo present), `search` (crates.io API),
+`plan_install` (a `RunCommand` `cargo install …`, `needs_root=false`), `list_installed`
+(`cargo install --list`), `plan_remove` (`cargo uninstall`), community trust. No core
+change. Then npm/pipx/go the same way, then `jii update`.
 
-1. **GitHub repository selection** (was "broad name→repo resolution") — interactive,
-   "never silently install the wrong repo" (ROADMAP Future ideas). Not blind resolution.
-2. `.tar.xz` archives — deferred; needs an xz decoder dependency for little gain yet.
-3. Better COPR project disambiguation if the chroot-count heuristic proves weak.
-4. Real GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
-
-Otherwise Phase 4 is done; **Phase 5** (user-space sources: cargo/npm/pipx/go) is the
-next phase, only if the architecture stays clean (each is a `Provider`, no core branching).
+Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
+not implement as silent heuristics):
+- **GitHub repository selection** — interactive, "never silently install the wrong repo".
+- `.tar.xz` archives (needs an xz decoder dep); better COPR disambiguation; real
+  GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
+- **Engine UI-free seam** (ADR-0022): decouple `&Renderer` from `Engine::install/remove`
+  — do this **before** any GUI/second frontend, not now.
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -139,6 +156,11 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   — implement when a source needs them (GitHub).
 - **`cli/mod.rs`** (~410 lines) holds command handlers inline; split into
   `cli/commands/*` if it grows unwieldy.
+- **Engine↔UI seam (ADR-0022):** `Engine::install`/`remove` take `&crate::ui::Renderer`
+  so the executor can print progress — the one `ui` type reaching into the engine. Fine
+  now (single CLI frontend), but it must be decoupled (a progress-event/`ProgressSink`
+  trait) **before** a GUI/second frontend or a workspace split. Meanwhile: **do not add
+  new `ui` types to engine signatures.**
 
 ## Where things live
 
