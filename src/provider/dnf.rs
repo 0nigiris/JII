@@ -11,7 +11,7 @@ use serde_json::json;
 use super::{Provider, nonempty_lines, run_capture, which};
 use crate::error::Result;
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, Step, TrustLevel,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 /// Field separator embedded in the `--queryformat`. A real tab is sent to dnf5
@@ -107,7 +107,7 @@ impl Provider for Dnf {
     }
 }
 
-/// Build a single-step, root-requiring `dnf5 <args>` plan. Shared by
+/// Build a single-command, root-requiring `dnf5 <args>` plan. Shared by
 /// install/remove/update so the plan boilerplate lives in one place.
 fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     let mut argv = vec![BIN.to_string()];
@@ -115,14 +115,11 @@ fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     InstallPlan {
         candidate_ref: name.to_string(),
         source_id: ID.to_string(),
-        steps: vec![Step {
+        actions: vec![Action::RunCommand {
             argv,
             needs_root: true,
-            cwd: None,
         }],
-        verification: Vec::new(),
         download_size: None,
-        needs_root: true,
         reasons,
     }
 }

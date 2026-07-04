@@ -148,7 +148,7 @@ impl Engine {
         candidate: &PackageCandidate,
         renderer: &Renderer,
     ) -> Result<()> {
-        self.privilege.execute_plan(plan, renderer).await?;
+        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
         self.registry.record_install(InstalledRecord {
             name: candidate.name.clone(),
             source_id: candidate.source_id.clone(),
@@ -165,7 +165,7 @@ impl Engine {
         record: &InstalledRecord,
         renderer: &Renderer,
     ) -> Result<()> {
-        self.privilege.execute_plan(plan, renderer).await?;
+        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
         self.registry.record_remove(&record.name, &record.source_id);
         self.registry.save()
     }

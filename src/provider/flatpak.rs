@@ -14,7 +14,7 @@ use serde_json::json;
 use super::{Provider, nonempty_lines, parse_installed_records, run_capture, which};
 use crate::error::Result;
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, Step, TrustLevel,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 const BIN: &str = "flatpak";
@@ -108,22 +108,19 @@ struct Row {
     remotes: Vec<String>,
 }
 
-/// Build a single-step Flatpak plan. Steps are not root — Flatpak handles its own
-/// elevation via polkit.
+/// Build a single-command Flatpak plan. The command is not marked root — Flatpak
+/// handles its own elevation via polkit.
 fn user_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     let mut argv = vec![BIN.to_string()];
     argv.extend(args.iter().map(|s| s.to_string()));
     InstallPlan {
         candidate_ref: name.to_string(),
         source_id: ID.to_string(),
-        steps: vec![Step {
+        actions: vec![Action::RunCommand {
             argv,
             needs_root: false,
-            cwd: None,
         }],
-        verification: Vec::new(),
         download_size: None,
-        needs_root: false,
         reasons,
     }
 }

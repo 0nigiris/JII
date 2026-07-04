@@ -6,7 +6,7 @@ pub mod prompt;
 use owo_colors::OwoColorize;
 
 use crate::config::ColorChoice;
-use crate::model::InstallPlan;
+use crate::model::{Action, InstallPlan};
 
 /// Renders output as either human-friendly text or machine-readable JSON.
 pub struct Renderer {
@@ -100,15 +100,14 @@ impl Renderer {
         }
         println!(
             "  privileges: {}",
-            if plan.needs_root { "root required" } else { "user" }
+            if plan.needs_root() { "root required" } else { "user" }
         );
-        if plan.steps.is_empty() {
-            println!("  steps: (none yet — placeholder plan)");
+        if plan.actions.is_empty() {
+            println!("  actions: (none)");
         } else {
-            println!("  steps:");
-            for step in &plan.steps {
-                let root = if step.needs_root { "# " } else { "$ " };
-                println!("    {root}{}", step.argv.join(" "));
+            println!("  actions:");
+            for action in &plan.actions {
+                println!("    {}", describe_action(action));
             }
         }
     }
@@ -119,17 +118,50 @@ impl Renderer {
     }
 }
 
+/// A one-line, human-readable description of an action (used for `--dry-run`
+/// preview and the execution log, so every action is previewable).
+pub fn describe_action(action: &Action) -> String {
+    match action {
+        Action::RunCommand { argv, needs_root } => {
+            let marker = if *needs_root { "#" } else { "$" };
+            format!("{marker} {}", argv.join(" "))
+        }
+        Action::Download { url, dest, verify } => {
+            format!("download {url} → {} [{}]", dest.display(), verify.label())
+        }
+        Action::Place { dest, mode, .. } => {
+            format!("place → {} (mode {mode:o})", dest.display())
+        }
+        Action::RemoveFile { path } => format!("remove {}", path.display()),
+    }
+}
+
 /// Serialize a plan to a stable JSON shape (kept here so the schema lives with the UI).
 fn plan_to_json(plan: &InstallPlan) -> serde_json::Value {
     serde_json::json!({
         "candidate": plan.candidate_ref,
         "source": plan.source_id,
-        "needs_root": plan.needs_root,
+        "needs_root": plan.needs_root(),
         "download_size": plan.download_size,
         "reasons": plan.reasons,
-        "steps": plan.steps.iter().map(|s| serde_json::json!({
-            "argv": s.argv,
-            "needs_root": s.needs_root,
-        })).collect::<Vec<_>>(),
+        "actions": plan.actions.iter().map(action_to_json).collect::<Vec<_>>(),
     })
+}
+
+/// Stable JSON for one action, tagged by `kind`.
+fn action_to_json(action: &Action) -> serde_json::Value {
+    match action {
+        Action::RunCommand { argv, needs_root } => serde_json::json!({
+            "kind": "run", "argv": argv, "needs_root": needs_root,
+        }),
+        Action::Download { url, dest, verify } => serde_json::json!({
+            "kind": "download", "url": url, "dest": dest, "verify": verify.label(),
+        }),
+        Action::Place { src, dest, mode } => serde_json::json!({
+            "kind": "place", "src": src, "dest": dest, "mode": mode,
+        }),
+        Action::RemoveFile { path } => serde_json::json!({
+            "kind": "remove", "path": path,
+        }),
+    }
 }

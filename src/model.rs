@@ -107,13 +107,27 @@ impl Health {
     }
 }
 
-/// How an artifact can be verified before installation.
+/// How a downloaded artifact is verified before it is used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verification {
-    Gpg,
+    /// Expected lowercase hex SHA-256 digest.
     Sha256(String),
+    Gpg,
     Sigstore,
+    /// No verification available (the source provides none).
     None,
+}
+
+impl Verification {
+    /// Short human label for previews and audit output.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Verification::Sha256(_) => "sha256",
+            Verification::Gpg => "gpg",
+            Verification::Sigstore => "sigstore",
+            Verification::None => "unverified",
+        }
+    }
 }
 
 /// A single installation candidate produced by a provider's `search`.
@@ -132,13 +146,23 @@ pub struct PackageCandidate {
     pub raw: serde_json::Value,
 }
 
-/// One concrete command in an [`InstallPlan`]. Providers never execute these
-/// themselves — the engine's privilege layer does.
+/// One action in a plan. Each variant has a single, clear responsibility; the plan
+/// executor dispatches to a focused handler per variant. Providers describe actions
+/// but never execute them.
 #[derive(Debug, Clone)]
-pub struct Step {
-    pub argv: Vec<String>,
-    pub needs_root: bool,
-    pub cwd: Option<PathBuf>,
+pub enum Action {
+    /// Run an external command; `needs_root` requests privilege elevation.
+    RunCommand { argv: Vec<String>, needs_root: bool },
+    /// Download `url` to `dest`, enforcing `verify` before the file is used.
+    Download {
+        url: String,
+        dest: PathBuf,
+        verify: Verification,
+    },
+    /// Place a file at `dest` with the given unix `mode` (e.g. into ~/.local/bin).
+    Place { src: PathBuf, dest: PathBuf, mode: u32 },
+    /// Remove a file (uninstall for file-based sources).
+    RemoveFile { path: PathBuf },
 }
 
 /// A previewable, executable plan. `Plan` is a first-class concept: every action
@@ -148,13 +172,19 @@ pub struct InstallPlan {
     /// Human-readable reference to the candidate this plan installs.
     pub candidate_ref: String,
     pub source_id: String,
-    pub steps: Vec<Step>,
-    pub verification: Vec<Verification>,
+    pub actions: Vec<Action>,
     pub download_size: Option<u64>,
-    /// Convenience: true if any step needs root.
-    pub needs_root: bool,
     /// Why this candidate/source was recommended — shown to the user.
     pub reasons: Vec<String>,
+}
+
+impl InstallPlan {
+    /// True if any action requires root (drives preview and elevation).
+    pub fn needs_root(&self) -> bool {
+        self.actions
+            .iter()
+            .any(|a| matches!(a, Action::RunCommand { needs_root: true, .. }))
+    }
 }
 
 /// A record of software JII installed, persisted in the registry.

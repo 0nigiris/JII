@@ -8,6 +8,7 @@ mod cli;
 mod config;
 mod engine;
 mod error;
+mod exec;
 mod model;
 mod platform;
 mod privilege;
