@@ -355,6 +355,7 @@ impl Cli {
                         "available": d.available,
                         "latency_ms": d.latency.as_millis(),
                         "health": d.health.label(),
+                        "detail": d.detail,
                     })
                 })
                 .collect();
@@ -364,8 +365,12 @@ impl Cli {
 
         for d in &diagnostics {
             let mark = if d.available { "✓" } else { "✗" };
+            let detail = match &d.detail {
+                Some(text) => format!("  ({text})"),
+                None => String::new(),
+            };
             renderer.info(&format!(
-                "{mark} {:8}  {:8}  {} ms",
+                "{mark} {:8}  {:12}  {} ms{detail}",
                 d.id,
                 d.health.label(),
                 d.latency.as_millis()

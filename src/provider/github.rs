@@ -19,7 +19,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::Provider;
+use super::{Probe, Provider};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -158,6 +158,41 @@ impl Provider for Github {
         // Verify the registry hint by checking the placed binary still exists.
         bin_dir().map(|d| is_placed(&d, &record.name)).unwrap_or(false)
     }
+
+    async fn probe(&self) -> Probe {
+        // GET /rate_limit — cheap and it does not itself count against the limit.
+        let Ok(client) = self.client() else {
+            return Probe::unreachable();
+        };
+        match fetch_rate_limit(&client, self.token().as_deref()).await {
+            Ok((remaining, limit)) => Probe {
+                reachable: true,
+                rate_limited: remaining == 0,
+                detail: Some(format!("{remaining}/{limit} req left")),
+            },
+            Err(_) => Probe::unreachable(),
+        }
+    }
+}
+
+/// Fetch `(remaining, limit)` from the GitHub rate-limit endpoint.
+async fn fetch_rate_limit(client: &reqwest::Client, token: Option<&str>) -> Result<(u32, u32)> {
+    let mut req = client
+        .get(format!("{API}/rate_limit"))
+        .header("Accept", "application/vnd.github+json");
+    if let Some(t) = token {
+        req = req.bearer_auth(t);
+    }
+    let resp = req
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("github: {e}")))?;
+    let body: RateLimit = resp
+        .json()
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("github: {e}")))?;
+    Ok((body.rate.remaining, body.rate.limit))
 }
 
 /// Whether the binary named `name` is present in `bin_dir` (a github install).
@@ -180,6 +215,18 @@ struct Asset {
     browser_download_url: String,
     #[serde(default)]
     size: u64,
+}
+
+/// The GitHub `/rate_limit` response (only the core `rate` block).
+#[derive(Debug, Deserialize)]
+struct RateLimit {
+    rate: RateCore,
+}
+
+#[derive(Debug, Deserialize)]
+struct RateCore {
+    limit: u32,
+    remaining: u32,
 }
 
 /// Parse an `owner/repo` slug. Rejects whitespace, empty halves, and extra slashes.

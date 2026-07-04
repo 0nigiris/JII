@@ -28,18 +28,19 @@ cache + doctor).
 
 ## Last completed work
 
-**`jii audit`** — per installed package, report source, trust, how it was verified,
-and any concerns (untrusted source / no checksum / disabled source). Human table +
-`--json`. Verification is now recorded at install time on `InstalledRecord` (from the
-plan's `Download` step; `None` = a self-verifying manager installed it). The engine
-owns the logic (`audit()` + pure `resolve_verification`/`audit_concerns`); the CLI
-renders. Verified end-to-end with mixed real installs (dnf-style manager-signed, a
-sha256-verified github binary, an unverified one) and back-compat with pre-existing
-registry entries. See ADR-0018.
+**`jii doctor` health checks** — `Provider::probe()` reports raw facts
+(`reachable`, `rate_limited`, human `detail`; default = local binary availability);
+github overrides it to hit `/rate_limit` (surfacing `remaining/limit` as detail, and
+flagging `RateLimited` at 0), copr pings `project/search` for reachability. The engine
+maps facts + latency to `Health` via a pure, unit-tested `health_from()` (precedence
+Offline → RateLimited → Slow → Healthy) — the decision logic stays in the engine
+(ADR-0015/0019). `SourceHealth` gained `detail`, shown in the human table and `--json`.
+Verified live: github `healthy (58/60 req left)`, copr reachable-but-slow.
 
-Prior Phase 4 slices, all verified end-to-end: COPR provider (ADR-0017); `Action::Extract`
-+ `.tar.gz` (ADR-0016); github `jii remove` (`Provider::is_installed`); GitHub Releases
-provider (raw-binary, ADR-0014); the execution model (`Action` enum + `exec.rs`, ADR-0007).
+Prior Phase 4 slices, all verified end-to-end: `jii audit` (ADR-0018); COPR provider
+(ADR-0017); `Action::Extract` + `.tar.gz` (ADR-0016); github `jii remove`
+(`Provider::is_installed`); GitHub Releases provider (raw-binary, ADR-0014); the
+execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
@@ -47,18 +48,13 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-Phase 4 is nearly complete. Remaining:
+Phase 4's core is complete. What remains is polish/hardening (revisit before starting
+Phase 5):
 
-1. **Rate-limit / reachability health in `doctor`** (GitHub 60/h + `RateLimited`
-   health; GitHub/COPR API reachability). The next core task.
-
-Then Phase 4 is essentially done; the rest is polish/hardening (revisit before
-starting Phase 5):
-
-2. Broad name→repo resolution and release pagination for github.
-3. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
-4. Better COPR project disambiguation if the chroot-count heuristic proves weak.
-5. Real GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
+1. Broad name→repo resolution and release pagination for github.
+2. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
+3. Better COPR project disambiguation if the chroot-count heuristic proves weak.
+4. Real GPG/sigstore verification in `exec.rs::verify_bytes` (currently fail-closed).
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -72,13 +68,13 @@ None.
 
 ## Test status
 
-`cargo test` — **70 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **71 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz
 extract + member selection, run_action), github (owner/repo, release JSON, asset
 selection, checksums, plan shapes), copr (search parsing, exact-name + fedora/arch
-chroot selection, two-step root plan), and audit (verification resolution + concern
-logic).
+chroot selection, two-step root plan), audit (verification resolution + concern
+logic), and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands
 

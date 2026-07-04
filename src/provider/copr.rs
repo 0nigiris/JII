@@ -20,7 +20,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 
-use super::{Provider, run_capture, which};
+use super::{Probe, Provider, run_capture, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, Query, TrustLevel,
@@ -126,6 +126,23 @@ impl Provider for Copr {
             .await
             .map(|out| out.lines().any(|l| !l.trim().is_empty()))
             .unwrap_or(false)
+    }
+
+    async fn probe(&self) -> Probe {
+        // Any HTTP response from the API means it is reachable (search will work);
+        // a lightweight query keeps it cheap. COPR has no client rate limit for us.
+        let Ok(client) = self.client() else {
+            return Probe::unreachable();
+        };
+        let url = format!("{API}/project/search");
+        match client.get(&url).query(&[("query", "jii")]).send().await {
+            Ok(_) => Probe {
+                reachable: true,
+                rate_limited: false,
+                detail: None,
+            },
+            Err(_) => Probe::unreachable(),
+        }
     }
 }
 

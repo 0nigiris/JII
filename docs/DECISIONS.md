@@ -529,3 +529,42 @@ verification, and any concerns (untrusted source / no checksum / disabled source
   future "installed but missing" check.
 - New verification methods (GPG/sigstore) flow through automatically: their label is
   recorded and shown, and they count as `Checksum` (verified) in concerns.
+
+## ADR-0019 — `jii doctor` health: providers probe, engine judges
+
+**Status:** Accepted
+
+**Decision:** Add a `Provider::probe() -> Probe { reachable, rate_limited, detail }`
+trait method (default: local binary availability). Network sources override it —
+github hits `/rate_limit` (surfacing `remaining/limit` as `detail` and setting
+`rate_limited` when the budget is 0), copr pings `project/search` for reachability.
+`diagnose()` times each probe and maps its raw facts to a `Health` via a pure
+`health_from(reachable, rate_limited, latency)` (Offline → RateLimited → Slow →
+Healthy, in that precedence). `SourceHealth` gained an optional `detail`, rendered in
+both the human table and `--json`.
+
+**Reason:**
+- **Providers report facts, the engine decides** (ADR-0015) — "reachable at 7 s" and
+  "0 requests left" are facts a source knows; whether that means `Slow` or
+  `RateLimited` is a product judgement that belongs in the engine, testable in
+  isolation (`health_from` has a unit test; no network needed).
+- **Rate limit is a real GitHub failure mode** — unauthenticated API access is 60
+  req/h; a user hitting the wall needs to *see* it (and that a token lifts it), not
+  get an opaque "search failed" later. `RateLimited` is reachable-but-degraded, so it
+  ranks below `Offline` but above `Slow`.
+- **`detail` keeps it honest** — showing `58/60 req left` explains *why* a source is
+  healthy-but-watch, without the engine inventing prose.
+
+**Alternatives considered:**
+- Reuse `is_available()` for health — rejected: it only answers "binary present",
+  can't distinguish reachable/rate-limited/slow for a network API.
+- Compute rate-limit health in the provider — rejected: that is the decision logic
+  ADR-0015 keeps in the engine; the provider only reports the raw budget.
+
+**Consequences:**
+- Adding a health signal to a source is a small `probe()` override; the engine and CLI
+  need no per-source branches.
+- `probe()` for github spends one API request on `/rate_limit` — which itself does not
+  count against the limit, so `doctor` is free to run.
+- `Health::RateLimited` is wired end-to-end but only reproducible live by exhausting
+  the budget; the mapping is covered by `health_from`'s unit test instead.

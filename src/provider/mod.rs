@@ -56,6 +56,39 @@ pub trait Provider: Send + Sync {
             .map(|list| list.iter().any(|r| r.name == record.name))
             .unwrap_or(false)
     }
+
+    /// Probe this source's live health for `jii doctor`. Default: local availability
+    /// only. Network sources (github, copr) override this to check API reachability
+    /// and, where relevant, rate limits. Providers report raw facts; the engine
+    /// decides the [`Health`](crate::model::Health) category.
+    async fn probe(&self) -> Probe {
+        Probe {
+            reachable: self.is_available().await,
+            rate_limited: false,
+            detail: None,
+        }
+    }
+}
+
+/// A raw health probe of a source (mapped to a `Health` category by the engine).
+pub struct Probe {
+    /// Whether the source responded / is usable right now.
+    pub reachable: bool,
+    /// Whether the source is currently rate-limited.
+    pub rate_limited: bool,
+    /// Optional human detail (e.g. remaining rate-limit budget).
+    pub detail: Option<String>,
+}
+
+impl Probe {
+    /// A probe for a source that did not respond.
+    pub fn unreachable() -> Self {
+        Probe {
+            reachable: false,
+            rate_limited: false,
+            detail: None,
+        }
+    }
 }
 
 /// The set of providers enabled for this run, in configured priority order.

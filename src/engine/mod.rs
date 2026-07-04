@@ -35,6 +35,8 @@ pub struct SourceHealth {
     pub available: bool,
     pub latency: Duration,
     pub health: Health,
+    /// Optional human detail from the probe (e.g. remaining rate-limit budget).
+    pub detail: Option<String>,
 }
 
 /// One row of `jii audit`: where an installed package came from, its trust, how it
@@ -280,27 +282,27 @@ impl Engine {
         self.providers.get(source_id).map(|p| p.trust())
     }
 
-    /// Probe each provider's availability and latency (backs `jii doctor`).
+    /// Probe each source's live health (backs `jii doctor`). Each provider reports
+    /// raw facts (`reachable`, `rate_limited`, a human `detail`); the engine maps
+    /// them — together with the measured latency — to a [`Health`] category. Network
+    /// sources (github, copr) check API reachability and rate limits; local ones fall
+    /// back to binary availability (see `Provider::probe`).
     pub async fn diagnose(&self) -> Vec<SourceHealth> {
         let timeout = Duration::from_secs(self.config.network.timeout_secs);
         let mut out = Vec::new();
         for provider in self.providers.iter() {
             let start = Instant::now();
-            let available =
-                matches!(tokio::time::timeout(timeout, provider.is_available()).await, Ok(true));
-            let latency = start.elapsed();
-            let health = if !available {
-                Health::Offline
-            } else if latency > Duration::from_secs(2) {
-                Health::Slow
-            } else {
-                Health::Healthy
+            let probe = match tokio::time::timeout(timeout, provider.probe()).await {
+                Ok(probe) => probe,
+                Err(_) => crate::provider::Probe::unreachable(),
             };
+            let latency = start.elapsed();
             out.push(SourceHealth {
                 id: provider.id().to_string(),
-                available,
+                available: probe.reachable,
                 latency,
-                health,
+                health: health_from(probe.reachable, probe.rate_limited, latency),
+                detail: probe.detail,
             });
         }
         out
@@ -342,6 +344,25 @@ impl Engine {
         self.providers
             .get(source_id)
             .ok_or_else(|| JiiError::UnknownSource(source_id.to_string()))
+    }
+}
+
+/// A source slower than this (but still reachable) is reported as [`Health::Slow`].
+const SLOW_THRESHOLD: Duration = Duration::from_secs(2);
+
+/// Map a source's raw probe facts + measured latency to a [`Health`] category. This
+/// is the engine's decision (ADR-0015): providers report facts, the engine judges.
+/// Precedence: unreachable → `Offline`; reachable but rate-limited → `RateLimited`
+/// (usable now, but searches may soon fail); slow → `Slow`; otherwise `Healthy`.
+fn health_from(reachable: bool, rate_limited: bool, latency: Duration) -> Health {
+    if !reachable {
+        Health::Offline
+    } else if rate_limited {
+        Health::RateLimited
+    } else if latency > SLOW_THRESHOLD {
+        Health::Slow
+    } else {
+        Health::Healthy
     }
 }
 
@@ -421,5 +442,22 @@ mod tests {
     fn disabled_source_is_flagged() {
         let v = resolve_verification(None);
         assert_eq!(audit_concerns(None, &v), vec![AuditConcern::SourceUnavailable]);
+    }
+
+    #[test]
+    fn health_mapping_covers_each_category() {
+        let fast = Duration::from_millis(50);
+        let slow = SLOW_THRESHOLD + Duration::from_millis(1);
+        // Unreachable always wins, regardless of the other facts.
+        assert_eq!(health_from(false, false, fast), Health::Offline);
+        assert_eq!(health_from(false, true, slow), Health::Offline);
+        // Reachable but rate-limited outranks a slow/fast reading.
+        assert_eq!(health_from(true, true, fast), Health::RateLimited);
+        assert_eq!(health_from(true, true, slow), Health::RateLimited);
+        // Reachable, not limited: latency decides.
+        assert_eq!(health_from(true, false, slow), Health::Slow);
+        assert_eq!(health_from(true, false, fast), Health::Healthy);
+        // Exactly at the threshold is still healthy (strictly-greater is slow).
+        assert_eq!(health_from(true, false, SLOW_THRESHOLD), Health::Healthy);
     }
 }

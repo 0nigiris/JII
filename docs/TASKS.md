@@ -99,7 +99,7 @@ land. Keep tasks small enough to complete and verify in one sitting.
       when no checksum is published. GPG / sigstore still fail-closed (later slice).
 - [x] Trust enforcement: `untrusted` always confirmed, even with `--auto`
       (barrier in `ui/prompt.rs`; verified — `--auto` on github aborts non-interactively).
-- [x] `GITHUB_TOKEN` support to lift rate limits. Rate-limit health in `doctor`: **todo**.
+- [x] `GITHUB_TOKEN` support to lift rate limits. Rate-limit health in `doctor`: **done** (below).
 - [x] `jii remove` for file-based (github) installs: `Provider::is_installed(record)`
       (default = list lookup; github overrides to check `~/.local/bin/<name>` exists),
       so `resolve_installed` confirms file-based installs without a manifest. No core
@@ -120,7 +120,12 @@ land. Keep tasks small enough to complete and verify in one sitting.
       (human table + `--json`). Verification is recorded at install time on
       `InstalledRecord` (from the plan's Download step; `None` = manager-verified).
       Engine owns the logic (`audit()`), CLI renders. See ADR-0018.
-- [ ] Rate-limit / reachability health in `doctor` (GitHub, COPR).
+- [x] Rate-limit / reachability health in `doctor` (GitHub, COPR): `Provider::probe()`
+      reports raw facts (`reachable`, `rate_limited`, `detail`); the engine maps them via
+      pure `health_from()` (Offline → RateLimited → Slow → Healthy). github probes
+      `/rate_limit` (shows `remaining/limit`, flags `RateLimited` at 0), copr pings
+      `project/search`. `detail` shown in human + `--json`. Verified live (github
+      `58/60 req left` healthy, copr reachable-but-slow). See ADR-0019.
 - [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —
       real `jqlang/jq` install in an isolated HOME: sha256 matched, binary runs, registry
       recorded; `--dry-run`/`-n`/`--auto` paths checked. 49 unit tests pass.
