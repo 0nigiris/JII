@@ -7,8 +7,10 @@
 use clap::{Parser, Subcommand};
 
 use crate::config::{ColorChoice, Config, Profile};
-use crate::model::{InstallPlan, Query};
+use crate::engine::Engine;
+use crate::model::Query;
 use crate::ui::Renderer;
+use crate::ui::prompt::{self, PromptFlags};
 
 /// Just Install It — a smart universal package installer for Linux.
 #[derive(Debug, Parser)]
@@ -116,14 +118,16 @@ impl Cli {
     }
 
     /// Dispatch the parsed command.
-    pub fn run(self, config: Config) -> crate::error::Result<()> {
+    pub async fn run(self, config: Config) -> crate::error::Result<()> {
         let renderer = Renderer::new(self.color_choice(&config), self.global.json);
 
         match &self.command {
             // Explicit `jii install <pkg>` or bare `jii <pkg>`.
-            Some(Commands::Install { package }) => self.install(package, &config, &renderer),
+            Some(Commands::Install { package }) => {
+                self.install(package, config, &renderer).await
+            }
             None => match &self.package {
-                Some(package) => self.install(package, &config, &renderer),
+                Some(package) => self.install(package, config, &renderer).await,
                 None => {
                     renderer.info("Usage: jii <package>  (try `jii --help`)");
                     Ok(())
@@ -141,43 +145,59 @@ impl Cli {
         }
     }
 
-    /// Phase 0 install path: build and render a placeholder plan (no execution yet).
-    fn install(
+    /// Install path: search → rank → plan → confirm → execute (Phase 1: DNF).
+    async fn install(
         &self,
         package: &str,
-        _config: &Config,
+        config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
         crate::platform::Platform::detect().require_supported()?;
 
+        let engine = Engine::new(config);
+        if !engine.has_providers() {
+            renderer.error("No installation sources are enabled.");
+            return Ok(());
+        }
+
         let query = Query::name(package);
         renderer.info(&format!("Searching for '{}'...", query.raw));
 
-        let plan = placeholder_plan(package);
+        let result = engine.search(&query).await;
+        for (source, reason) in &result.failed {
+            renderer.warn(&format!("✗ {source}: {reason}"));
+        }
+
+        let ranked = engine.rank(result.candidates);
+        let best = match ranked.first() {
+            Some(c) => c,
+            None => {
+                renderer.error(&format!("No installation candidate found for '{package}'."));
+                return Ok(());
+            }
+        };
+
+        let plan = engine.plan_install(best).await?;
         renderer.plan(&plan);
 
         if self.global.dry_run {
             renderer.info("(dry-run: nothing was installed)");
-        } else {
-            renderer.warn("Install pipeline lands in Phase 1 — nothing was installed yet.");
+            return Ok(());
         }
-        Ok(())
-    }
-}
 
-/// A stand-in plan so the pipeline shape is exercised before real providers exist.
-fn placeholder_plan(package: &str) -> InstallPlan {
-    InstallPlan {
-        candidate_ref: package.to_string(),
-        source_id: "dnf".to_string(),
-        steps: Vec::new(),
-        verification: Vec::new(),
-        download_size: None,
-        needs_root: true,
-        reasons: vec![
-            "Official Fedora package (placeholder)".to_string(),
-            "Highest priority source (placeholder)".to_string(),
-        ],
+        let flags = PromptFlags {
+            auto: self.global.auto || engine.config().install.auto,
+            yes: self.global.yes,
+            no: self.global.no,
+        };
+        if !prompt::confirm_install(renderer, best, engine.config(), &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+
+        engine.execute(&plan, renderer).await?;
+        renderer.success(&format!("Installed {package} via {}.", plan.source_id));
+        Ok(())
     }
 }
 

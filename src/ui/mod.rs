@@ -1,6 +1,8 @@
 //! Presentation layer: all user-facing output goes through here so `--json` and
 //! `--no-color` are honored in one place and the rest of the code stays quiet.
 
+pub mod prompt;
+
 use owo_colors::OwoColorize;
 
 use crate::config::ColorChoice;

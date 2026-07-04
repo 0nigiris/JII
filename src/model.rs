@@ -3,11 +3,38 @@
 //! These types are source-agnostic on purpose — the engine and UI operate only on
 //! them, never on provider-specific details (see `docs/ARCHITECTURE.md` §11).
 
+// The full model is defined up front per the agreed architecture; some fields and
+// variants are consumed only by later phases (trust/audit, health, registry). Allow
+// dead code for the model module while those phases land (see docs/ROADMAP.md).
+#![allow(dead_code)]
+
+use std::fmt;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use semver::Version;
 use serde::{Deserialize, Serialize};
+
+/// A package version string as reported by a source.
+///
+/// Sources are heterogeneous — RPM uses EVR (`2.63.1-1.fc44`, with epoch/release),
+/// GitHub uses tags (`v2.63.1`), Flatpak uses its own scheme — so we keep the raw
+/// string for faithful display. Cross-source version comparison (the freshness
+/// tie-breaker) is added in Phase 3 where it is actually needed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PkgVersion(pub String);
+
+impl PkgVersion {
+    pub fn new(s: impl Into<String>) -> Self {
+        PkgVersion(s.into())
+    }
+}
+
+impl fmt::Display for PkgVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
 
 /// A user request, either a package name or a free-text description.
 #[derive(Debug, Clone)]
@@ -71,7 +98,7 @@ pub enum Verification {
 pub struct PackageCandidate {
     pub name: String,
     pub source_id: String,
-    pub version: Option<Version>,
+    pub version: Option<PkgVersion>,
     pub trust: TrustLevel,
     /// Whether this candidate is compatible with the current arch/libc.
     pub arch_ok: bool,
@@ -112,6 +139,6 @@ pub struct InstallPlan {
 pub struct InstalledRecord {
     pub name: String,
     pub source_id: String,
-    pub version: Option<Version>,
+    pub version: Option<PkgVersion>,
     pub installed_at: DateTime<Utc>,
 }

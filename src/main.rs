@@ -3,16 +3,14 @@
 //! Wiring only. The command surface lives in [`cli`], presentation in [`ui`], and
 //! the domain model in [`model`]. See `docs/ARCHITECTURE.md` for the full picture.
 
-// The domain model and provider API are defined ahead of use, phase by phase
-// (see docs/ROADMAP.md). Allow dead code during scaffolding; tighten as later
-// phases consume these types.
-#![allow(dead_code)]
-
 mod cli;
 mod config;
+mod engine;
 mod error;
 mod model;
 mod platform;
+mod privilege;
+mod provider;
 mod ui;
 
 use clap::Parser;
@@ -32,7 +30,7 @@ async fn main() -> std::process::ExitCode {
         }
     };
 
-    match cli.run(config) {
+    match cli.run(config).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("✗ {e}");

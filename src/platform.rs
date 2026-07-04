@@ -32,10 +32,13 @@ pub enum ElevationKind {
 pub struct Platform {
     pub distro: Distro,
     /// Target arch as reported by the compiler (e.g. "x86_64", "aarch64").
+    /// Consumed by GitHub asset filtering in Phase 4.
+    #[allow(dead_code)]
     pub arch: &'static str,
     /// Whether stdin/stdout is an interactive terminal.
     pub is_tty: bool,
-    /// Directories on `PATH`.
+    /// Directories on `PATH`. Used by the user-space PATH check in Phase 5.
+    #[allow(dead_code)]
     pub path_dirs: Vec<PathBuf>,
 }
 
@@ -77,7 +80,8 @@ impl Platform {
         }
     }
 
-    /// Whether a directory is on `PATH` (used to warn about `~/.local/bin`).
+    /// Whether a directory is on `PATH` (used to warn about `~/.local/bin` in Phase 5).
+    #[allow(dead_code)]
     pub fn is_on_path(&self, dir: &std::path::Path) -> bool {
         self.path_dirs.iter().any(|d| d == dir)
     }
@@ -119,14 +123,10 @@ fn parse_distro(os_release: &str) -> Distro {
 }
 
 fn detect_tty() -> bool {
-    // Avoid an extra dependency: query the terminal via libc-free heuristic.
-    // `TERM` unset and no controlling terminal usually means non-interactive,
-    // but the robust check is isatty on fd 1. std doesn't expose it, so we use
-    // the presence of a tty through `/dev/stdin` metadata as a proxy.
-    use std::os::unix::fs::FileTypeExt;
-    std::fs::metadata("/dev/stdin")
-        .map(|m| m.file_type().is_char_device())
-        .unwrap_or(false)
+    // Key interactivity off stdin: prompts read from it, so if it is not a real
+    // terminal we must fall back to defaults instead of pretending to ask.
+    use std::io::IsTerminal;
+    std::io::stdin().is_terminal()
 }
 
 fn detect_path_dirs() -> Vec<PathBuf> {
