@@ -145,10 +145,17 @@ land. Keep tasks small enough to complete and verify in one sitting.
 > as **optional trait methods with defaults**, never a fat trait or core branch. Keep the
 > engine **UI-free** (no new `ui` types in engine signatures).
 
-- [ ] `provider/cargo.rs` (**start here**): `is_available` (cargo present), `search`
-      (crates.io API), `plan_install` = `RunCommand cargo install <crate>` (`needs_root=false`),
-      `list_installed` (`cargo install --list`), `plan_remove` (`cargo uninstall`),
-      community trust. Installs into `~/.cargo/bin` (PATH warning if absent).
+- [x] `provider/cargo.rs`: `is_available` (cargo present), `search` (crates.io
+      `crates/{name}` API — **only offers crates that ship a binary**; library-only
+      crates like `serde` yield no candidate), `plan_install` = `RunCommand cargo install
+      <crate>` (`needs_root=false`), `list_installed` (`cargo install --list` parser),
+      `plan_remove` (`cargo uninstall`), `plan_update` (reinstall newest), community trust.
+      No core change, no engine special-case (registered in `provider/mod.rs` like the
+      rest). Verified: real crates.io search via JII (ripgrep offered v15.1.0, serde
+      rejected as library-only), dry-run plan (single unprivileged command), multi-source
+      ranking (dnf recommended, cargo shown as alternative), 5 unit tests. A from-source
+      `cargo install` compile was not run (disproportionate; the unprivileged `RunCommand`
+      path is already covered by dnf/copr/flatpak/exec tests) — same precedent as COPR.
 - [ ] `provider/{npm,pipx,go}.rs` (no root; `~/.local/bin`/manager-bin PATH warning).
 - [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
 - [ ] `cli/commands/{undo,benchmark}.rs`.

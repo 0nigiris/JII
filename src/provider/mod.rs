@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
+pub mod cargo;
 pub mod copr;
 pub mod dnf;
 pub mod flatpak;
@@ -119,6 +120,9 @@ impl ProviderRegistry {
                 config.network.github_token_env.clone(),
                 crate::platform::Platform::detect().arch,
             )));
+        }
+        if config.is_enabled("cargo") {
+            providers.push(Box::new(cargo::Cargo::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

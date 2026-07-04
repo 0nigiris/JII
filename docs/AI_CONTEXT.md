@@ -22,15 +22,26 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Phase 4 complete → entering Phase 5 (user-space sources).** Phases 0–4 are done and
-verified (skeleton → DNF → state/remove/why → multi-source ranking + cache + doctor →
-GitHub/COPR/trust/audit/health/.zip). A full **architecture re-evaluation** (ADR-0022)
-gated Phase 5: the model needs **no change** to add cargo/npm/pipx/go — they are pure
-new `Provider`s. Growth is additive; the core does not branch on source.
+**Phase 5 — user-space sources & update (in progress).** Phases 0–4 done and verified.
+The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
+these providers. **`cargo` (crates.io) is done** — the first Phase 5 provider, added as
+a pure `Provider` with no core change. Next: `npm`, then `pipx`, `go`, then `jii update`.
 
 ## Last completed work
 
-**Architecture re-evaluation before Phase 5 (docs only).** Checked the live code against
+**`provider/cargo.rs` (crates.io).** First Phase 5 provider. `cargo install <crate>`
+builds executables into `~/.cargo/bin` — user-space, no root. `search` hits the
+crates.io `crates/{name}` API and **only offers crates that ship a binary** (checks
+`bin_names` on the newest version), so a library-only crate (`serde`) yields no
+candidate — JII installs *programs*, not libraries. Community trust (crates.io registry;
+cargo verifies checksums itself, so the plan is one unprivileged `RunCommand`, no
+separate Download/verify). `list_installed` parses `cargo install --list`. Registered in
+`provider/mod.rs` like the others — **no engine special-case, no model change** (ADR-0022
+holds). Verified: real crates.io search through JII (ripgrep→v15.1.0 offered, serde
+rejected), dry-run (single unprivileged command), multi-source ranking (dnf recommended,
+cargo listed as alternative), 5 unit tests. From-source compile not run (COPR precedent).
+
+**Prior — architecture re-evaluation before Phase 5 (docs only).** Checked the live code against
 the design. Verdict: load-bearing structure is sound (`Provider` seam, plan-as-`Action`,
 trust threshold, registry-as-hint); **Phase 5 needs no model change**. Recorded **ADR-0022**
 with three forward rules — (1) new capabilities (version mgmt, metadata, manager bootstrap)
@@ -71,13 +82,14 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Phase 5 — first user-space provider: `provider/cargo.rs`.** The re-evaluation
-(ADR-0022) confirmed the model is ready; `cargo install <crate>` is the cleanest start
-(no root, no network parsing beyond the crates.io API, installs into `~/.cargo/bin`).
-Shape it exactly like github: `is_available` (cargo present), `search` (crates.io API),
-`plan_install` (a `RunCommand` `cargo install …`, `needs_root=false`), `list_installed`
-(`cargo install --list`), `plan_remove` (`cargo uninstall`), community trust. No core
-change. Then npm/pipx/go the same way, then `jii update`.
+**Phase 5 — next provider: `provider/npm.rs`.** Same shape as `cargo` (which is done):
+`is_available` (`npm`), `search` (npm registry `https://registry.npmjs.org/<pkg>` —
+offer only packages that expose a `bin`, mirroring cargo's binary-only filter),
+`plan_install` = `RunCommand` global npm install into the **user** prefix (no root; set a
+`--prefix`/user prefix so `~/.local`-style bin, PATH-warn if absent), `list_installed`
+via `npm ls -g --json`, `plan_remove` via `npm uninstall -g`, `plan_update` reinstall.
+Community trust. No core change. Then `pipx`, `go`, then `jii update` (wire the existing
+`plan_update`).
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):
@@ -87,7 +99,7 @@ not implement as silent heuristics):
 - **Engine UI-free seam** (ADR-0022): decouple `&Renderer` from `Engine::install/remove`
   — do this **before** any GUI/second frontend, not now.
 
-Full list in [TASKS.md](TASKS.md) Phase 4.
+Full list in [TASKS.md](TASKS.md) Phase 5.
 
 ## Current blockers
 
@@ -99,14 +111,15 @@ None.
 
 ## Test status
 
-`cargo test` — **76 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **81 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
 zip** extract + member selection, unknown-format rejection, run_action), github
 (owner/repo, release JSON, asset selection incl. `.zip`/tar.gz preference, checksums,
 plan shapes), copr (search parsing, exact-name + fedora/arch chroot selection, two-step
-root plan), audit (verification resolution + concern logic), and doctor health mapping
-(`health_from` precedence).
+root plan), cargo (binary-crate vs library-only candidate filtering, unprivileged plan
+shape, `cargo install --list` parsing), audit (verification resolution + concern logic),
+and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands
 
@@ -167,7 +180,7 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + dnf.rs, flatpak.rs, github.rs
+  provider/      Provider trait + dnf.rs, copr.rs, flatpak.rs, github.rs, cargo.rs
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)
