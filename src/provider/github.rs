@@ -146,11 +146,21 @@ impl Provider for Github {
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
-        // File-based source: the JSON registry is the record of what we installed.
-        // Enumerating/verifying by file existence is a follow-up (needs the install
-        // path in the record); until then github removes go through the registry.
+        // File-based source: it cannot enumerate its installs (no manifest of which
+        // ~/.local/bin files came from github). The JSON registry is the record of
+        // what we installed; `is_installed` verifies a specific record by file.
         Ok(Vec::new())
     }
+
+    async fn is_installed(&self, record: &InstalledRecord) -> bool {
+        // Verify the registry hint by checking the placed binary still exists.
+        bin_dir().map(|d| is_placed(&d, &record.name)).unwrap_or(false)
+    }
+}
+
+/// Whether the binary named `name` is present in `bin_dir` (a github install).
+fn is_placed(bin_dir: &Path, name: &str) -> bool {
+    bin_dir.join(name).exists()
 }
 
 /// The subset of the GitHub release API we consume.
@@ -563,6 +573,14 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
             }
             other => panic!("expected place, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn is_placed_reflects_file_existence() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!is_placed(dir.path(), "jq"));
+        std::fs::write(dir.path().join("jq"), b"bin").unwrap();
+        assert!(is_placed(dir.path(), "jq"));
     }
 
     #[test]

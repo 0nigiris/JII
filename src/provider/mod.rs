@@ -45,6 +45,16 @@ pub trait Provider: Send + Sync {
 
     /// What is installed via this source, to verify the registry.
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>>;
+
+    /// Whether `record` is still installed via this source. Default: look it up in
+    /// `list_installed`. File-based sources (e.g. github) that cannot enumerate their
+    /// installs override this to check the installed file directly.
+    async fn is_installed(&self, record: &InstalledRecord) -> bool {
+        self.list_installed()
+            .await
+            .map(|list| list.iter().any(|r| r.name == record.name))
+            .unwrap_or(false)
+    }
 }
 
 /// The set of providers enabled for this run, in configured priority order.

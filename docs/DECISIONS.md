@@ -362,10 +362,11 @@ plans `Download`→`Place` into `~/.local/bin` (no root), and classifies the sou
 **Consequences:**
 - **Archives are skipped** until an `Extract` action exists — the next execution-model
   slice. `.tar.gz`/`.zip`-only releases currently yield no candidate.
-- **`jii remove` for GitHub installs is not wired yet:** file-based sources don't fit
-  the "verify against the package manager" model — `list_installed` returns empty, so
-  `resolve_installed` can't confirm the install. Needs the install path recorded in
-  `InstalledRecord`. `install`/`list`/`why`/`history` already work (registry-backed).
+- **`jii remove` for GitHub installs** — resolved via `Provider::is_installed(record)`:
+  the default checks `list_installed`, github overrides it to test that
+  `~/.local/bin/<name>` exists. This confirms a file-based install without a manifest
+  or a new `InstalledRecord` field, and without source branching in the core. (The
+  install path is deterministic, so it need not be stored.)
 - `is_available` returns `true` (GitHub is remote, no local binary); real rate-limit /
   reachability health for `doctor` is a later slice.
 

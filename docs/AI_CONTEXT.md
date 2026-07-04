@@ -28,7 +28,13 @@ cache + doctor).
 
 ## Last completed work
 
-**GitHub Releases provider** (`provider/github.rs`) — raw-binary slice, landed and
+**`jii remove` for GitHub (file-based) installs** — added `Provider::is_installed(record)`
+(default = list lookup; github overrides to check `~/.local/bin/<name>` exists), so
+`resolve_installed` confirms file-based installs without a manifest or a new record
+field, and with no source branching in the core. Verified with a real jq install→remove
+cycle (file removed, registry + history updated).
+
+Prior slice — **GitHub Releases provider** (`provider/github.rs`), raw-binary,
 verified end-to-end:
 
 - Query `owner/repo` → latest release; selects a raw executable asset for the host
@@ -52,15 +58,11 @@ None in progress — pick the next recommended task below.
 
 Continue Phase 4. In rough priority order:
 
-1. **Wire `jii remove` for GitHub (file-based installs).** `list_installed` is empty,
-   so `resolve_installed` can't confirm a github install. Add the install path to
-   `InstalledRecord` (or a file-existence check) so file-based removes resolve.
-   `plan_remove` already emits `RemoveFile`.
-2. **`Extract` action + archive assets** — most releases ship `.tar.gz`/`.zip`; add a
+1. **`Extract` action + archive assets** — most releases ship `.tar.gz`/`.zip`; add a
    focused `Extract` action to the execution model and let github select archives.
-3. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
-4. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
-5. Broad name→repo resolution and release pagination for github.
+2. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
+3. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
+4. Broad name→repo resolution and release pagination for github.
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -74,7 +76,7 @@ None.
 
 ## Test status
 
-`cargo test` — **49 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **50 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove,
 run_action success/failure), and github (owner/repo parsing, release JSON, asset
@@ -109,11 +111,8 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 
 ## Known technical debt
 
-- **GitHub `jii remove` not wired** — file-based installs don't fit the
-  verify-against-manager model; `list_installed` is empty so `resolve_installed`
-  can't confirm them (ADR-0014). Next task #1.
 - **GitHub archives unsupported** — no `Extract` action yet, so `.tar.gz`/`.zip`-only
-  releases yield no candidate (ADR-0014). Next task #2.
+  releases yield no candidate (ADR-0014). Next task #1.
 - **Flatpak identified by appid** (`org.gimp.GIMP`): `jii remove gimp` may not resolve
   a Flatpak by friendly name. Revisit with a name/id split if it becomes painful.
 - **`latest`/`minimal` profiles + freshness/health ranking tie-breakers** are reserved

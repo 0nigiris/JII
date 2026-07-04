@@ -178,7 +178,7 @@ impl Engine {
     pub async fn resolve_installed(&self, name: &str) -> Result<InstalledRecord> {
         // 1. Registry hint, verified against the owning provider.
         if let Some(record) = self.registry.get(name)
-            && self.is_installed_via(&record.source_id, name).await
+            && self.is_installed_via(record).await
         {
             return Ok(record.clone());
         }
@@ -198,19 +198,16 @@ impl Engine {
         )))
     }
 
-    /// Whether `name` is currently installed via the given source.
-    async fn is_installed_via(&self, source_id: &str, name: &str) -> bool {
-        let Some(provider) = self.providers.get(source_id) else {
+    /// Whether the recorded install is still present, asked of its owning provider
+    /// (which decides how to verify — list lookup or file existence).
+    async fn is_installed_via(&self, record: &InstalledRecord) -> bool {
+        let Some(provider) = self.providers.get(&record.source_id) else {
             return false;
         };
         if !provider.is_available().await {
             return false;
         }
-        provider
-            .list_installed()
-            .await
-            .map(|list| list.iter().any(|r| r.name == name))
-            .unwrap_or(false)
+        provider.is_installed(record).await
     }
 
     /// Access the install registry (read-only).

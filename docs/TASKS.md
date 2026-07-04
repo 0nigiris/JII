@@ -100,9 +100,12 @@ land. Keep tasks small enough to complete and verify in one sitting.
 - [x] Trust enforcement: `untrusted` always confirmed, even with `--auto`
       (barrier in `ui/prompt.rs`; verified — `--auto` on github aborts non-interactively).
 - [x] `GITHUB_TOKEN` support to lift rate limits. Rate-limit health in `doctor`: **todo**.
-- [ ] **github follow-ups:** wire `jii remove` for file-based installs (needs the
-      install path in the record); archive assets (`.tar.gz`/`.zip`) via a new
-      `Extract` action; broad name→repo resolution; release pagination.
+- [x] `jii remove` for file-based (github) installs: `Provider::is_installed(record)`
+      (default = list lookup; github overrides to check `~/.local/bin/<name>` exists),
+      so `resolve_installed` confirms file-based installs without a manifest. No core
+      branching, no new record field. Verified: real jq install→remove cycle.
+- [ ] **github follow-ups:** archive assets (`.tar.gz`/`.zip`) via a new `Extract`
+      action; broad name→repo resolution; release pagination.
 - [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
 - [ ] `cli/commands/audit.rs`; rate-limit health in `doctor`.
 - [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —
