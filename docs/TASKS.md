@@ -86,6 +86,11 @@ land. Keep tasks small enough to complete and verify in one sitting.
 
 ## Phase 4 — GitHub Releases, COPR & trust 🎯
 
+- [x] **Execution model evolution** (prerequisite): replace argv-only `Step` with an
+      `Action` enum (`RunCommand`/`Download`/`Place`/`RemoveFile`) + a plan executor
+      (`exec.rs`) that dispatches each action to a focused handler. Download enforces
+      verification (sha256; gpg/sigstore fail closed). `privilege.rs` reduced to
+      `prime()`+`run()`. DNF/Flatpak unchanged. See [DECISIONS.md](DECISIONS.md) ADR-0007.
 - [ ] `provider/github.rs`: name→repo resolution, arch/libc asset filter, pagination.
 - [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
 - [ ] Artifact verification: sha256 / GPG / sigstore where available; `⚠ unsigned` tag.

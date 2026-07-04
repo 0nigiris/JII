@@ -16,6 +16,12 @@ explains why.
 architecture** unless implementation reveals a concrete, real problem — then say so
 explicitly and justify it.
 
+**Start every session by reading `docs/AI_CONTEXT.md`** — it is the current-state
+snapshot (phase, last work, next task, build/test status). Decisions and their
+rationale live in `docs/DECISIONS.md`. The repository — not any AI conversation — is
+the single source of truth; no important project knowledge may exist only in a chat
+window.
+
 ## Binding MVP constraints (do not silently change)
 
 - **Fedora-first**: dnf5, COPR, Flatpak, GitHub. Cross-distro is future work behind
@@ -43,3 +49,22 @@ explicitly and justify it.
 - Definition of Done: `cargo clippy` clean, `cargo fmt`, tests for non-trivial logic,
   behavior verified at least via `--dry-run`.
 - **Respond in Russian.**
+
+## AI Handoff Policy (mandatory — every session)
+
+JII must be continuable by **any** agent (Claude Code, another AI, or a human) with
+minimal context loss. So no task is complete until the repository reflects reality.
+At the **end of every work session**, before considering the task done, always:
+
+1. **Update `docs/TASKS.md`** — check off what landed; add notes on deviations.
+2. **Update `docs/AI_CONTEXT.md`** — it must describe the *current* state: phase,
+   last completed work, current task, next recommended task, blockers, build/test
+   status. If the current task changed, or a phase completed, reflect it immediately.
+   Keep it a concise snapshot — no accumulated history.
+3. **Update `docs/DECISIONS.md`** — if any architectural decision was made, add an ADR
+   (decision, reason, alternatives, status, consequences). Never leave a
+   design-affecting decision only in the conversation or a commit message.
+4. **Update `README.md`** — only if user-visible behavior changed.
+5. **Ensure the project builds** — `cargo build` clean, `cargo clippy` clean.
+6. **Ensure tests pass** — `cargo test` green; add tests for new non-trivial logic.
+7. **Commit** — a small, descriptive commit capturing the change.
