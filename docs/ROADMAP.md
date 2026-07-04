@@ -244,18 +244,24 @@ the choices and collect the selection. This mirrors how COPR disambiguation is h
 (exact-name + visible `owner/project` + confirmation, ADR-0017) — extend that pattern,
 don't fork it.
 
-### System onboarding — `jii doctor --fix`
+### System onboarding — `jii doctor --fix` / `jii setup` / `jii recommend`
 
 **Priority:** Future / Phase 5+. **Status:** idea only.
 
-**Vision:** help a fresh Fedora install become "ready" — enable Flathub and RPM Fusion,
-offer common codecs, GPU drivers, Steam, and everyday utilities — as an *opt-in*
-extension of `jii doctor`.
+**Vision:** help a fresh install become "ready" — enable Flathub and RPM Fusion, offer
+multimedia codecs, GPU drivers, Steam, Wine, container tooling, and everyday utilities —
+as an *opt-in* surface. This is JII widening from "a layer over software sources" toward
+**a thin layer between the user and Linux**: it *analyses the system and recommends*, it
+does not become a configuration manager. Likely command surfaces (same engine, different
+entry): `jii doctor --fix` (fix what `doctor` reported), `jii setup` (first-run
+onboarding), `jii recommend` (suggest, don't apply). Recommendations are **distro-aware**
+(what's right for Fedora ≠ for another distro), routed through the `platform` abstraction.
 
 **Philosophy (non-negotiable):** **Analyze → Explain → Ask → Apply.** `jii` **never
-modifies the system automatically.** `doctor` (no flag) only *reports*; `--fix` proposes
-concrete, previewable steps (the same `InstallPlan`/`Action` model, `--dry-run`-able,
-privileged steps batched and shown) and applies them **only after explicit confirmation**.
+modifies the system automatically.** `doctor`/`recommend` (read-only surfaces) only
+*report*; `--fix`/`setup` propose concrete, previewable steps (the same
+`InstallPlan`/`Action` model, `--dry-run`-able, privileged steps batched and shown) and
+apply them **only after explicit confirmation**.
 Each fix is a plan, not a side effect — reusing execution and privilege exactly as
 installs do (ADR-0003/0005/0007). No hidden `curl | sh`, no silent repo edits.
 
