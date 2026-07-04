@@ -23,16 +23,26 @@ land. Keep tasks small enough to complete and verify in one sitting.
 > API defined ahead of use); tighten as later phases consume it. `cargo clippy` is not
 > installed on this host (Fedora system Rust) — `cargo build` is warning-clean instead.
 
-## Phase 1 — DNF end-to-end 🎯
+## Phase 1 — DNF end-to-end 🎯 ✅
 
-- [ ] `provider/mod.rs`: finalize `Provider` trait + provider registry.
-- [ ] `provider/dnf.rs`: `is_available`, `search`, `plan_install`, `list_installed` (dnf5 machine output).
-- [ ] Unit tests for the dnf output parser on **fixed sample output**.
-- [ ] `privilege.rs`: detect sudo/pkexec; batched elevation; print exact commands.
-- [ ] `engine/mod.rs` + `engine/plan.rs`: `search → rank → plan → execute` (single provider).
-- [ ] `ui/prompt.rs`: `[Y/n]` default-yes; trust barrier hook.
-- [ ] `--dry-run` renders the plan and exits without side effects.
-- [ ] **Verify:** `jii <dnf-pkg> --dry-run` previews; `jii <dnf-pkg>` installs it.
+- [x] `provider/mod.rs`: finalize `Provider` trait + provider registry.
+- [x] `provider/dnf.rs`: `is_available`, `search`, `plan_install`, `list_installed` (dnf5 machine output).
+- [x] Unit tests for the dnf output parser on **fixed sample output**.
+- [x] `privilege.rs`: detect sudo/pkexec; batched elevation; print exact commands.
+- [x] `engine/mod.rs` (+ `engine/ranking.rs`): `search → rank → plan → execute` (single provider).
+- [x] `ui/prompt.rs`: `[Y/n]` default-yes; trust barrier hook.
+- [x] `--dry-run` renders the plan and exits without side effects.
+- [x] **Verify:** `jii <dnf-pkg> --dry-run` previews; `jii <dnf-pkg>` installs it (verified with a
+      real `cowsay` install+remove via pkexec). 19 unit tests pass.
+
+> Notes:
+> - Model change: `PkgVersion(String)` replaces `semver::Version` — RPM EVR
+>   (`2.63.1-1.fc44`) is not semver, and sources are heterogeneous. Cross-source
+>   version comparison lands in Phase 3 where it is needed.
+> - Bug fix: TTY detection now uses `std::io::IsTerminal` (the earlier char-device
+>   heuristic misclassified piped stdin), so prompts/color behave correctly.
+> - `#![allow(dead_code)]` narrowed from crate-wide to `model.rs` plus a few
+>   targeted, phase-labelled items; cli/engine/ui/config/privilege are allow-free.
 
 ## Phase 2 — State, remove, why 🎯
 
