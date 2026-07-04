@@ -32,8 +32,7 @@ pub enum ElevationKind {
 pub struct Platform {
     pub distro: Distro,
     /// Target arch as reported by the compiler (e.g. "x86_64", "aarch64").
-    /// Consumed by GitHub asset filtering in Phase 4.
-    #[allow(dead_code)]
+    /// Consumed by GitHub release-asset filtering.
     pub arch: &'static str,
     /// Whether stdin/stdout is an interactive terminal.
     pub is_tty: bool,

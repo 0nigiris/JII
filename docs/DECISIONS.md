@@ -321,3 +321,50 @@ the dev host.
 dnf5/flatpak, so CI covers unit logic only (parsers, ranking, exec fileops, elevation
 prefixing); end-to-end `--dry-run`/install verification stays a manual step on
 Fedora. Revisit the deferred items when JII goes public or starts cutting releases.
+
+---
+
+## ADR-0014 — GitHub provider: `owner/repo` queries, network in `search`, raw binaries first
+
+**Status:** Accepted
+
+**Decision:** The GitHub Releases provider resolves a query of the form `owner/repo`
+to that repo's latest release. It does **all** network I/O in `search` — fetching the
+release and any checksums file — and embeds the download URL, filename, size and
+resolved sha256 into the candidate's `raw`, so `plan_install` is pure. It selects a
+single **raw executable** asset for the host arch (Linux, musl preferred over gnu),
+plans `Download`→`Place` into `~/.local/bin` (no root), and classifies the source as
+`untrusted`.
+
+**Reason:**
+- **`owner/repo` only** — GitHub has no reliable name→repo search; guessing the repo
+  for a bare name is a separate, error-prone problem. An explicit slug is honest and
+  unambiguous now; broad resolution can come later without changing the model.
+- **Network in `search`** — mirrors how dnf/flatpak stash everything the plan needs in
+  `raw`; keeps `plan_install` deterministic and unit-testable, and confines failure
+  modes to the search step the engine already degrades gracefully (ADR-0010).
+- **Raw binaries first** — the execution model has `Download`/`Place` but no extractor,
+  and most `.tar.gz`/`.zip` releases need one. Shipping the raw-binary slice proves the
+  whole download→verify→place→trust path end-to-end (e.g. `jqlang/jq`) without
+  prematurely expanding the model.
+- **`untrusted` trust** — a third-party binary from an arbitrary repo is exactly the
+  `untrusted` tier (ADR-0006): always explicitly confirmed, even under `--auto`. A
+  verified sha256 raises confidence but not the trust tier.
+
+**Alternatives considered:**
+- Shell out to `curl | tar` in a `RunCommand` — rejected: unverifiable, leaks source
+  specifics into argv, no enforced checksum (the whole point of ADR-0007).
+- Fetch checksums lazily in `plan_install` — rejected: puts network in planning and
+  makes the plan non-deterministic/harder to test.
+- Treat GitHub as `community` when a checksum verifies — rejected: provenance, not
+  integrity, defines the trust tier; the binary is still arbitrary code.
+
+**Consequences:**
+- **Archives are skipped** until an `Extract` action exists — the next execution-model
+  slice. `.tar.gz`/`.zip`-only releases currently yield no candidate.
+- **`jii remove` for GitHub installs is not wired yet:** file-based sources don't fit
+  the "verify against the package manager" model — `list_installed` returns empty, so
+  `resolve_installed` can't confirm the install. Needs the install path recorded in
+  `InstalledRecord`. `install`/`list`/`why`/`history` already work (registry-backed).
+- `is_available` returns `true` (GitHub is remote, no local binary); real rate-limit /
+  reachability health for `doctor` is a later slice.

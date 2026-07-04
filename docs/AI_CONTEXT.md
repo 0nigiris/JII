@@ -28,39 +28,41 @@ cache + doctor).
 
 ## Last completed work
 
-**Execution model evolution** (Phase 4 prerequisite) — landed and stable:
+**GitHub Releases provider** (`provider/github.rs`) — raw-binary slice, landed and
+verified end-to-end:
 
-- `model.rs`: `Action` enum (`RunCommand` / `Download` / `Place` / `RemoveFile`)
-  replaced the old argv-only `Step`. `InstallPlan.needs_root()` is derived.
-- `exec.rs` (new): `run_plan` dispatches each action to a focused handler; downloads
-  are HTTPS-only with **enforced** verification (sha256; gpg/sigstore fail closed).
-- `privilege.rs`: reduced to `prime()` (once) + `run()` (one command); no more
-  `execute_plan`.
-- DNF and Flatpak providers emit `RunCommand` — behavior unchanged.
-- UI `describe_action` / `action_to_json` render every action (preview == execution).
+- Query `owner/repo` → latest release; selects a raw executable asset for the host
+  arch (Linux, musl preferred over gnu); rejects other-OS/packages/archives.
+- **All network in `search`** (release + checksums), so `plan_install` is pure and
+  unit-tested. sha256 is resolved from a checksums asset and **enforced** by the
+  executor; `⚠ unverified` shown when none is published.
+- Plans `Download`→`Place` into `~/.local/bin` (mode 0o755, **no root**).
+- Trust `untrusted` → always confirmed, even under `--auto` (verified: `--auto`
+  aborts non-interactively). `GITHUB_TOKEN` supported via `network.github_token_env`.
+- Verified with a real `jqlang/jq` install in an isolated `$HOME`: checksum matched,
+  binary runs (`jq-1.8.2`), registry recorded. See [DECISIONS.md](DECISIONS.md) ADR-0014.
 
-See [DECISIONS.md](DECISIONS.md) ADR-0007 for the rationale.
+Prior slice: the execution model (`Action` enum + `exec.rs`), ADR-0007.
 
 ## Current task
 
-Not started yet — the executor is done; the next provider is the immediate task.
+None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**`provider/github.rs`** (Phase 4, step 2), building on the new execution model:
+Continue Phase 4. In rough priority order:
 
-1. Name → repo resolution (start from an explicit `owner/repo`; broader resolution
-   later).
-2. Fetch latest release; filter assets by arch/libc.
-3. Emit `Download` (with `Verification::Sha256` when a checksum asset exists, else
-   `Verification::None` + `untrusted` trust) → `Place` into `~/.local/bin` (mode
-   0o755). No root.
-4. `GITHUB_TOKEN` support to lift rate limits.
-5. Per-candidate trust: default `untrusted` unless verified.
+1. **Wire `jii remove` for GitHub (file-based installs).** `list_installed` is empty,
+   so `resolve_installed` can't confirm a github install. Add the install path to
+   `InstalledRecord` (or a file-existence check) so file-based removes resolve.
+   `plan_remove` already emits `RemoveFile`.
+2. **`Extract` action + archive assets** — most releases ship `.tar.gz`/`.zip`; add a
+   focused `Extract` action to the execution model and let github select archives.
+3. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
+4. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
+5. Broad name→repo resolution and release pagination for github.
 
-Then: **trust enforcement** (`untrusted` always confirmed, even `--auto`), then
-`provider/copr.rs`, then `jii audit` and rate-limit health in `doctor`. Full list in
-[TASKS.md](TASKS.md) Phase 4.
+Full list in [TASKS.md](TASKS.md) Phase 4.
 
 ## Current blockers
 
@@ -72,10 +74,11 @@ None.
 
 ## Test status
 
-`cargo test` — **38 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
-registry, cache, privilege elevation prefixing, and the new executor (sha256 digest,
+`cargo test` — **49 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove,
-run_action success/failure).
+run_action success/failure), and github (owner/repo parsing, release JSON, asset
+selection incl. musl preference + archive rejection, checksums parsing, plan shape).
 
 ## Environment & commands
 
@@ -106,6 +109,11 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 
 ## Known technical debt
 
+- **GitHub `jii remove` not wired** — file-based installs don't fit the
+  verify-against-manager model; `list_installed` is empty so `resolve_installed`
+  can't confirm them (ADR-0014). Next task #1.
+- **GitHub archives unsupported** — no `Extract` action yet, so `.tar.gz`/`.zip`-only
+  releases yield no candidate (ADR-0014). Next task #2.
 - **Flatpak identified by appid** (`org.gimp.GIMP`): `jii remove gimp` may not resolve
   a Flatpak by friendly name. Revisit with a name/id split if it becomes painful.
 - **`latest`/`minimal` profiles + freshness/health ranking tie-breakers** are reserved
@@ -120,7 +128,7 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + dnf.rs, flatpak.rs (add github.rs here)
+  provider/      Provider trait + dnf.rs, flatpak.rs, github.rs
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)

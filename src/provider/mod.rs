@@ -12,6 +12,7 @@ use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Q
 
 pub mod dnf;
 pub mod flatpak;
+pub mod github;
 
 /// A source of installable software (a package manager, a repo, a registry).
 ///
@@ -63,6 +64,12 @@ impl ProviderRegistry {
         }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));
+        }
+        if config.is_enabled("github") {
+            providers.push(Box::new(github::Github::new(
+                config.network.github_token_env.clone(),
+                crate::platform::Platform::detect().arch,
+            )));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

@@ -91,13 +91,23 @@ land. Keep tasks small enough to complete and verify in one sitting.
       (`exec.rs`) that dispatches each action to a focused handler. Download enforces
       verification (sha256; gpg/sigstore fail closed). `privilege.rs` reduced to
       `prime()`+`run()`. DNF/Flatpak unchanged. See [DECISIONS.md](DECISIONS.md) ADR-0007.
-- [ ] `provider/github.rs`: name→repo resolution, arch/libc asset filter, pagination.
+- [x] `provider/github.rs` (raw-binary slice): `owner/repo` → latest release, arch/OS
+      asset filter (musl-preferred), sha256 from a checksums asset, `Download`+`Place`
+      into `~/.local/bin` (no root), `GITHUB_TOKEN` support. All network in `search`;
+      `plan_install` pure. Trust `untrusted` (always confirmed). See DECISIONS ADR-0014.
+- [x] Artifact verification: **sha256 enforced** in the executor; `⚠ unverified` shown
+      when no checksum is published. GPG / sigstore still fail-closed (later slice).
+- [x] Trust enforcement: `untrusted` always confirmed, even with `--auto`
+      (barrier in `ui/prompt.rs`; verified — `--auto` on github aborts non-interactively).
+- [x] `GITHUB_TOKEN` support to lift rate limits. Rate-limit health in `doctor`: **todo**.
+- [ ] **github follow-ups:** wire `jii remove` for file-based installs (needs the
+      install path in the record); archive assets (`.tar.gz`/`.zip`) via a new
+      `Extract` action; broad name→repo resolution; release pagination.
 - [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
-- [ ] Artifact verification: sha256 / GPG / sigstore where available; `⚠ unsigned` tag.
-- [ ] Trust enforcement: `untrusted` always confirmed, even with `--auto`.
-- [ ] `GITHUB_TOKEN` support to lift rate limits; rate-limit health in `doctor`.
-- [ ] `cli/commands/audit.rs`.
-- [ ] **Verify:** installing a GitHub release verifies the artifact & respects trust.
+- [ ] `cli/commands/audit.rs`; rate-limit health in `doctor`.
+- [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —
+      real `jqlang/jq` install in an isolated HOME: sha256 matched, binary runs, registry
+      recorded; `--dry-run`/`-n`/`--auto` paths checked. 49 unit tests pass.
 
 ## Phase 5 — User-space sources & update 🔭
 
