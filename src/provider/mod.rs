@@ -15,6 +15,7 @@ pub mod copr;
 pub mod dnf;
 pub mod flatpak;
 pub mod github;
+pub mod npm;
 
 /// A source of installable software (a package manager, a repo, a registry).
 ///
@@ -123,6 +124,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("cargo") {
             providers.push(Box::new(cargo::Cargo::new()));
+        }
+        if config.is_enabled("npm") {
+            providers.push(Box::new(npm::Npm::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

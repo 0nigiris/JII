@@ -156,7 +156,20 @@ land. Keep tasks small enough to complete and verify in one sitting.
       ranking (dnf recommended, cargo shown as alternative), 5 unit tests. A from-source
       `cargo install` compile was not run (disproportionate; the unprivileged `RunCommand`
       path is already covered by dnf/copr/flatpak/exec tests) — same precedent as COPR.
-- [ ] `provider/{npm,pipx,go}.rs` (no root; `~/.local/bin`/manager-bin PATH warning).
+- [x] `provider/npm.rs`: mirrors cargo. `search` (npm registry `/<pkg>/latest` — only
+      offers packages with a non-empty `bin`; library-only like `lodash` yields nothing),
+      `plan_install`/`remove`/`update` = single unprivileged `npm … --global --prefix
+      $HOME/.local <pkg>` (forces the user prefix so it never needs root, binaries →
+      `~/.local/bin`), `list_installed` (`npm ls -g --json`, tolerant of npm's benign
+      non-zero exits), community trust. No core change. Verified: real registry search via
+      JII (prettier offered v3.9.4, lodash rejected), dry-run, multi-source ranking. 6 tests.
+- [x] **Shared `provider::http_client()`** extracted (was copied 3× in copr/github/cargo;
+      npm would be the 4th) — one place for the registry User-Agent / transport policy.
+- [ ] `provider/{pipx,go}.rs` (no root; user-prefix PATH warning). **When these land** (the
+      3rd/4th single-command user provider) extract a shared `command_plan(source_id,
+      argv, needs_root, reasons)` — cargo/npm each have a near-identical one-`RunCommand`
+      plan builder; do **not** copy it a 4th time (ADR-0022: small internal helper, no new
+      abstraction/model). dnf/copr's `root_plan` can fold in if it stays simpler.
 - [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 

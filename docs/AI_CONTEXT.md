@@ -24,12 +24,23 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 **Phase 5 — user-space sources & update (in progress).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
-these providers. **`cargo` (crates.io) is done** — the first Phase 5 provider, added as
-a pure `Provider` with no core change. Next: `npm`, then `pipx`, `go`, then `jii update`.
+these providers. **`cargo` and `npm` are done** — pure `Provider`s, no core change.
+Next: `pipx`, then `go`, then `jii update`.
 
 ## Last completed work
 
-**`provider/cargo.rs` (crates.io).** First Phase 5 provider. `cargo install <crate>`
+**`provider/npm.rs` (npm registry)** + a shared-`http_client()` refactor. npm mirrors
+cargo: `search` hits the npm registry `/<pkg>/latest` and **only offers packages that
+install a CLI** (non-empty `bin`), so a library like `lodash` yields no candidate.
+Installs are unprivileged and forced into `$HOME/.local` via `--prefix` (binaries →
+`~/.local/bin`, never root, regardless of npm's host prefix). `list_installed` reads
+`npm ls -g --json` tolerantly. Community trust; no core change, no engine special-case.
+Verified: real registry search through JII (prettier→v3.9.4 offered, lodash rejected),
+dry-run (single unprivileged command), multi-source ranking. Also **extracted
+`provider::http_client()`** (the reqwest builder + User-Agent was copied 3× in
+copr/github/cargo; npm would have been the 4th) — pure refactor, `jii doctor` verified.
+
+**Prior — `provider/cargo.rs` (crates.io).** First Phase 5 provider. `cargo install <crate>`
 builds executables into `~/.cargo/bin` — user-space, no root. `search` hits the
 crates.io `crates/{name}` API and **only offers crates that ship a binary** (checks
 `bin_names` on the newest version), so a library-only crate (`serde`) yields no
@@ -82,14 +93,16 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Phase 5 — next provider: `provider/npm.rs`.** Same shape as `cargo` (which is done):
-`is_available` (`npm`), `search` (npm registry `https://registry.npmjs.org/<pkg>` —
-offer only packages that expose a `bin`, mirroring cargo's binary-only filter),
-`plan_install` = `RunCommand` global npm install into the **user** prefix (no root; set a
-`--prefix`/user prefix so `~/.local`-style bin, PATH-warn if absent), `list_installed`
-via `npm ls -g --json`, `plan_remove` via `npm uninstall -g`, `plan_update` reinstall.
-Community trust. No core change. Then `pipx`, `go`, then `jii update` (wire the existing
-`plan_update`).
+**Phase 5 — next provider: `provider/pipx.rs`.** Same shape as cargo/npm: `is_available`
+(`pipx`), `search` (PyPI JSON `https://pypi.org/pypi/<pkg>/json` — pipx installs apps, so
+offer packages that expose console entry points / are apps; PyPI's JSON has
+`info.summary`/`info.version`, and entry-point detection is less direct than cargo/npm —
+assess whether to just offer any package and let pipx fail, or check for scripts),
+`plan_install` = `pipx install <pkg>` (no root; pipx installs to `~/.local/bin`),
+`list_installed` (`pipx list --json`), `plan_remove` (`pipx uninstall`). Community trust.
+**When writing pipx** (3rd single-command user provider): extract the shared
+`command_plan` helper cargo/npm duplicate — don't copy it a 4th time in `go` (see TASKS).
+Then `go`, then `jii update`.
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):
@@ -111,15 +124,16 @@ None.
 
 ## Test status
 
-`cargo test` — **81 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **87 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
 zip** extract + member selection, unknown-format rejection, run_action), github
 (owner/repo, release JSON, asset selection incl. `.zip`/tar.gz preference, checksums,
 plan shapes), copr (search parsing, exact-name + fedora/arch chroot selection, two-step
 root plan), cargo (binary-crate vs library-only candidate filtering, unprivileged plan
-shape, `cargo install --list` parsing), audit (verification resolution + concern logic),
-and doctor health mapping (`health_from` precedence).
+shape, `cargo install --list` parsing), npm (CLI vs library-only filter incl. bin-as-
+string, user-prefixed plan shape, `npm ls -g --json` parsing), audit (verification
+resolution + concern logic), and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands
 
@@ -180,7 +194,7 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + dnf.rs, copr.rs, flatpak.rs, github.rs, cargo.rs
+  provider/      Provider trait + http_client + dnf, copr, flatpak, github, cargo, npm
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)
