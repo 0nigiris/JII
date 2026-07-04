@@ -123,7 +123,11 @@ problem.
 - Cross-distro: apt, pacman, zypper, nix, AUR, snap.
 - Windows (winget), macOS (Homebrew).
 - Plugin SDK.
-- **GUI frontend** — see "Future ideas" below.
+- **GUI frontend** / universal software center — see "Future ideas" below.
+- **Version management** (`jii versions`, `@version`, rollback) — post-alpha; "Future ideas".
+- **GitHub repository selection** (disambiguate a bare name) — GitHub search polish; "Future ideas".
+- **System onboarding** (`jii doctor --fix`) — see "Future ideas".
+- **Experimental cross-distro** fallback (opt-in) — see "Future ideas".
 
 ---
 
@@ -173,3 +177,101 @@ engine grows, not the GUI. (See [DECISIONS.md](DECISIONS.md) ADR-0015.)
   model); a GUI likely links the crate directly or talks to a thin local service.
 - Long-running/streamed operations (download progress) may need the engine to surface
   progress events without the GUI reaching into execution internals.
+
+**Framing:** think of it as a *universal Linux software center* — the one place a user
+installs anything, regardless of where it comes from — rather than "a GUI for jii".
+That framing only sharpens the hard rule: the more the software center appears to do,
+the more disciplined we must be that every capability is the engine's, exposed once
+and shared with the CLI. It **never** reimplements search, ranking, trust, or planning.
+
+### Version management — pin, list, roll back
+
+**Priority:** post-alpha. **Status:** idea only.
+
+**Vision:** let users see and choose versions, not just "the latest":
+
+- `jii versions <package>` — list the versions a source can install.
+- `jii install <package>@1.2.3` — install a specific version.
+- Roll back to a previously installed version.
+
+**Hard architectural rule:** versions are a **provider capability surfaced through the
+model**, and the engine stays version-agnostic. A provider that can enumerate/pin
+versions reports them on the candidate; the core never learns "how github tags releases"
+or "how dnf lists versions" — it selects among `PkgVersion`s the provider offered. Not
+every source can do this (a raw github binary may expose only `latest`); the model must
+let a provider say "versions unknown" without the engine special-casing it.
+
+**Implications to weigh when it is time:**
+
+- `PkgVersion(String)` is deliberately not semver (ADR-0009); comparing/ordering
+  versions for "roll back" or "is X newer" needs a source-provided ordering, not a
+  jii-invented one.
+- Rollback needs the registry to retain enough history to reinstall a prior version —
+  today it records the current install, not an installable coordinate for old ones.
+
+### GitHub repository selection — never silently install the wrong repo
+
+**Priority:** Phase 5+ / GitHub search polish. **Status:** idea only.
+
+**Problem:** a bare name (`jii install bat`) can match many GitHub repositories; picking
+one silently risks installing the wrong — or a malicious look-alike — project. Today the
+github provider only accepts explicit `owner/repo`.
+
+**Vision:** when a name is ambiguous, present the best few candidate repositories and let
+the user choose:
+
+- Show ~5 best repos with **stars**, **owner**, an **official/verified** indicator where
+  known, and a short **description**.
+- Actions: **select**, **next page**, **cancel**, or **refine** the query.
+- **Never silently install the wrong repository** — ambiguity is resolved by the user,
+  visibly, or not at all.
+
+**Hard architectural rule:** the *ranking/heuristics* (what "best" means, star weighting,
+official detection) live in the engine, reusing the trust model; the CLI/GUI only render
+the choices and collect the selection. This mirrors how COPR disambiguation is handled
+(exact-name + visible `owner/project` + confirmation, ADR-0017) — extend that pattern,
+don't fork it.
+
+### System onboarding — `jii doctor --fix`
+
+**Priority:** Future / Phase 5+. **Status:** idea only.
+
+**Vision:** help a fresh Fedora install become "ready" — enable Flathub and RPM Fusion,
+offer common codecs, GPU drivers, Steam, and everyday utilities — as an *opt-in*
+extension of `jii doctor`.
+
+**Philosophy (non-negotiable):** **Analyze → Explain → Ask → Apply.** `jii` **never
+modifies the system automatically.** `doctor` (no flag) only *reports*; `--fix` proposes
+concrete, previewable steps (the same `InstallPlan`/`Action` model, `--dry-run`-able,
+privileged steps batched and shown) and applies them **only after explicit confirmation**.
+Each fix is a plan, not a side effect — reusing execution and privilege exactly as
+installs do (ADR-0003/0005/0007). No hidden `curl | sh`, no silent repo edits.
+
+**Implications to weigh when it is time:**
+
+- "What a healthy system looks like" is a policy/catalog that must be data-driven and
+  auditable, not hardcoded branching — and Fedora-specific until the platform layer
+  generalizes it.
+- Enabling third-party repos (RPM Fusion) crosses a trust boundary; it must surface the
+  same trust/confirmation story as installing from them.
+
+### Experimental cross-distribution compatibility
+
+**Priority:** very long-term (aligns with the "Cross-distro" Future bullet). **Status:**
+idea only — explicitly experimental.
+
+**Vision:** where a distro has **no native method** for something, *optionally* offer a
+best-effort cross-distro path. This is a fallback, never a default.
+
+**Guardrails (all required):**
+
+- **Only when no native method exists** — native/first-party always wins.
+- **Disabled by default** and clearly marked **Experimental** wherever it appears.
+- **Never automatic** — requires **explicit user confirmation** every time.
+- **Integrate with an existing, dedicated project** (e.g. an established compatibility
+  layer) rather than reimplementing one inside jii.
+
+**Hard architectural rule:** this is *another `Provider`* (or a wrapper over an external
+tool), behind the same trait, trust model, and plan/confirmation flow — the core still
+never branches on the source. An experimental source simply carries a lower trust and an
+"experimental" marker in the model; it does not earn special cases in the engine.
