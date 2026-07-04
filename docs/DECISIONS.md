@@ -568,3 +568,98 @@ both the human table and `--json`.
   count against the limit, so `doctor` is free to run.
 - `Health::RateLimited` is wired end-to-end but only reproducible live by exhausting
   the budget; the mapping is covered by `health_from`'s unit test instead.
+
+---
+
+## ADR-0020 — JII is a universal layer, not another package manager
+
+**Status:** Accepted (foundational — restates the project's reason to exist)
+
+**Decision:** JII is a **unifying layer** over the package sources that already exist
+(DNF, COPR, Flatpak, GitHub Releases, and later Cargo/npm/pipx/Go/Homebrew/Nix/…). It
+provides one interface for **search, choice, trust, install, and management** across
+all of them. It deliberately does **not**:
+
+- become another package manager or dependency resolver;
+- invent a new package format;
+- maintain its own package archive or replace any ecosystem;
+- ask users to change their habits or migrate away from the tools they use.
+
+Every source is reached through its **own native mechanism** (dnf5, flatpak, the
+GitHub API, …); JII orchestrates, it does not re-implement. When JII installs from a
+source, the artifact remains a first-class citizen of that source (an rpm is still an
+rpm, a Flatpak is still a Flatpak) and can still be managed by that source's own tools.
+
+**Reason:**
+- **This is the product.** The value is *unification with honesty* — "here is the best
+  way to get X, from Y, and here's why" — not another silo competing with the others.
+  Fighting DNF/Flatpak/Homebrew or minting a JII format would recreate the very
+  fragmentation JII exists to hide.
+- **It keeps the architecture small and safe.** Because JII never owns packaging, it
+  never inherits a package manager's hardest problems (dependency solving, conflict
+  resolution, an archive to host and sign). It plans and delegates; the ecosystems keep
+  doing what they are good at.
+- **It is the test for every future feature.** The guiding question is *"does this make
+  the user's life easier without making the architecture heavier?"* A feature that
+  pulls JII toward owning packaging, or toward a per-source special case in the core,
+  fails that test.
+
+**Alternatives considered:**
+- A JII-native package format / store — rejected: maximal complexity, maximal
+  ecosystem friction, directly opposed to the mission.
+- A thin meta-CLI that only shells out with no model — rejected: loses trust, ranking,
+  provenance and the "why", which are the actual value.
+
+**Consequences:**
+- Reinforces the load-bearing rules: **core never branches on the source** (ADR-0004),
+  everything is a **provider** behind one trait, and **`Plan` is first-class** (ADR-0003)
+  so JII delegates rather than executes packaging itself.
+- New sources are *additive*: a `Provider` (native or, later, declarative TOML). Growth
+  is in breadth of coverage, not in a growing core.
+- Frontends (CLI now, GUI/software-center later) are thin over this one engine
+  (ADR-0015); the "universal layer" is the engine, not any single UI.
+
+---
+
+## ADR-0021 — Integrate external backends only through their stable public API
+
+**Status:** Accepted (forward-looking; no code yet)
+
+**Decision:** When JII integrates another project as a backend for some capability
+(the motivating case is **UPAC** / a future `libupac`, but this is the general rule),
+it does so **only through that project's stable, public API** — never against its
+internals, private types, or unreleased interfaces. Such an integration is modelled as
+just **another `Provider`** (or a small adapter behind an existing trait). Concretely:
+
+- JII depends on a **published, versioned** interface of the external project, and pins
+  a compatible version range like any other dependency.
+- The two projects stay **independent** — neither absorbs nor forks the other. Each
+  evolves on its own; JII uses the other where it genuinely solves a problem better.
+- **If the stable public API does not exist yet, JII implements nothing** — the
+  interaction is only designed on paper (this ADR) until the API is real.
+- No JII behavior may depend on undocumented behavior or internal data structures of
+  the external project; if JII needs something the public API can't express, the
+  request goes upstream to that project's API, it is not reached around.
+
+**Reason:**
+- **Coupling to internals is a trap** — it makes both projects fragile and turns
+  cooperation into a maintenance burden, the opposite of the intended collaboration.
+- **The `Provider` boundary already is the right seam** — JII was built so that any
+  source is reachable behind one narrow trait; an external library is just such a
+  source. No core change is needed to accommodate one (ADR-0004/0020).
+- **Design-before-code** matches the project's rule: architecture first, and here the
+  prerequisite (a stable public API) is outside our control, so we wait.
+
+**Alternatives considered:**
+- Vendor or fork the external code — rejected: violates the "stay independent" premise
+  and couples releases.
+- Depend on internal crates/types directly for speed — rejected: brittle, and it would
+  leak another project's model into JII's core.
+
+**Consequences:**
+- A future `libupac`-backed provider is a drop-in once the API is published; nothing in
+  the core needs to know it exists beyond registering the provider.
+- Until then this is a *documented intent*, not a dependency — JII ships and evolves
+  with no reference to UPAC internals.
+- The same rule governs any future "use library X as a backend" (e.g. a compatibility
+  layer for the experimental cross-distro idea): public API only.

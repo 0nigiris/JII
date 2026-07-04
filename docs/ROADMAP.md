@@ -128,6 +128,11 @@ problem.
 - **GitHub repository selection** (disambiguate a bare name) — GitHub search polish; "Future ideas".
 - **System onboarding** (`jii doctor --fix`) — see "Future ideas".
 - **Experimental cross-distro** fallback (opt-in) — see "Future ideas".
+- **More managers** (AppImage, Snap, Homebrew, Nix, Pacman/Apt/Zypper) — breadth via
+  `Provider`s; see "Future ideas".
+- **Bootstrapping a missing manager** (offer, never auto) — see "Future ideas".
+- **Provider-supplied metadata** (icons/screenshots/…) for the GUI — see "Future ideas".
+- **UPAC / external-library backends** via stable public API only — ADR-0021.
 
 ---
 
@@ -136,6 +141,13 @@ problem.
 Captured so they are not forgotten. **Not scheduled and not started.** Before acting
 on any of these, revisit the engine's public API and record decisions in
 [DECISIONS.md](DECISIONS.md).
+
+> **The one principle behind all of these (ADR-0020):** JII is a *universal layer*
+> over the sources that already exist — not another package manager, not a new package
+> format, not a competitor to DNF/Flatpak/Homebrew. It unifies them under one honest
+> interface (search · choose · trust · install · manage) and never asks users to change
+> their habits. The test for every idea below is the same: **does it make the user's
+> life easier without making the architecture heavier?** If not, it doesn't ship.
 
 ### GUI frontend — a cross-provider "Discover"
 
@@ -275,3 +287,75 @@ best-effort cross-distro path. This is a fallback, never a default.
 tool), behind the same trait, trust model, and plan/confirmation flow — the core still
 never branches on the source. An experimental source simply carries a lower trust and an
 "experimental" marker in the model; it does not earn special cases in the engine.
+
+### Additional package managers — breadth, not a bigger core
+
+**Priority:** Phase 5 (user-space: Cargo, npm, pipx, Go) → Future (the rest). **Status:**
+partially planned.
+
+**Vision:** cover the sources users actually reach for, one `Provider` at a time:
+Cargo, npm, pipx, Go (Phase 5, no root, install into `~/.local/bin`), then AppImage,
+Snap, Homebrew (Linuxbrew), Nix, and — behind the platform abstraction — Pacman, Apt,
+Zypper for other distros.
+
+**Hard architectural rule:** **breadth is additive.** Each manager is a `Provider`
+behind the one trait (native Rust, or later a declarative `data/sources/*.toml`), and
+the core never branches on it (ADR-0004/0020). We add sources **because users need
+them, not to inflate a count** — the guiding test still applies: does it help users
+without making the architecture heavier? A manager that can't be expressed through the
+existing trait + model is a signal to grow the *model* deliberately (with an ADR), not
+to special-case the core.
+
+### Bootstrapping a missing manager — offer, never auto-install
+
+**Priority:** Future (pairs with the manager breadth above). **Status:** idea only.
+
+**Problem:** an application may exist *only* through a manager the user doesn't have
+installed (e.g. a formula available only via Homebrew).
+
+**Vision:** detect this and *offer* to bootstrap the manager, then the app — explicitly:
+
+> "This program is available only through Homebrew.
+>  Install Homebrew and then install the application?"
+
+**Philosophy (non-negotiable):** **never automatically.** Installing a whole package
+manager is a bigger commitment than installing one app, so it demands the strongest
+consent: the bootstrap is its own previewable `InstallPlan` step (`--dry-run`-able,
+shown in full), gated on explicit confirmation, and the manager's own official install
+method is used — no hidden `curl | sh` improvised by JII. If declined, JII simply
+reports that the app is only reachable that way.
+
+**Hard architectural rule:** "manager present?" is provider availability
+(`is_available`); the bootstrap is *actions in a plan*, not engine special-casing.
+Trust of a just-bootstrapped manager is the trust of that source — bootstrapping does
+not launder an untrusted source into a trusted one.
+
+### Provider-supplied metadata — for the GUI, fetched by providers only
+
+**Priority:** Future (prerequisite for the GUI/software-center). **Status:** idea only.
+
+**Vision:** richer listings — **icons, descriptions, screenshots, homepage, changelog**
+— so a future GUI can render real application cards.
+
+**Hard architectural rule:** **all metadata flows through the `Provider`/model**, the
+same path candidates already take. A frontend (GUI included) **never fetches anything
+itself** — it renders what the engine, via providers, produced. This keeps one code
+path, one trust boundary, and one cache; it also means the CLI can expose the same data
+(e.g. `--json`) for free. Metadata is *additive* on the model (optional fields a
+provider may populate), not a new subsystem; providers that have no such data simply
+omit it, with no core branching.
+
+### UPAC / external-library backends — cooperate via a stable public API
+
+**Priority:** Future, gated on an external milestone. **Status:** design-only (see
+[DECISIONS.md](DECISIONS.md) ADR-0021).
+
+**Context:** the author of **UPAC** has agreed to collaborate. The intent is *not* for
+either project to absorb the other — each evolves independently. If `libupac` becomes a
+public, stable library that solves some task better than JII's own code, JII can use it
+as a **backend/provider** *there*.
+
+**Hard architectural rule (ADR-0021):** integrate **only through UPAC's stable public
+API**, never its internals; model it as just another `Provider`; and **implement
+nothing until that API exists** — for now this is architecture on paper only. JII must
+not depend on UPAC's internal types or unreleased behavior.
