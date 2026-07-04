@@ -33,16 +33,14 @@ pub trait Provider: Send + Sync {
     /// Build an install plan without executing it.
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan>;
 
-    /// Build a removal plan for a previously installed record. (Called from Phase 2.)
-    #[allow(dead_code)]
+    /// Build a removal plan for a previously installed record.
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 
     /// Build an update plan for a previously installed record. (Called from Phase 5.)
     #[allow(dead_code)]
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 
-    /// What is installed via this source, to verify the registry. (Called from Phase 2.)
-    #[allow(dead_code)]
+    /// What is installed via this source, to verify the registry.
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>>;
 }
 

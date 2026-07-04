@@ -75,6 +75,17 @@ pub enum TrustLevel {
     Untrusted,
 }
 
+impl TrustLevel {
+    /// Lowercase human label, e.g. for prompts and `why`.
+    pub fn label(&self) -> &'static str {
+        match self {
+            TrustLevel::Official => "official",
+            TrustLevel::Community => "community",
+            TrustLevel::Untrusted => "untrusted",
+        }
+    }
+}
+
 /// Reported health of a source, used by `doctor` and as a ranking tie-breaker.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Health {

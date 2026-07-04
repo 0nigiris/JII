@@ -105,6 +105,8 @@ pub enum Commands {
     Doctor,
     /// List software installed via JII.
     List,
+    /// Show installation history.
+    History,
 }
 
 impl Cli {
@@ -134,14 +136,17 @@ impl Cli {
                 }
             },
 
-            // Everything else is stubbed until its phase (ROADMAP.md).
-            Some(Commands::Remove { .. }) => not_yet(&renderer, "remove", "Phase 2"),
+            // Implemented in Phase 2.
+            Some(Commands::Remove { package }) => self.remove(package, config, &renderer).await,
+            Some(Commands::Why { package }) => self.why(package, config, &renderer),
+            Some(Commands::List) => self.list(config, &renderer),
+            Some(Commands::History) => self.history(config, &renderer),
+
+            // Stubbed until their phase (ROADMAP.md).
             Some(Commands::Update { .. }) => not_yet(&renderer, "update", "Phase 5"),
             Some(Commands::Search { .. }) => not_yet(&renderer, "search", "Phase 3"),
             Some(Commands::Info { .. }) => not_yet(&renderer, "info", "Phase 3"),
-            Some(Commands::Why { .. }) => not_yet(&renderer, "why", "Phase 2"),
             Some(Commands::Doctor) => not_yet(&renderer, "doctor", "Phase 3"),
-            Some(Commands::List) => not_yet(&renderer, "list", "Phase 2"),
         }
     }
 
@@ -154,7 +159,7 @@ impl Cli {
     ) -> crate::error::Result<()> {
         crate::platform::Platform::detect().require_supported()?;
 
-        let engine = Engine::new(config);
+        let mut engine = Engine::new(config)?;
         if !engine.has_providers() {
             renderer.error("No installation sources are enabled.");
             return Ok(());
@@ -169,7 +174,7 @@ impl Cli {
         }
 
         let ranked = engine.rank(result.candidates);
-        let best = match ranked.first() {
+        let best = match ranked.into_iter().next() {
             Some(c) => c,
             None => {
                 renderer.error(&format!("No installation candidate found for '{package}'."));
@@ -177,7 +182,7 @@ impl Cli {
             }
         };
 
-        let plan = engine.plan_install(best).await?;
+        let plan = engine.plan_install(&best).await?;
         renderer.plan(&plan);
 
         if self.global.dry_run {
@@ -185,19 +190,145 @@ impl Cli {
             return Ok(());
         }
 
-        let flags = PromptFlags {
-            auto: self.global.auto || engine.config().install.auto,
-            yes: self.global.yes,
-            no: self.global.no,
-        };
-        if !prompt::confirm_install(renderer, best, engine.config(), &flags) {
+        let flags = self.prompt_flags(engine.config().install.auto);
+        if !prompt::confirm_install(renderer, &best, engine.config(), &flags) {
             renderer.info("Aborted.");
             return Ok(());
         }
 
-        engine.execute(&plan, renderer).await?;
+        engine.install(&plan, &best, renderer).await?;
         renderer.success(&format!("Installed {package} via {}.", plan.source_id));
         Ok(())
+    }
+
+    /// Remove path: resolve the owning source (registry + verification), plan, and
+    /// execute the removal.
+    async fn remove(
+        &self,
+        package: &str,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        crate::platform::Platform::detect().require_supported()?;
+
+        let mut engine = Engine::new(config)?;
+        let record = match engine.resolve_installed(package).await {
+            Ok(r) => r,
+            Err(e) => {
+                renderer.error(&e.to_string());
+                return Ok(());
+            }
+        };
+
+        let plan = engine.plan_remove(&record).await?;
+        renderer.plan(&plan);
+
+        if self.global.dry_run {
+            renderer.info("(dry-run: nothing was removed)");
+            return Ok(());
+        }
+
+        let flags = self.prompt_flags(false);
+        if !prompt::confirm(renderer, &format!("Remove {package}?"), false, &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+
+        engine.remove(&plan, &record, renderer).await?;
+        renderer.success(&format!("Removed {package} via {}.", record.source_id));
+        Ok(())
+    }
+
+    /// Explain how and why a package was installed (from the registry).
+    fn why(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        match engine.registry().get(package) {
+            None => {
+                renderer.warn(&format!(
+                    "'{package}' was not installed by jii (no record). Try `jii {package}`."
+                ));
+            }
+            Some(record) => {
+                let trust = engine
+                    .source_trust(&record.source_id)
+                    .map(|t| t.label())
+                    .unwrap_or("unknown");
+                let version = record
+                    .version
+                    .as_ref()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+                renderer.info(&format!(
+                    "Installed via {} on {}",
+                    record.source_id,
+                    record.installed_at.format("%Y-%m-%d %H:%M")
+                ));
+                renderer.info(&format!("  ✓ Version {version}"));
+                renderer.info(&format!("  ✓ Source trust: {trust}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// List software installed via jii.
+    fn list(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let items = engine.registry().installed();
+
+        if renderer.is_json() {
+            renderer.json_value(&serde_json::json!(items));
+            return Ok(());
+        }
+        if items.is_empty() {
+            renderer.info("Nothing installed via jii yet.");
+            return Ok(());
+        }
+        for record in items {
+            let version = record
+                .version
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            renderer.info(&format!(
+                "{}  {}  {}",
+                record.name, record.source_id, version
+            ));
+        }
+        Ok(())
+    }
+
+    /// Show installation history, newest first.
+    fn history(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let events = engine.registry().history();
+
+        if renderer.is_json() {
+            renderer.json_value(&serde_json::json!(events));
+            return Ok(());
+        }
+        if events.is_empty() {
+            renderer.info("No history yet.");
+            return Ok(());
+        }
+        for event in events.iter().rev() {
+            renderer.info(&format!(
+                "{}  {:?}  {} ({})",
+                event.at.format("%Y-%m-%d %H:%M"),
+                event.action,
+                event.name,
+                event.source_id
+            ));
+        }
+        Ok(())
+    }
+
+    /// Build prompt flags from CLI globals, folding in a config `auto` default.
+    fn prompt_flags(&self, config_auto: bool) -> PromptFlags {
+        PromptFlags {
+            auto: self.global.auto || config_auto,
+            yes: self.global.yes,
+            no: self.global.no,
+        }
     }
 }
 

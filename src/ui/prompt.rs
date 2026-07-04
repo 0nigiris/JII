@@ -8,7 +8,7 @@
 use std::io::{self, Write};
 
 use crate::config::Config;
-use crate::model::{PackageCandidate, TrustLevel};
+use crate::model::PackageCandidate;
 use crate::platform::Platform;
 use crate::ui::Renderer;
 
@@ -40,38 +40,41 @@ pub fn confirm_install(
         renderer.warn(&format!(
             "'{}' comes from a less-trusted source ({}) — explicit confirmation required.",
             candidate.name,
-            trust_label(candidate.trust),
+            candidate.trust.label(),
         ));
         // Default to "no" for less-trusted sources.
-        return ask(renderer, false);
+        return ask(renderer, "Install?", false);
     }
 
     // Trusted enough: --auto or --yes skip the prompt.
     if flags.auto || flags.yes {
         return true;
     }
-    ask(renderer, config.install.default_yes)
+    ask(renderer, "Install?", config.install.default_yes)
 }
 
-/// Human label for a trust level.
-fn trust_label(trust: TrustLevel) -> &'static str {
-    match trust {
-        TrustLevel::Official => "official",
-        TrustLevel::Community => "community",
-        TrustLevel::Untrusted => "untrusted",
+/// A plain yes/no confirmation (e.g. for removal). Honors `--no`/`--yes`/`--auto`;
+/// otherwise asks with the given default.
+pub fn confirm(renderer: &Renderer, question: &str, default_yes: bool, flags: &PromptFlags) -> bool {
+    if flags.no {
+        return false;
     }
+    if flags.yes || flags.auto {
+        return true;
+    }
+    ask(renderer, question, default_yes)
 }
 
-/// Ask a yes/no question with a default. Falls back to the default when there is no
-/// interactive terminal (so scripts behave predictably).
-fn ask(renderer: &Renderer, default_yes: bool) -> bool {
+/// Ask a yes/no `question` with a default. Falls back to the default when there is
+/// no interactive terminal (so scripts behave predictably).
+fn ask(renderer: &Renderer, question: &str, default_yes: bool) -> bool {
     // In JSON mode or without a TTY there is no one to prompt; use the default.
     if renderer.is_json() || !Platform::detect().is_tty {
         return default_yes;
     }
 
     let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
-    print!("Install? {hint} ");
+    print!("{question} {hint} ");
     let _ = io::stdout().flush();
 
     let mut line = String::new();

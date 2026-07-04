@@ -11,6 +11,7 @@ mod model;
 mod platform;
 mod privilege;
 mod provider;
+mod registry;
 mod ui;
 
 use clap::Parser;

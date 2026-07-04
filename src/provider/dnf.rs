@@ -162,8 +162,6 @@ fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
 }
 
 /// Parse `repoquery --installed` output into records. Lines are `name<TAB>evr`.
-/// Wired into `list_installed` and used by registry verification in Phase 2.
-#[allow(dead_code)]
 fn parse_installed(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
     let now = chrono::Utc::now();
     nonempty_lines(stdout)

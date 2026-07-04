@@ -31,6 +31,11 @@ impl Renderer {
         self.json
     }
 
+    /// Print a JSON value verbatim (for list/history machine output).
+    pub fn json_value(&self, value: &serde_json::Value) {
+        println!("{value}");
+    }
+
     /// A neutral informational line.
     pub fn info(&self, msg: &str) {
         if self.json {
