@@ -142,11 +142,12 @@ impl Cli {
             Some(Commands::List) => self.list(config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
 
+            Some(Commands::Doctor) => self.doctor(config, &renderer).await,
+
             // Stubbed until their phase (ROADMAP.md).
             Some(Commands::Update { .. }) => not_yet(&renderer, "update", "Phase 5"),
             Some(Commands::Search { .. }) => not_yet(&renderer, "search", "Phase 3"),
             Some(Commands::Info { .. }) => not_yet(&renderer, "info", "Phase 3"),
-            Some(Commands::Doctor) => not_yet(&renderer, "doctor", "Phase 3"),
         }
     }
 
@@ -332,6 +333,39 @@ impl Cli {
             renderer.info(&format!(
                 "{}  {}  {}",
                 record.name, record.source_id, version
+            ));
+        }
+        Ok(())
+    }
+
+    /// Report source availability, latency and health.
+    async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let diagnostics = engine.diagnose().await;
+
+        if renderer.is_json() {
+            let rows: Vec<_> = diagnostics
+                .iter()
+                .map(|d| {
+                    serde_json::json!({
+                        "source": d.id,
+                        "available": d.available,
+                        "latency_ms": d.latency.as_millis(),
+                        "health": d.health.label(),
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        for d in &diagnostics {
+            let mark = if d.available { "✓" } else { "✗" };
+            renderer.info(&format!(
+                "{mark} {:8}  {:8}  {} ms",
+                d.id,
+                d.health.label(),
+                d.latency.as_millis()
             ));
         }
         Ok(())

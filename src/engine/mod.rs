@@ -6,14 +6,14 @@
 
 pub mod ranking;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 
 use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, Query};
+use crate::model::{Health, InstallPlan, InstalledRecord, PackageCandidate, Query};
 use crate::privilege::Privilege;
 use crate::provider::ProviderRegistry;
 use crate::registry::Registry;
@@ -25,6 +25,14 @@ pub struct SearchResult {
     pub candidates: Vec<PackageCandidate>,
     /// `(source_id, reason)` for each source that was unavailable or errored.
     pub failed: Vec<(String, String)>,
+}
+
+/// Diagnostic for one source, produced by `diagnose` (backs `jii doctor`).
+pub struct SourceHealth {
+    pub id: String,
+    pub available: bool,
+    pub latency: Duration,
+    pub health: Health,
 }
 
 /// The orchestrator.
@@ -213,6 +221,32 @@ impl Engine {
     /// Trust level of a source, if it is enabled.
     pub fn source_trust(&self, source_id: &str) -> Option<crate::model::TrustLevel> {
         self.providers.get(source_id).map(|p| p.trust())
+    }
+
+    /// Probe each provider's availability and latency (backs `jii doctor`).
+    pub async fn diagnose(&self) -> Vec<SourceHealth> {
+        let timeout = Duration::from_secs(self.config.network.timeout_secs);
+        let mut out = Vec::new();
+        for provider in self.providers.iter() {
+            let start = Instant::now();
+            let available =
+                matches!(tokio::time::timeout(timeout, provider.is_available()).await, Ok(true));
+            let latency = start.elapsed();
+            let health = if !available {
+                Health::Offline
+            } else if latency > Duration::from_secs(2) {
+                Health::Slow
+            } else {
+                Health::Healthy
+            };
+            out.push(SourceHealth {
+                id: provider.id().to_string(),
+                available,
+                latency,
+                health,
+            });
+        }
+        out
     }
 
     /// Access the effective configuration.

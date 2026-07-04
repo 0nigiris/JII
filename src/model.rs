@@ -95,6 +95,18 @@ pub enum Health {
     RateLimited,
 }
 
+impl Health {
+    /// Lowercase human label for display.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Health::Healthy => "healthy",
+            Health::Slow => "slow",
+            Health::Offline => "offline",
+            Health::RateLimited => "rate-limited",
+        }
+    }
+}
+
 /// How an artifact can be verified before installation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verification {
