@@ -28,17 +28,18 @@ cache + doctor).
 
 ## Last completed work
 
-**`Action::Extract` + `.tar.gz` archive releases** — the execution model gained an
-`Extract` action (`exec.rs`): download+verify the archive, then extract the binary
-(located by name, else the sole executable file) into `~/.local/bin`. The github
-provider now selects tarballs too (a raw binary is still preferred when both exist).
-Verified end-to-end with a real `sharkdp/fd` install→run→remove. See ADR-0016.
+**COPR provider** (`provider/copr.rs`) — COPR API `project/search` → the exact
+project-name match that builds for the host Fedora/arch (preferring the most chroots
+as a rough maintenance signal); plans the two privileged steps `dnf5 -y copr enable
+owner/project` → `dnf5 -y install <name>`; `community` trust; `is_installed` verifies
+via rpm; `list_installed` empty (COPR packages are ordinary RPMs). All network in
+`search`, so `plan_install` is pure. Integrates through the existing ranking with no
+engine special-case. Verified via real API search + `--dry-run` (the privileged
+install was **not** run — it modifies the system). See ADR-0017.
 
-Prior slices this builds on: `jii remove` for github file-based installs
-(`Provider::is_installed`); the GitHub Releases provider (raw-binary — `owner/repo` →
-latest release, arch/OS asset filter, network-in-search, sha256 enforced, untrusted
-trust, `GITHUB_TOKEN`; ADR-0014); the execution model (`Action` enum + `exec.rs`,
-ADR-0007). All verified end-to-end.
+Prior Phase 4 slices, all verified end-to-end: `Action::Extract` + `.tar.gz` (ADR-0016);
+github `jii remove` (`Provider::is_installed`); GitHub Releases provider (raw-binary,
+ADR-0014); the execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
@@ -46,12 +47,14 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-Continue Phase 4. In rough priority order:
+**Re-evaluate remaining Phase 4 before adding new providers** (per the user). What's
+left in Phase 4:
 
-1. **`provider/copr.rs`** — COPR web-API project search, root repo-enable, trust.
-2. **`jii audit`** and **rate-limit health in `doctor`** (GitHub).
+1. **`jii audit`** — signatures/sha256/GPG/sigstore, source, trust per installed item.
+2. **Rate-limit health in `doctor`** (GitHub); COPR/GitHub reachability in `doctor`.
 3. Broad name→repo resolution and release pagination for github.
 4. More archive formats (`.zip`, `.tar.xz`) if real tools need them.
+5. Better COPR project disambiguation if the chroot-count heuristic proves weak.
 
 Full list in [TASKS.md](TASKS.md) Phase 4.
 
@@ -65,12 +68,13 @@ None.
 
 ## Test status
 
-`cargo test` — **58 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **65 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz
-extract + member selection, run_action), and github (owner/repo parsing, release
-JSON, asset selection incl. musl preference + binary-over-tarball + archive kinds,
-checksums parsing, plan shape for binary and archive).
+extract + member selection, run_action), github (owner/repo parsing, release JSON,
+asset selection incl. musl + binary-over-tarball + archive kinds, checksums, plan
+shapes), and copr (search parsing, exact-name + fedora/arch chroot selection,
+community candidate, two-step root plan).
 
 ## Environment & commands
 
@@ -101,6 +105,10 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 
 ## Known technical debt
 
+- **COPR project ambiguity** — several projects can share a package name; we pick the
+  exact-name match building for the most Fedora chroots, but that is a weak signal (a
+  fork may build widely). The visible `owner/project` in the plan + confirmation is the
+  safety net. A real popularity/quality metric isn't in the search API (ADR-0017).
 - **GitHub archives: only `.tar.gz`/`.tgz`** — `.zip` / `.tar.xz`-only releases still
   yield no candidate (ADR-0016). Add formats when a real tool needs them.
 - **GitHub binary named after the repo** — the placed file is `~/.local/bin/<repo>`;

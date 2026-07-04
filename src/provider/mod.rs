@@ -10,6 +10,7 @@ use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
+pub mod copr;
 pub mod dnf;
 pub mod flatpak;
 pub mod github;
@@ -71,6 +72,11 @@ impl ProviderRegistry {
         // Register known providers; later phases add more here.
         if config.is_enabled("dnf") {
             providers.push(Box::new(dnf::Dnf::new()));
+        }
+        if config.is_enabled("copr") {
+            providers.push(Box::new(copr::Copr::new(
+                crate::platform::Platform::detect().arch,
+            )));
         }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));

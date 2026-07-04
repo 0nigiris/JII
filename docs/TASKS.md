@@ -110,7 +110,12 @@ land. Keep tasks small enough to complete and verify in one sitting.
       both exist). Verified: real `sharkdp/fd` install→run→remove. See ADR-0016.
 - [ ] **github follow-ups:** more archive formats (`.zip`, `.tar.xz`); broad name→repo
       resolution; release pagination.
-- [ ] `provider/copr.rs`: COPR web-API project search, root repo-enable, trust handling.
+- [x] `provider/copr.rs`: COPR API `project/search` → exact project-name match that
+      builds for the host Fedora/arch (prefer most chroots); two-step root plan
+      (`dnf5 -y copr enable owner/project` → `dnf5 -y install <name>`); community trust;
+      `is_installed` via rpm. Integrates through ranking, no engine special-case.
+      Verified via real API search + `--dry-run` (privileged install not run — system
+      change). See ADR-0017.
 - [ ] `cli/commands/audit.rs`; rate-limit health in `doctor`.
 - [x] **Verify:** installing a GitHub release verifies the artifact & respects trust —
       real `jqlang/jq` install in an isolated HOME: sha256 matched, binary runs, registry

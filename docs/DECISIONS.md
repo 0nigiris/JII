@@ -446,3 +446,47 @@ preferred when a release offers both.
   (fine for CLI tools). Revisit with streaming if it ever matters.
 - Adding a format = one more branch in the extractor + widening `classify` in github;
   the action and provider contracts don't change.
+
+---
+
+## ADR-0017 — COPR provider: exact project-name match, two-step root plan
+
+**Status:** Accepted
+
+**Decision:** COPR has no package search, only `project/search`. The provider resolves
+a query to the COPR project whose **name equals the query** (so the package name is
+known) and that **builds for the host Fedora/arch**, preferring the one with the most
+Fedora chroots. It plans the two privileged steps a user runs by hand —
+`dnf5 -y copr enable <owner>/<project>` then `dnf5 -y install <name>` — at `community`
+trust. All network is in `search`; `is_installed` verifies via rpm; `list_installed`
+is empty (COPR packages are ordinary RPMs and can't be attributed to COPR).
+
+**Reason:**
+- **Exact project-name match** — COPR project search is noisy (matches descriptions,
+  returns 50 loosely-related projects). Requiring `projectname == query` means the
+  package to install is known (`== name`) and avoids installing something unrelated.
+- **Fedora/arch chroot filter** — only offer projects that actually build for the
+  running system, so the plan won't fail at `dnf5 install`.
+- **Two root `RunCommand`s** — this is exactly what a user does manually; it fits the
+  existing command-execution model with no new action type. `-y` is a global dnf5
+  option, so it precedes `copr` (`dnf5 -y copr enable …`).
+- **`community` trust** — COPR repos are user add-ons; below-official but not arbitrary
+  binaries. The exact `owner/project` is shown in the plan for confirmation.
+
+**Alternatives considered:**
+- Query a package-list API per project to confirm the package — rejected: N extra
+  calls per search; exact project-name match is a good-enough, cheap proxy.
+- Accept substring name matches — rejected: the package name becomes unknown and the
+  install target ambiguous.
+- Rank same-named projects by real popularity — no such metric in `project/search`;
+  the chroot-count heuristic is the best cheap signal, backed by the visible-plan +
+  confirmation safety net.
+
+**Consequences:**
+- **Ambiguous picks are possible** among identically-named projects (a widely-building
+  fork can win the heuristic). Mitigated by showing `owner/project` and requiring
+  confirmation; a better signal is future work.
+- No version in the candidate (COPR search gives none); the plan shows the repo and
+  package, not a version.
+- `search` hits the COPR API on every query; results are cached by the engine and the
+  call is bounded by the per-source timeout with graceful degradation (ADR-0010).
