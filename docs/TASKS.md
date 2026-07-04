@@ -44,13 +44,20 @@ land. Keep tasks small enough to complete and verify in one sitting.
 > - `#![allow(dead_code)]` narrowed from crate-wide to `model.rs` plus a few
 >   targeted, phase-labelled items; cli/engine/ui/config/privilege are allow-free.
 
-## Phase 2 — State, remove, why 🎯
+## Phase 2 — State, remove, why 🎯 ✅
 
-- [ ] `registry.rs`: JSON store under `~/.local/state/jii/`; load/save; write **only on success**.
-- [ ] Verification: reconcile registry with `dnf list installed`.
-- [ ] `cli/commands/remove.rs`: resolve source → plan_remove → execute.
-- [ ] `cli/commands/{list,why,history}.rs`.
-- [ ] **Verify:** install → `list`/`why` reflect it → `remove` uses the recorded source.
+- [x] `registry.rs`: JSON store under `~/.local/state/jii/state.json`; load/save; write
+      **only on success**; install/remove history log (+ 4 unit tests).
+- [x] Verification: `Engine::resolve_installed` uses the registry as a hint but verifies
+      against `dnf repoquery --installed`; falls back to scanning providers when stale.
+- [x] `remove`: resolve source → `plan_remove` → confirm → execute → record.
+- [x] `list`, `why`, `history` (added a `History` command to the CLI surface).
+- [x] **Verify:** install → `list`/`why`/`history` reflect it → `remove` uses the recorded
+      source; scan-fallback and "not installed" paths checked. 23 unit tests pass.
+
+> Note: `list`/`why`/`history`/`remove` are implemented as methods on `Cli` in
+> `cli/mod.rs` rather than separate `cli/commands/*.rs` files — the command surface is
+> still small. Split into per-command modules if `cli/mod.rs` grows unwieldy.
 
 ## Phase 3 — Multiple sources & ranking 🎯
 
