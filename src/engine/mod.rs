@@ -201,6 +201,11 @@ impl Engine {
         self.provider(&record.source_id)?.plan_remove(record).await
     }
 
+    /// Build an update plan for a recorded install via its owning provider.
+    pub async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
+        self.provider(&record.source_id)?.plan_update(record).await
+    }
+
     /// Execute an install plan, then record it. The single privileged + registry
     /// write path for installs.
     pub async fn install(
@@ -214,6 +219,28 @@ impl Engine {
             name: candidate.name.clone(),
             source_id: candidate.source_id.clone(),
             version: candidate.version.clone(),
+            installed_at: Utc::now(),
+            verification: plan_verification(plan),
+        });
+        self.registry.save()
+    }
+
+    /// Execute an update plan, then refresh the registry record. Mirrors [`install`]
+    /// (same execute-then-write path) but logs an update and carries the refreshed
+    /// version: `new_version` is the just-installed latest (from a re-search), falling
+    /// back to the prior recorded version when the owning source no longer reports one.
+    pub async fn update(
+        &mut self,
+        plan: &InstallPlan,
+        record: &InstalledRecord,
+        new_version: Option<PkgVersion>,
+        renderer: &Renderer,
+    ) -> Result<()> {
+        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
+        self.registry.record_update(InstalledRecord {
+            name: record.name.clone(),
+            source_id: record.source_id.clone(),
+            version: new_version.or_else(|| record.version.clone()),
             installed_at: Utc::now(),
             verification: plan_verification(plan),
         });

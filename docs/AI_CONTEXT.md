@@ -22,15 +22,30 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Phase 5 — user-space sources & update (in progress).** Phases 0–4 done and verified.
+**Phase 5 — user-space sources & update (wrapping up).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
-these providers. **`cargo`, `npm`, `pipx`, `go` are done** — pure `Provider`s, no core
-change. The four user-space providers now share two helpers (`get_json_opt`,
-`command_plan`). Next: `jii update` (wire the existing `plan_update` across managers).
+these providers. **`cargo`, `npm`, `pipx`, `go` are done** (pure `Provider`s, sharing
+`get_json_opt`/`command_plan`), and **`jii update` is done** — no per-source branching.
+Next: the post-8-provider **architecture review** (requested), then choose the next
+provider.
 
 ## Last completed work
 
-**`provider/go.rs` (Go modules, via `go install`)** + the pre-`go` helper refactor
+**`jii update [<pkg>]`.** Wires the existing per-provider `plan_update` into a command,
+with no per-source branching (ADR-0004 holds). For one named package (must be installed)
+or every registry record, it re-searches the **owning** source via the normal search→rank
+path (filtered by `source_id`) to get the latest version, **skips provably-current
+packages** (exact version-string equality → an up-to-date system is a clean no-op, not a
+reinstall), then runs each `plan_update` through the same preview → confirm (a single batch
+prompt) → execute pipeline as install/remove. Engine gained `plan_update`/`update`; the
+registry gained `record_update` (logs a history `Update`, refreshes the stored version),
+sharing an `upsert` helper with `record_install` so the "replace + log + push" invariant
+lives in one place. Version handling is honest: it records the just-installed latest from
+the re-search, falling back to the prior version only when the source no longer reports one.
+Verified end-to-end via `--dry-run` (a simulated go install showing `v0.60.0 → v0.73.1` +
+the `go install …@latest` plan), the no-op path, and the missing-package error. 96 tests.
+
+**Prior — `provider/go.rs` (Go modules, via `go install`)** + the pre-`go` helper refactor
 (commit `f2e8377`). go is the 4th user-space provider, mirroring cargo/pipx: `search`
 resolves a module path via the Go module proxy (`{proxy}/<mod>/@latest`, uppercase → `!x`
 escaping), `plan_install`/`plan_update` = one unprivileged `go install <mod>@latest` into
@@ -127,14 +142,15 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Phase 5 — `jii update`.** All four user-space providers plus dnf/copr/flatpak/github
-already implement `plan_update`; the remaining work is the command surface: a `jii update
-[<pkg>]` that, for one package or every registry record, resolves the owning provider,
-builds its update plan, and runs the batch through the normal preview/confirm/execute path
-(reusing the engine's install/remove flow — no per-source branching). Respect trust
-thresholds and `--dry-run`. Decide behaviour for "already newest" (cargo/npm/go reinstall
-`@latest`; pipx/dnf have real upgrades) — a no-op should read as a no-op, not a reinstall
-surprise; if that needs a version compare, note it as follow-up rather than inventing one.
+**Post-8-provider architecture review, then choose the next provider.** With
+dnf/copr/flatpak/github/cargo/npm/pipx/go all landed plus `jii update`, do a written
+whole-project architecture review (what proved out, what disappointed, what got harder to
+follow, what to do differently, over- vs under-generalised spots, what will last), then
+sync `ARCHITECTURE.md` to the real code where it has drifted (docs only — no code change
+for docs' sake). Only after that, pick and argue for the next provider (not necessarily
+Homebrew) and give an architectural read on the big future directions (version mgmt, repo
+chooser, metadata API, bootstrap, `doctor --fix`, `jii setup`, GUI, Discover/GNOME
+Software, UPAC). No new heuristics that could hide a real program.
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):
@@ -156,8 +172,9 @@ None.
 
 ## Test status
 
-`cargo test` — **95 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
-registry, cache, privilege elevation prefixing, the executor (sha256 digest,
+`cargo test` — **96 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+registry (incl. `record_update` version refresh + `Update` history), cache, privilege
+elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
 zip** extract + member selection, unknown-format rejection, run_action), github
 (owner/repo, release JSON, asset selection incl. `.zip`/tar.gz preference, checksums,

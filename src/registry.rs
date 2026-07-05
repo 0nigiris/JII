@@ -90,10 +90,24 @@ impl Registry {
 
     /// Record a successful install (replacing any prior record of the same package).
     pub fn record_install(&mut self, record: InstalledRecord) {
+        self.upsert(Action::Install, record);
+    }
+
+    /// Record a successful update: replace the record with its new version/timestamp
+    /// and log it as an `Update` (an update is a reinstall-to-newest, so the stored
+    /// record is refreshed the same way — only the history verb differs).
+    pub fn record_update(&mut self, record: InstalledRecord) {
+        self.upsert(Action::Update, record);
+    }
+
+    /// Shared install/update write: replace any prior record of the same
+    /// package+source, log the change, and store the new record. One place so the
+    /// "replace + log + push" invariant can never drift between install and update.
+    fn upsert(&mut self, action: Action, record: InstalledRecord) {
         self.installed
             .retain(|r| !(r.name == record.name && r.source_id == record.source_id));
         self.history.push(HistoryEvent {
-            action: Action::Install,
+            action,
             name: record.name.clone(),
             source_id: record.source_id.clone(),
             version: record.version.clone(),
@@ -174,6 +188,22 @@ mod tests {
         assert!(reg.get("fastfetch").is_none());
         assert_eq!(reg.installed().len(), 0);
         assert_eq!(reg.history().last().unwrap().action, Action::Remove);
+    }
+
+    #[test]
+    fn update_refreshes_version_and_logs_as_update() {
+        let mut reg = Registry::default();
+        reg.record_install(record("ripgrep", "cargo")); // v1.0
+        let mut newer = record("ripgrep", "cargo");
+        newer.version = Some(PkgVersion::new("2.0"));
+        reg.record_update(newer);
+        // Still one record, now at the new version.
+        assert_eq!(reg.installed().len(), 1);
+        assert_eq!(reg.get("ripgrep").unwrap().version.as_ref().unwrap().0, "2.0");
+        // History logged the update with the new version.
+        let last = reg.history().last().unwrap();
+        assert_eq!(last.action, Action::Update);
+        assert_eq!(last.version.as_ref().unwrap().0, "2.0");
     }
 
     #[test]

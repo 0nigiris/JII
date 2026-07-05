@@ -190,7 +190,16 @@ land. Keep tasks small enough to complete and verify in one sitting.
       extract `PackageCandidate` construction (per-provider, would leak trust/arch_ok) or the
       tolerant "read stdout regardless of exit status" spawn (only npm + pipx = 2×, go didn't
       need it). Reduced maintenance cost, not line count. No new model (ADR-0022).
-- [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
+- [x] **`jii update [<pkg>]`** (in `cli/mod.rs`, not a separate file — the handler is
+      thin). One package or every registry record → for each, re-search the **owning**
+      source (normal search→rank path, filtered by `source_id`) for the latest version,
+      skip provably-current ones (exact version equality → clean no-op), then run the
+      provider's `plan_update` through the same preview → confirm (one batch prompt) →
+      execute pipeline as install/remove. No per-source branching (engine resolves the
+      provider). Engine gained `plan_update`/`update`; registry gained `record_update`
+      (logs history `Update`, refreshes the stored version) sharing an `upsert` helper
+      with `record_install`. Verified: end-to-end `--dry-run` (go: v0.60.0→v0.73.1
+      transition + plan), no-op path ("already up to date"), missing-package error.
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 
 ## Phase 6 — Declarative sources & catalog 🔭

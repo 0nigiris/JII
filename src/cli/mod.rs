@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 
 use crate::config::{ColorChoice, Config, Profile};
 use crate::engine::Engine;
-use crate::model::Query;
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, Query};
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
@@ -147,8 +147,11 @@ impl Cli {
             Some(Commands::Doctor) => self.doctor(config, &renderer).await,
             Some(Commands::Audit) => self.audit(config, &renderer),
 
+            Some(Commands::Update { package }) => {
+                self.update(package.as_deref(), config, &renderer).await
+            }
+
             // Stubbed until their phase (ROADMAP.md).
-            Some(Commands::Update { .. }) => not_yet(&renderer, "update", "Phase 5"),
             Some(Commands::Search { .. }) => not_yet(&renderer, "search", "Phase 3"),
             Some(Commands::Info { .. }) => not_yet(&renderer, "info", "Phase 3"),
         }
@@ -281,6 +284,139 @@ impl Cli {
         engine.remove(&plan, &record, renderer).await?;
         renderer.success(&format!("Removed {package} via {}.", record.source_id));
         Ok(())
+    }
+
+    /// Update path: for one named package or every recorded install, re-search its
+    /// owning source for the latest version and run that source's `plan_update` through
+    /// the same preview → confirm → execute pipeline as install/remove. There is no
+    /// per-source branching — the engine resolves each record's provider (ADR-0004).
+    async fn update(
+        &self,
+        package: Option<&str>,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        crate::platform::Platform::detect().require_supported()?;
+
+        let mut engine = Engine::new(self.apply_profile(config))?;
+        if !engine.has_providers() {
+            renderer.error("No installation sources are enabled.");
+            return Ok(());
+        }
+
+        // The records to consider: one named package (must be installed), or all.
+        let records = match package {
+            Some(name) => match engine.resolve_installed(name).await {
+                Ok(record) => vec![record],
+                Err(e) => {
+                    renderer.error(&e.to_string());
+                    return Ok(());
+                }
+            },
+            None => engine.registry().installed().to_vec(),
+        };
+        if records.is_empty() {
+            renderer.info("Nothing installed via jii yet.");
+            return Ok(());
+        }
+
+        // Build the update jobs: re-search each record's source for the latest version
+        // (same search→rank path as install), skip those already newest, and plan the
+        // update via the owning provider.
+        let mut jobs: Vec<UpdateJob> = Vec::new();
+        let mut up_to_date = 0usize;
+        for record in records {
+            if let Some(source) = &self.global.source
+                && &record.source_id != source
+            {
+                continue;
+            }
+            let target = self.latest_from_source(&engine, &record).await;
+            // Exact version match = already newest. Conservative: differing version
+            // formats never match, so we only ever *skip* a provably-current package —
+            // an up-to-date system reads as a clean no-op, not a surprise reinstall.
+            if let (Some(latest), Some(current)) = (&target, &record.version)
+                && latest.version.as_ref() == Some(current)
+            {
+                up_to_date += 1;
+                continue;
+            }
+            match engine.plan_update(&record).await {
+                Ok(plan) => jobs.push(UpdateJob { record, plan, target }),
+                Err(e) => renderer.warn(&format!("✗ {}: cannot plan update ({e})", record.name)),
+            }
+        }
+
+        if jobs.is_empty() {
+            if up_to_date > 0 {
+                renderer.success(&format!("All {up_to_date} package(s) already up to date."));
+            } else {
+                renderer.info("No updatable packages.");
+            }
+            return Ok(());
+        }
+
+        // Preview every planned update (with its version transition when known).
+        for job in &jobs {
+            if let Some(line) = job.transition() {
+                renderer.info(&line);
+            }
+            renderer.plan(&job.plan);
+        }
+        if up_to_date > 0 {
+            renderer.info(&format!("({up_to_date} already up to date)"));
+        }
+
+        if self.global.dry_run {
+            renderer.info("(dry-run: nothing was updated)");
+            return Ok(());
+        }
+
+        // One confirmation for the whole batch.
+        let flags = self.prompt_flags(engine.config().install.auto);
+        let question = if jobs.len() == 1 {
+            format!("Update {}?", jobs[0].record.name)
+        } else {
+            format!("Update {} packages?", jobs.len())
+        };
+        if !prompt::confirm(renderer, &question, true, &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+
+        // Execute each update, recording the refreshed version on success.
+        let mut updated = 0usize;
+        for job in &jobs {
+            let target_version = job.target.as_ref().and_then(|c| c.version.clone());
+            match engine.update(&job.plan, &job.record, target_version, renderer).await {
+                Ok(()) => {
+                    updated += 1;
+                    renderer.success(&format!(
+                        "Updated {} via {}.",
+                        job.record.name, job.record.source_id
+                    ));
+                }
+                Err(e) => renderer.error(&format!("Failed to update {}: {e}", job.record.name)),
+            }
+        }
+        if updated > 1 {
+            renderer.success(&format!("Updated {updated} package(s)."));
+        }
+        Ok(())
+    }
+
+    /// Re-search an installed record's **owning** source for its latest candidate (the
+    /// normal search→rank path, filtered to that source). `None` if the source no longer
+    /// offers it — the update can still proceed, just without a refreshed version.
+    async fn latest_from_source(
+        &self,
+        engine: &Engine,
+        record: &InstalledRecord,
+    ) -> Option<PackageCandidate> {
+        let query = Query::name(&record.name);
+        let mut ranked = engine.rank(engine.search(&query).await.candidates);
+        ranked.retain(|c| c.source_id == record.source_id);
+        ranked.into_iter().next()
     }
 
     /// Explain how and why a package was installed (from the registry).
@@ -472,6 +608,28 @@ impl Cli {
             yes: self.global.yes,
             no: self.global.no,
         }
+    }
+}
+
+/// One planned update: the record being updated, its `plan_update`, and the latest
+/// candidate from a re-search (used for the version transition shown in the preview
+/// and recorded on success). `target` is `None` when the owning source no longer
+/// offers the package.
+struct UpdateJob {
+    record: InstalledRecord,
+    plan: InstallPlan,
+    target: Option<PackageCandidate>,
+}
+
+impl UpdateJob {
+    /// A `name: current → latest` line, only when both versions are known and differ.
+    fn transition(&self) -> Option<String> {
+        let latest = self.target.as_ref()?.version.as_ref()?;
+        let current = self.record.version.as_ref()?;
+        if latest == current {
+            return None;
+        }
+        Some(format!("{}: {current} → {latest}", self.record.name))
     }
 }
 
