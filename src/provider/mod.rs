@@ -14,6 +14,7 @@ use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
+pub mod apt;
 pub mod cargo;
 pub mod copr;
 pub mod dnf;
@@ -153,6 +154,9 @@ impl ProviderRegistry {
             providers.push(Box::new(copr::Copr::new(
                 crate::platform::Platform::detect().arch,
             )));
+        }
+        if config.is_enabled("apt") {
+            providers.push(Box::new(apt::Apt::new()));
         }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));
