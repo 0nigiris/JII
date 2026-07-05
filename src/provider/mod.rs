@@ -20,6 +20,7 @@ pub mod dnf;
 pub mod flatpak;
 pub mod github;
 pub mod go;
+pub mod homebrew;
 pub mod npm;
 pub mod pipx;
 
@@ -172,6 +173,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("go") {
             providers.push(Box::new(go::Go::new()));
+        }
+        if config.is_enabled("brew") {
+            providers.push(Box::new(homebrew::Homebrew::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

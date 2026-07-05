@@ -15,7 +15,7 @@ use crate::model::TrustLevel;
 /// Providers are wired in over later phases; this list is the contract the config
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
-    "dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go", "appimage",
+    "dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go", "brew", "appimage",
 ];
 
 /// Top-level configuration.
@@ -100,7 +100,7 @@ impl Default for SourcesConfig {
     fn default() -> Self {
         SourcesConfig {
             priority: [
-                "dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go",
+                "dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go", "brew",
             ]
             .iter()
             .map(|s| s.to_string())
@@ -215,8 +215,10 @@ mod tests {
     #[test]
     fn rejects_unknown_source() {
         let mut cfg = Config::default();
-        cfg.sources.priority.push("brew".to_string());
-        assert!(matches!(cfg.validate(), Err(JiiError::UnknownSource(s)) if s == "brew"));
+        cfg.sources.priority.push("totally-unknown".to_string());
+        assert!(
+            matches!(cfg.validate(), Err(JiiError::UnknownSource(s)) if s == "totally-unknown")
+        );
     }
 
     #[test]

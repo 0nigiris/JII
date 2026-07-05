@@ -942,6 +942,57 @@ Supporting decisions:
   the source). `RecordBatch { plans, unplannable }` reports an un-actionable package (e.g. a
   github install has no update path) instead of aborting the batch — the `SearchResult`
   facts-not-failures shape. No `InstallPlan`/Executor/model change, confirming the prediction.
+
+## ADR-0027 — No shared `RegistryProvider` scaffold after five registry providers (evidence-based)
+
+**Status:** Accepted
+
+**Context:** Homebrew (`brew`) is the 5th "registry-user-space" provider after cargo, npm, pipx,
+go — all shaped alike (a network `search`, unprivileged `plan_*` commands, a `list_installed`
+parse, `community` trust). The standing question (ADR-0024): once the pattern recurs a 5th time,
+does a thin shared `RegistryProvider` scaffold pay off? The decision was to be made **from the
+real code**, not assumed.
+
+**Decision:** **Do not build a `RegistryProvider` scaffold. Keep the providers as separate
+files.** Measured against the five actual implementations, the only *identical* code is ~8 lines
+of boilerplate per file (`id`/`new`/`Default`, `trust() = Community`, `is_available() =
+which(BIN)` — and go even overrides `is_available`). Everything substantive is **irreducibly
+per-provider**:
+- **`search`** — different URL shape (`crates/{name}`, `/{pkg}/latest`, `/pypi/{pkg}/json`, the go
+  proxy with `!x` escaping, `/{name}.json`), different JSON structs, and different candidate
+  construction (cargo filters on `bin_names`, npm on `bin`, pipx/go/brew deliberately don't
+  filter — ADR-0023; go derives a module path; version fields differ).
+- **`plan_install`/`remove`/`update` (+`_many`)** — different verbs and argv shape (npm's
+  `--global --prefix`, go's `@latest`, brew's `install/uninstall/upgrade`). Their *shared*
+  part — assembling one `RunCommand` plan — is **already** the `command_plan` helper.
+- **`list_installed`** — completely different parsing (cargo's indented `--list`, npm/pipx JSON,
+  go's empty, brew's `list --versions`).
+
+What recurs is the **trait structure** (methods with the same names), which Rust's trait already
+mandates — not duplicated *logic*. The genuinely shared logic is already extracted as small
+stateless free functions in `provider/mod.rs` (`http_client`, `get_json_opt`, `command_plan`,
+`run_capture`, `which`, `nonempty_lines`, `parse_installed_records`). That is the right
+granularity of sharing.
+
+**Alternatives considered:**
+- **A `RegistryProvider` trait/struct** parameterised by a URL-builder, a candidate-parser, a
+  verb map, and a list-parser (closures or associated types). Rejected: each provider would still
+  supply all the varying parts (which are the substance), now wrapped in a second abstraction
+  everyone must learn. It trades ~8 boilerplate lines/provider for a new indirection layer — a net
+  readability loss, i.e. abstraction for symmetry, not for maintenance cost (violates the standing
+  rule: reduce maintenance cost, not line count).
+- **A shared `*_many` argv helper** across cargo/npm/brew. Rejected: the 5-line "extend argv with
+  names, join reasons" idiom varies (npm's prefix, go's `@latest`), so a shared helper would need
+  those as parameters and read worse than the inline version. 2–4 small copies with real variation
+  is within the duplication tolerance.
+
+**Consequences:**
+- New registry providers stay one self-contained file each, mirroring an existing one (cargo is
+  the reference), reusing the free-function helpers. The `/new-provider` guidance stands.
+- If a *future* provider introduces genuinely shared **logic** (not structure) — e.g. several
+  sources needing identical version-list fetching for the T5 version chooser — that specific logic
+  gets its own free-function helper when it hits the 3×/4× threshold, not a god-trait.
+- Revisit only if the identical surface grows well beyond boilerplate; today it does not.
 - **Further plan-merging across *different* sources is intentionally not pursued.** Merging
   is only ever within one source (that's the only place a single command is meaningful);
   cross-source "one super-command" is impossible and undesirable. The current granularity

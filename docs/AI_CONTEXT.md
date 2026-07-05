@@ -183,12 +183,22 @@ version transitions, single-package richer plan).
 
 ## Next recommended task
 
-**T3 — provider breadth on the proven shape: `provider/homebrew.rs` → `snap.rs` → `appimage.rs`.**
-Additive `Provider`s (ADR-0004/0020), each with `plan_install_many`/`plan_remove_many`/
-`plan_update_many` where the tool batches. **Empirical check at Homebrew** (5th registry-user-space
-provider): does a thin shared `RegistryProvider` scaffold finally pay off? Decide from evidence.
-Then T4 cross-distro, T5 choosers, T6 bootstrap, T7 hardening, T8 public polish. Homebrew details
-below.
+**T3 in progress — Homebrew done; Snap next, then AppImage.**
+
+**Homebrew (`brew`) landed:** `provider/homebrew.rs`, same proven shape as cargo/npm/pipx/go —
+formula API (`formulae.brew.sh/api/formula/<name>.json`) via `get_json_opt`, unprivileged `brew
+install/uninstall/upgrade` (+ `_many`), `brew list --versions`, community trust, no library filter
+(ADR-0023). Registered in config (`KNOWN_SOURCES` + default priority; `is_available` gates it off
+where `brew` is absent). **Empirical scaffold verdict — ADR-0027: NO shared `RegistryProvider`.**
+After 5 providers the only identical code is ~8 lines of boilerplate; `search`/plans/`list_installed`
+are irreducibly per-provider; the genuine sharing already lives in the free-function helpers
+(`get_json_opt`/`command_plan`/`run_capture`/`which`/…). Verified: real formula API shape matches
+the structs (curl), 404→empty, `jii sources` lists brew.
+
+**Next: `provider/snap.rs`** (snapd) — a **system** provider (snap install needs root, unlike the
+user-space registry providers), store search API. Then `provider/appimage.rs` (download + place,
+github-like; untrusted trust). After T3: **T4 cross-distro** (Apt/Pacman/Zypper/Nix behind the
+platform seam — its own ADR), T5 choosers, T6 bootstrap, T7 hardening, T8 public polish.
 
 **Phase 5 / T3 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
 post-8-provider architecture review concluded the architecture is healthy — no code change
@@ -231,7 +241,8 @@ None.
 
 ## Test status
 
-`cargo test` — **109 passing, 0 failing**. Coverage: `info`/`search` rendering helpers
+`cargo test` — **115 passing, 0 failing**. Coverage: homebrew (formula→candidate, unprivileged
+plan, `brew list --versions` parse, batch merge), `info`/`search` rendering helpers
 (`recommendation_reasons` source-agnostic rationale, `one_line`, `candidate_line`),
 `group_by_source` (first-seen order), batch remove/update merges (dnf root remove+upgrade,
 cargo uninstall, flatpak update), dnf/flatpak parsers, ranking,
@@ -314,7 +325,7 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
   provider/      Provider trait + http_client/get_json_opt/command_plan + dnf, copr,
-                 flatpak, github, cargo, npm, pipx, go
+                 flatpak, github, cargo, npm, pipx, go, homebrew
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)

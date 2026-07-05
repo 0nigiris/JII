@@ -252,8 +252,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       `plan_update` + `exec::run_plan` removed — one write-path). Verified via isolated
       `XDG_STATE_HOME` dry-runs: merged `dnf5 remove/upgrade -y a b`, mixed dnf+cargo
       grouping, version transitions, single-package richer plan. **109 tests.**
-- [ ] **T3 — Provider breadth:** `provider/homebrew.rs` → `snap.rs` → `appimage.rs`. Empirical
-      check at Homebrew: is a shared `RegistryProvider` scaffold now worth it?
+- [ ] **T3 — Provider breadth:** `provider/homebrew.rs` ✅ → `snap.rs` → `appimage.rs`.
+      - [x] **Homebrew** (`brew`, Linuxbrew): formula API (`formulae.brew.sh/api/formula/<n>.json`)
+            via `get_json_opt`; unprivileged `brew install/uninstall/upgrade` (+ `_many`);
+            `brew list --versions`; community trust; no library filter (ADR-0023). Registered
+            in config (`KNOWN_SOURCES` + default priority). **Empirical scaffold verdict
+            (ADR-0027): NO shared `RegistryProvider`** — after 5 providers the identical part is
+            ~8 lines of boilerplate; search/plans/list are irreducibly per-provider; the real
+            sharing already lives in the free-function helpers. 115 tests.
+      - [ ] **Snap** (`snap`, snapd) — system provider (snap install is root); store search API.
+      - [ ] **AppImage** — download + place (github-like); untrusted trust.
 - [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`
       behind the platform seam. Relax `Platform::is_supported`; distro-aware `is_available`.
       Own ADR for the "native system provider per distro" concept. Never break Fedora.

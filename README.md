@@ -10,7 +10,7 @@ You think about *software*. JII figures out *how* to install it — and explains
 ---
 
 JII is **not** a package manager. It sits on top of the ones you already have
-(DNF, COPR, Flatpak, GitHub Releases, Cargo, npm, pipx, Go…), searches all of them
+(DNF, COPR, Flatpak, GitHub Releases, Cargo, npm, pipx, Go, Homebrew…), searches all of them
 at once, ranks the results, and installs the best option — transparently.
 
 ```console
@@ -84,7 +84,7 @@ CLI flag > env > config > default.
 
 ```toml
 [sources]
-priority = ["dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go"]
+priority = ["dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go", "brew"]
 
 [install]
 profile = "stable"
