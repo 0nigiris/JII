@@ -137,6 +137,18 @@ jii/
 └─ tests/              integration tests (dry-run, ranking, parsers)
 ```
 
+> **As built (current, honest).** The tree above is the *target* layout; the code is
+> deliberately flatter until a module earns a split (YAGNI). Today: `engine/` is
+> `mod.rs` + `ranking.rs` only — search fan-out lives inline in `engine/mod.rs` (no
+> `search.rs`), and plan assembly is each provider's `plan_*` (no `plan.rs`). `ui/` is
+> `mod.rs` + `prompt.rs` (no `progress.rs`/`table.rs`; the renderer prints inline).
+> `cli/` is a single `mod.rs` — every command handler is a method on `Cli`, not a
+> `commands/` module (split it when it grows unwieldy — see AI_CONTEXT tech debt).
+> `provider/` has the eight native sources (dnf, copr, flatpak, github, cargo, npm, pipx,
+> go) plus shared helpers; `declarative.rs`, `appimage.rs`, and `data/sources/*.toml` are
+> **not built yet** (declarative providers are future work). `data/catalog.toml` aliases
+> are likewise pending.
+
 ---
 
 ## 5. Source providers
@@ -178,6 +190,15 @@ pub trait Provider: Send + Sync {
 > — version enumeration, provider metadata, manager bootstrap — are added the same way,
 > and a provider that can't do one inherits the default. `plan_install` returns a plan
 > of declarative `Action`s (see §9), not raw `Step`s.
+>
+> **Shared helpers (not trait methods).** Recurring *implementation* shapes — extracted
+> only once a third/fourth provider proved them, to cut maintenance cost, not lines — live
+> as free functions in `provider/mod.rs`: `http_client()` (the registry User-Agent /
+> transport), `get_json_opt()` (GET → `Ok(None)` on 404, else typed JSON — the exact-name
+> registry lookup shared by cargo/npm/pipx/go), and `command_plan()` (a one-`RunCommand`
+> `InstallPlan`, also used by dnf's root plans). Deliberately **not** extracted: the
+> `PackageCandidate` builder (per-provider; a shared one would leak trust/arch semantics)
+> and each source's `list_installed` parser (genuinely divergent per tool).
 
 ### Two kinds of providers
 
@@ -387,8 +408,12 @@ impl Engine {
     pub fn rank(&self, cands: Vec<PackageCandidate>) -> Vec<PackageCandidate>;
     pub async fn plan_install(&self, c: &PackageCandidate) -> Result<InstallPlan>;
     pub async fn plan_remove(&self, r: &InstalledRecord) -> Result<InstallPlan>;
+    pub async fn plan_update(&self, r: &InstalledRecord) -> Result<InstallPlan>;
     pub async fn install(&mut self, p: &InstallPlan, c: &PackageCandidate, r: &Renderer) -> Result<()>;
     pub async fn remove(&mut self, p: &InstallPlan, rec: &InstalledRecord, r: &Renderer) -> Result<()>;
+    // update = execute plan_update, then refresh the registry record (new version, logged Update).
+    pub async fn update(&mut self, p: &InstallPlan, rec: &InstalledRecord,
+                        new_version: Option<PkgVersion>, r: &Renderer) -> Result<()>;
     pub async fn resolve_installed(&self, name: &str) -> Result<InstalledRecord>;
     pub async fn diagnose(&self) -> Vec<SourceHealth>;                     // backs `doctor`
     pub fn audit(&self) -> Vec<AuditEntry>;                                // backs `audit`
@@ -396,8 +421,12 @@ impl Engine {
 ```
 
 `Engine::search` fans out over providers via `tokio`, each with a timeout; failed
-sources are tagged, not fatal. `install`/`remove` run the plan through `exec.rs` — the
-**only** place with privileges and the only place that writes the registry (on success).
+sources are tagged, not fatal. `install`/`remove`/`update` run the plan through `exec.rs`
+— the **only** place with privileges and the only place that writes the registry (on
+success). `update` reuses the search→rank path to re-resolve the latest version from the
+owning source, then runs its `plan_update` through the same preview → confirm → execute
+flow as install; there is no per-source branching (the engine resolves the provider by
+`source_id`).
 
 > **Known seam (ADR-0022).** `install`/`remove` currently take a `&Renderer` so the
 > executor can print progress — the one place a `ui` type reaches into the engine. To

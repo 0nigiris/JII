@@ -48,8 +48,7 @@ pub trait Provider: Send + Sync {
     /// Build a removal plan for a previously installed record.
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 
-    /// Build an update plan for a previously installed record. (Called from Phase 5.)
-    #[allow(dead_code)]
+    /// Build an update plan for a previously installed record (drives `jii update`).
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 
     /// What is installed via this source, to verify the registry.
@@ -153,12 +152,6 @@ impl ProviderRegistry {
     /// Look up a provider by id.
     pub fn get(&self, id: &str) -> Option<&dyn Provider> {
         self.iter().find(|p| p.id() == id)
-    }
-
-    /// Number of enabled providers (used by `doctor` in Phase 3).
-    #[allow(dead_code)]
-    pub fn len(&self) -> usize {
-        self.providers.len()
     }
 
     /// Whether no providers are enabled.
