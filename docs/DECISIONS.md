@@ -1122,3 +1122,94 @@ driven, none a core branch), to be detailed in their own ADRs when their track l
   its own ADR when it lands, but the *shape* (optional method, no core branch) is fixed here.
 - GUI/daemon/Discover/plugins remain out of scope; the engine↔UI seam (ADR-0022) must be
   decoupled **before** any second frontend, which is a post-1.0 concern, not a T-track.
+
+---
+
+## ADR-0029 — The platform seam: `Platform` is host *facts*; "supported" is "≥1 usable source" and lives in the engine, not in a distro check
+
+**Status:** Proposed (refines ADR-0026 growth #1). Foundation for Terminal 1.0 T4
+(cross-distro: apt, pacman, zypper, nix). No provider code lands under this ADR until it
+is accepted.
+
+**Context:** T4 adds non-Fedora system providers. A full audit of the platform layer (real
+code, not assumptions) found that **the entire codebase couples to the distribution in exactly
+one place**: `Platform::is_supported()` returns `matches!(self.distro, Distro::Fedora)`, and its
+wrapper `require_supported()` guards five CLI entry points (install/remove/update/search/info).
+Everything else is already distro-agnostic:
+
+- Every provider self-gates on a **binary**, not a distro: `dnf`/`copr` = `which("dnf5")`,
+  `snap` = `which("snap")`, `brew` = `which("brew")`, registries = `which(<tool>)`. On Arch,
+  `dnf5` is absent, so dnf/copr simply drop out — no distro check needed or present.
+- `Platform`'s other fields — `arch`, `is_tty`, `path_dirs`, `elevation_kind()` (sudo/pkexec) —
+  are cross-distro host facts consumed by github/copr (arch), prompts/color (tty) and
+  `privilege.rs` (elevation). None are Fedora-specific.
+- `Distro` is the only type that privileges one distro: `Fedora | Other(String) | Unknown`.
+  Fedora is first-class; every other distro is a second-class string.
+
+So relaxing "Fedora-only" is **not** an engine refactor and not a platform rebuild — it is
+removing one artificial wall and de-privileging one enum. ADR-0026 pre-declared keeping the
+gate on `Platform` ("`is_supported` starts meaning ≥1 system provider"); the audit showed a
+cleaner placement, so this ADR refines that.
+
+**Decision:**
+
+1. **`Platform` becomes a pure host-facts value object — it loses all policy.** Remove
+   `is_supported()` / `require_supported()` from `Platform`. `Platform` answers only *"what is
+   this machine?"* (distro, arch, tty, PATH, elevation mechanism). It gets **dumber**, not
+   smarter. Providers and config-defaults may *read* `distro`; **the core never branches on it.**
+
+2. **"Supported" is redefined as "≥1 usable install source" and moves to the engine/registry.**
+   The question is not "which distro is this?" but "does JII have any working source here?" —
+   which only the provider set can answer. The engine exposes an availability guard (built on the
+   existing `is_available` fan-out already used by `source_catalog`) and the CLI calls it where
+   `require_supported()` was. This is strictly better than the distro wall on Fedora too: if a
+   user disables every source, they get a clear "no usable source" message instead of a false
+   green light. Absence of a *native system* manager (e.g. only cargo+github in a container) is
+   **not** an error — it is a soft note surfaced by `jii sources`/`doctor`.
+
+3. **Distro identity is a family predicate, introduced on first use — not a fat enum.** The
+   durable target for `Distro` is `id` + `id_like` chain with `is("debian")` / `is_like("debian")`
+   predicates (handles the unbounded set of derivatives: nobara→fedora, mint→ubuntu→debian),
+   with **no privileged variant**. This is built the moment the first consumer needs it (bootstrap
+   T6, or a family-scoped provider), **not speculatively now** — for T4 the providers self-gate on
+   their binary and need no distro logic at all.
+
+**Responsibility split (the load-bearing part):**
+- **Platform** — host facts only, zero policy.
+- **Provider** — its own availability (self-gating), trust, plans, later `bootstrap_plan`. May
+  read `Platform`; the core never reads `distro` to pick a provider.
+- **Engine/Registry** — owns "is any source usable here?".
+- **Config** — user policy (priority/disabled); may be *seeded* from distro at first run, then it
+  is just data.
+
+**Five-year shape:** with 15+ managers and dozens of distros, the core stays **O(1) in distros
+and O(1) in managers**. The only thing that grows is the provider list in the registry (linear,
+one obvious place). No new core branch is ever required to add a distro or a manager, because
+distro never drives core control flow, a manager is a self-gating `Provider`, `Platform` is
+immutable facts, and policy lives in config.
+
+**Alternatives considered:**
+- **Keep the gate on `Platform`, just redefine it (the ADR-0026 pre-declaration).** Rejected:
+  "is any source usable?" is a fact about the provider set, not about the host; keeping it on
+  `Platform` makes `Platform` a mini-policy engine and couples it to the registry. Moving it out
+  makes `Platform` a clean value object — the cleaner refactor the audit surfaced.
+- **Central `distro → provider` map in the core.** Rejected outright: reintroduces source
+  knowledge into the core and breaks "core never branches on the source" (CLAUDE.md, ADR from
+  ARCHITECTURE §5). Self-gating providers already solve this with zero core coupling.
+- **Expand `Distro` into one enum variant per distribution now.** Rejected: brittle (derivatives
+  are unbounded), and speculative (no consumer in T4). The `id`/`id_like` predicate is the right
+  shape, added when a consumer appears.
+- **Just delete `require_supported()` and rely on "no candidates".** Rejected: a dedicated
+  early "no usable source" message is clearer than an empty search result; the guard has value,
+  it just belongs in the engine with a source-based definition.
+
+**Consequences:**
+- Fedora behaviour is **unchanged**: dnf/copr still gate on `dnf5`, the same commands run, the
+  same trust/escalation applies. Non-Fedora hosts stop being walled off and get whatever sources
+  are actually present (flatpak/cargo/npm/github/snap today; apt/pacman/zypper/nix as T4 lands).
+- `Platform` sheds a responsibility (net simpler), and the "supported" concept gains an honest,
+  source-based definition that also improves the all-sources-disabled case on Fedora.
+- T4 providers are pure additive `Provider` impls that self-gate on their binary; none needs a
+  distro check. The `id`/`id_like` predicate is deferred to its first real consumer (T6 bootstrap).
+- This ADR gates code: `platform.rs`/`engine`/`cli` change only after acceptance; apt is the
+  first provider to follow (Debian/Ubuntu — largest audience).
