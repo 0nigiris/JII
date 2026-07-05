@@ -88,6 +88,18 @@ impl Provider for Dnf {
         Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
     }
 
+    async fn plan_install_many(
+        &self,
+        candidates: &[&PackageCandidate],
+    ) -> Result<Option<InstallPlan>> {
+        // One `dnf5 install -y a b c` for the whole group (dnf resolves them together).
+        let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
+        let mut args = vec!["install", "-y"];
+        args.extend_from_slice(&names);
+        let reasons = vec![format!("Official Fedora packages: {}", names.join(", "))];
+        Ok(Some(root_plan(&names.join(", "), &args, reasons)))
+    }
+
     // plan_remove / plan_update / list_installed are part of the Provider contract,
     // implemented now and exercised from Phase 2+ (remove, update, list).
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
@@ -182,5 +194,29 @@ mod tests {
         assert_eq!(cands[0].name, "lonely");
         assert!(cands[0].version.is_none());
         assert!(cands[0].summary.is_none());
+    }
+
+    #[tokio::test]
+    async fn batch_merges_into_one_root_dnf_command() {
+        let cands = parse_candidates(
+            "git\t2.55\trepo\tvcs\nhtop\t3.4\trepo\tviewer\n",
+            "dnf",
+            TrustLevel::Official,
+        );
+        let refs: Vec<&PackageCandidate> = cands.iter().collect();
+        let plan = Dnf::new()
+            .plan_install_many(&refs)
+            .await
+            .unwrap()
+            .expect("dnf batches");
+        assert_eq!(plan.actions.len(), 1);
+        assert!(plan.needs_root());
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, needs_root } => {
+                assert_eq!(argv, &["dnf5", "install", "-y", "git", "htop"]);
+                assert!(needs_root);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
     }
 }

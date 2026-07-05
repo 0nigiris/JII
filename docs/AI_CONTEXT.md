@@ -25,13 +25,33 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 **Phase 5 — user-space sources & update (wrapping up).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
 these providers. **`cargo`, `npm`, `pipx`, `go` are done** (pure `Provider`s, sharing
-`get_json_opt`/`command_plan`), and **`jii update` is done** — no per-source branching.
-Next: the post-8-provider **architecture review** (requested), then choose the next
-provider.
+`get_json_opt`/`command_plan`); **`jii update` is done** (no per-source branching); the
+post-8-provider **architecture review** is done (ADR-0024: architecture healthy, no code
+change); and **batch install is done** (ADR-0025: `jii install a b c`, same-source merge
+via optional `plan_install_many`, no model change). Next: **Homebrew** provider (ADR-0024).
 
 ## Last completed work
 
-**`jii update [<pkg>]`.** Wires the existing per-provider `plan_update` into a command,
+**Batch install — `jii install a b c …`.** Install many packages as one operation with no
+change to `InstallPlan` or the Executor (ADR-0025). Each package runs the normal
+search→rank→pick; the engine groups the chosen candidates by source and **merges
+same-source installs into one command** where the source can (`dnf/cargo/npm/go install a b
+c`) via a new **optional** `Provider::plan_install_many` (default `None` → per-candidate
+fallback — the ADR-0022 growth pattern; the engine never branches on the source). One
+grouped "Summary" preview + action preview, one confirmation governed by the **least-trusted
+candidate** (`prompt::confirm_install_batch`; untrusted still always explicit, ADR-0006),
+one root escalation (`exec::prime_for` once across all plans), one run
+(`exec::run_actions`), and records written **as each plan succeeds** so a mid-batch failure
+leaves the registry accurate. A not-found package is reported and does **not** cancel the
+rest (offer to continue). A group of one keeps the richer single-package plan, so
+`jii install <pkg>` output is byte-identical to before. Single install is now a batch of one
+— the old `Engine::install` and `plan_install` wrapper were removed (one install
+write-path, no duplicated recording to drift). Bootstrap-a-missing-manager is **deferred,
+not faked** (needs the manager-install feature; the per-source grouping is its future
+hook). Verified: dnf/cargo merges, mixed-source grouping, not-found continue, single-package
+UX unchanged. **99 tests.**
+
+**Prior — `jii update [<pkg>]`.** Wires the existing per-provider `plan_update` into a command,
 with no per-source branching (ADR-0004 holds). For one named package (must be installed)
 or every registry record, it re-searches the **owning** source via the normal search→rank
 path (filtered by `source_id`) to get the latest version, **skips provably-current
@@ -183,7 +203,7 @@ None.
 
 ## Test status
 
-`cargo test` — **96 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **99 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry (incl. `record_update` version refresh + `Update` history), cache, privilege
 elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
@@ -195,7 +215,8 @@ shape, `cargo install --list` parsing), npm (CLI vs library-only filter incl. bi
 string, user-prefixed plan shape, `npm ls -g --json` parsing), pipx (candidate shape,
 install/upgrade plans, `pipx list --json` parsing), go (candidate shape, unprivileged
 `go install @latest` plan, binary-name derivation incl. `/v2` major-version skip, proxy
-uppercase→`!x` escaping), audit (verification resolution +
+uppercase→`!x` escaping), **batch merge** (dnf/cargo/go `plan_install_many` collapse a
+group into one command), audit (verification resolution +
 concern logic), and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands

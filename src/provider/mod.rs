@@ -45,6 +45,21 @@ pub trait Provider: Send + Sync {
     /// Build an install plan without executing it.
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan>;
 
+    /// Build **one** plan that installs several candidates at once (e.g. `dnf install a
+    /// b c`), or `None` if this source can't batch — the engine then falls back to one
+    /// [`plan_install`] per candidate. Default: `None`. Overriding is the same
+    /// optional-method growth as `is_installed`/`probe` (ADR-0022): a source opts into
+    /// batching by assembling a single multi-package command; the engine never branches
+    /// on the source id, it just uses the returned plan or falls back. `candidates` is
+    /// non-empty and all share this provider's `source_id`.
+    async fn plan_install_many(
+        &self,
+        candidates: &[&PackageCandidate],
+    ) -> Result<Option<InstallPlan>> {
+        let _ = candidates;
+        Ok(None)
+    }
+
     /// Build a removal plan for a previously installed record.
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 

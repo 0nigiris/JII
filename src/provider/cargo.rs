@@ -75,6 +75,21 @@ impl Provider for Cargo {
         Ok(cargo_plan(&candidate.name, "install", reasons))
     }
 
+    async fn plan_install_many(
+        &self,
+        candidates: &[&PackageCandidate],
+    ) -> Result<Option<InstallPlan>> {
+        // `cargo install a b c` builds them all into ~/.cargo/bin in one unprivileged run.
+        let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
+        let mut argv = vec![BIN.to_string(), "install".to_string()];
+        argv.extend(names.iter().cloned());
+        let reasons = vec![format!(
+            "crates.io (Rust community registry): {}",
+            names.join(", ")
+        )];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
+    }
+
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Remove {} (installed via cargo)", record.name)];
         Ok(cargo_plan(&record.name, "uninstall", reasons))
@@ -275,5 +290,26 @@ cargo-edit v0.13.6 (/home/u/src/cargo-edit):
     fn install_list_skips_blank_and_binary_lines() {
         let recs = parse_installed_list("\n    orphan-bin\n", "cargo");
         assert!(recs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn batch_merges_into_one_unprivileged_cargo_command() {
+        let mut a = candidate(&parse(BINARY_CRATE)).unwrap(); // ripgrep
+        a.name = "ripgrep".into();
+        let mut b = a.clone();
+        b.name = "bat".into();
+        let plan = Cargo::new()
+            .plan_install_many(&[&a, &b])
+            .await
+            .unwrap()
+            .expect("cargo batches");
+        assert_eq!(plan.actions.len(), 1);
+        assert!(!plan.needs_root());
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["cargo", "install", "ripgrep", "bat"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
     }
 }

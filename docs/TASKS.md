@@ -200,6 +200,18 @@ land. Keep tasks small enough to complete and verify in one sitting.
       (logs history `Update`, refreshes the stored version) sharing an `upsert` helper
       with `record_install`. Verified: end-to-end `--dry-run` (go: v0.60.0→v0.73.1
       transition + plan), no-op path ("already up to date"), missing-package error.
+- [x] **Batch install** — `jii install a b c …` (and bare `jii a b c`). Each package runs
+      the normal search→rank→pick; the engine then groups the chosen candidates by source
+      and **merges same-source installs into one command** where the source can
+      (`dnf/cargo/npm/go install a b c`), via a new optional `Provider::plan_install_many`
+      (default `None` → per-candidate fallback; ADR-0025). One grouped preview, one
+      trust-governed confirmation (least-trusted candidate rules), one root escalation, one
+      run; records written as each plan succeeds. A not-found package is reported and does
+      not cancel the rest (offer to continue). Single install is now a batch of one (old
+      `Engine::install`/`plan_install` wrapper removed — one write-path). Executor split
+      into `prime_for` + `run_actions`. Bootstrap-a-missing-manager **deferred** (needs the
+      manager-install feature). Verified: dnf/cargo merges, mixed sources, not-found
+      continue, single-package UX unchanged. 99 tests.
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 
 ## Phase 6 — Declarative sources & catalog 🔭

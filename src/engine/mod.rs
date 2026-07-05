@@ -29,6 +29,15 @@ pub struct SearchResult {
     pub failed: Vec<(String, String)>,
 }
 
+/// One unit of a batch install: a plan plus the candidates it installs. A source that
+/// batches (`plan_install_many`) yields one `BatchPlan` per source (its plan installs
+/// many candidates); a source that can't yields one `BatchPlan` per candidate. Grouping
+/// candidates back with their plan lets `install_batch` record every install.
+pub struct BatchPlan {
+    pub plan: InstallPlan,
+    pub candidates: Vec<PackageCandidate>,
+}
+
 /// Diagnostic for one source, produced by `diagnose` (backs `jii doctor`).
 pub struct SourceHealth {
     pub id: String,
@@ -191,9 +200,81 @@ impl Engine {
         ranking::rank(&self.config, candidates)
     }
 
-    /// Build an install plan for a candidate via its owning provider.
-    pub async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        self.provider(&candidate.source_id)?.plan_install(candidate).await
+    /// Group a batch of candidates by owning source and, for each group, ask the source
+    /// for a single batched plan ([`Provider::plan_install_many`]); when it declines
+    /// (`None`), fall back to one `plan_install` per candidate. A single-package install
+    /// is just a batch of one, so this is the one install-planning entry point. Source
+    /// groups keep their first-seen (ranked) order, so the preview reads sensibly.
+    /// The engine never branches on the source — it only uses the returned plan or falls
+    /// back (ADR-0004/0022).
+    pub async fn plan_install_batch(
+        &self,
+        candidates: Vec<PackageCandidate>,
+    ) -> Result<Vec<BatchPlan>> {
+        // Group by source_id, preserving the order sources first appear in.
+        let mut groups: Vec<(String, Vec<PackageCandidate>)> = Vec::new();
+        for candidate in candidates {
+            match groups.iter_mut().find(|(id, _)| id == &candidate.source_id) {
+                Some((_, group)) => group.push(candidate),
+                None => groups.push((candidate.source_id.clone(), vec![candidate])),
+            }
+        }
+
+        let mut plans = Vec::new();
+        for (source_id, group) in groups {
+            let provider = self.provider(&source_id)?;
+            // A group of one is not worth merging (the command is identical) and the
+            // per-package plan carries richer reasons, so keep single-package output
+            // byte-identical to a plain `jii install <pkg>`. Only 2+ ask to batch.
+            if group.len() == 1 {
+                let candidate = group.into_iter().next().expect("len checked");
+                let plan = provider.plan_install(&candidate).await?;
+                plans.push(BatchPlan { plan, candidates: vec![candidate] });
+                continue;
+            }
+            let refs: Vec<&PackageCandidate> = group.iter().collect();
+            match provider.plan_install_many(&refs).await? {
+                Some(plan) => plans.push(BatchPlan { plan, candidates: group }),
+                None => {
+                    // Source can't batch: one plan per candidate.
+                    for candidate in group {
+                        let plan = provider.plan_install(&candidate).await?;
+                        plans.push(BatchPlan { plan, candidates: vec![candidate] });
+                    }
+                }
+            }
+        }
+        Ok(plans)
+    }
+
+    /// Execute a batch of install plans as one operation: prime privilege **once**
+    /// across all plans, run them in order, and record each plan's candidates as it
+    /// succeeds — so the registry reflects reality even if a later plan fails. The
+    /// single privileged + registry-write path for batch installs.
+    pub async fn install_batch(&mut self, batch: &[BatchPlan], renderer: &Renderer) -> Result<()> {
+        let plans: Vec<&InstallPlan> = batch.iter().map(|b| &b.plan).collect();
+        crate::exec::prime_for(&plans, &self.privilege).await?;
+
+        let mut outcome = Ok(());
+        for bp in batch {
+            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+                outcome = Err(e);
+                break; // stop at the first failure; already-run plans stay recorded
+            }
+            let now = Utc::now();
+            let verification = plan_verification(&bp.plan);
+            for candidate in &bp.candidates {
+                self.registry.record_install(InstalledRecord {
+                    name: candidate.name.clone(),
+                    source_id: candidate.source_id.clone(),
+                    version: candidate.version.clone(),
+                    installed_at: now,
+                    verification: verification.clone(),
+                });
+            }
+        }
+        self.registry.save()?; // persist whatever succeeded before any failure
+        outcome
     }
 
     /// Build a removal plan for a recorded install via its owning provider.
@@ -206,26 +287,7 @@ impl Engine {
         self.provider(&record.source_id)?.plan_update(record).await
     }
 
-    /// Execute an install plan, then record it. The single privileged + registry
-    /// write path for installs.
-    pub async fn install(
-        &mut self,
-        plan: &InstallPlan,
-        candidate: &PackageCandidate,
-        renderer: &Renderer,
-    ) -> Result<()> {
-        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
-        self.registry.record_install(InstalledRecord {
-            name: candidate.name.clone(),
-            source_id: candidate.source_id.clone(),
-            version: candidate.version.clone(),
-            installed_at: Utc::now(),
-            verification: plan_verification(plan),
-        });
-        self.registry.save()
-    }
-
-    /// Execute an update plan, then refresh the registry record. Mirrors [`install`]
+    /// Execute an update plan, then refresh the registry record. Mirrors `install_batch`
     /// (same execute-then-write path) but logs an update and carries the refreshed
     /// version: `new_version` is the just-installed latest (from a re-search), falling
     /// back to the prior recorded version when the owning source no longer reports one.

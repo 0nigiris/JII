@@ -8,7 +8,7 @@
 use std::io::{self, Write};
 
 use crate::config::Config;
-use crate::model::PackageCandidate;
+use crate::model::TrustLevel;
 use crate::platform::Platform;
 use crate::ui::Renderer;
 
@@ -19,38 +19,42 @@ pub struct PromptFlags {
     pub no: bool,
 }
 
-/// Decide whether to proceed with installing `candidate`.
-pub fn confirm_install(
+/// Decide whether to proceed with installing a batch of one or more packages, governed
+/// by its **least-trusted** candidate: if anything in the batch is below the auto-confirm
+/// threshold, the whole batch requires an explicit answer (even under `--auto`/`--yes`,
+/// unless the user opted in via `trust.allow_untrusted_auto`) — ADR-0006. `count` only
+/// tunes the wording (a single package reads "Install?", many read "Install all?").
+pub fn confirm_install_batch(
     renderer: &Renderer,
-    candidate: &PackageCandidate,
+    least_trusted: TrustLevel,
+    count: usize,
     config: &Config,
     flags: &PromptFlags,
 ) -> bool {
     if flags.no {
         return false;
     }
+    let question = if count == 1 { "Install?" } else { "Install all?" };
 
-    let auto_ok = candidate.trust <= config.install.default_yes_max_trust;
-
+    let auto_ok = least_trusted <= config.install.default_yes_max_trust;
     if !auto_ok {
-        // Trust barrier: this source is below the auto-confirm threshold.
+        // Trust barrier: at least one source is below the auto-confirm threshold.
         if (flags.auto || flags.yes) && config.trust.allow_untrusted_auto {
             return true;
         }
         renderer.warn(&format!(
-            "'{}' comes from a less-trusted source ({}) — explicit confirmation required.",
-            candidate.name,
-            candidate.trust.label(),
+            "This install includes a less-trusted source ({}) — explicit confirmation required.",
+            least_trusted.label(),
         ));
-        // Default to "no" for less-trusted sources.
-        return ask(renderer, "Install?", false);
+        // Default to "no" when a less-trusted source is involved.
+        return ask(renderer, question, false);
     }
 
     // Trusted enough: --auto or --yes skip the prompt.
     if flags.auto || flags.yes {
         return true;
     }
-    ask(renderer, "Install?", config.install.default_yes)
+    ask(renderer, question, config.install.default_yes)
 }
 
 /// A plain yes/no confirmation (e.g. for removal). Honors `--no`/`--yes`/`--auto`;

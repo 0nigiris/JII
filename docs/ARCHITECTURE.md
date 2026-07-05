@@ -177,6 +177,11 @@ pub trait Provider: Send + Sync {
     async fn plan_remove(&self, r: &InstalledRecord) -> Result<InstallPlan>;
     async fn plan_update(&self, r: &InstalledRecord) -> Result<InstallPlan>;
 
+    /// OPTIONAL (default None): one plan installing many candidates at once
+    /// (e.g. `dnf install a b c`), for batch install. None ⇒ engine falls back
+    /// to one plan_install per candidate. (ADR-0025)
+    async fn plan_install_many(&self, cs: &[&PackageCandidate]) -> Result<Option<InstallPlan>>;
+
     /// What is actually installed via this source (used to verify the registry).
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>>;
 }
@@ -406,10 +411,11 @@ pub struct Engine { /* providers, config, registry, cache, privilege */ }
 impl Engine {
     pub async fn search(&self, q: &Query) -> SearchResult;                 // parallel, graceful
     pub fn rank(&self, cands: Vec<PackageCandidate>) -> Vec<PackageCandidate>;
-    pub async fn plan_install(&self, c: &PackageCandidate) -> Result<InstallPlan>;
     pub async fn plan_remove(&self, r: &InstalledRecord) -> Result<InstallPlan>;
     pub async fn plan_update(&self, r: &InstalledRecord) -> Result<InstallPlan>;
-    pub async fn install(&mut self, p: &InstallPlan, c: &PackageCandidate, r: &Renderer) -> Result<()>;
+    // install is uniformly batch (N≥1): group by source, merge where the source can.
+    pub async fn plan_install_batch(&self, cs: Vec<PackageCandidate>) -> Result<Vec<BatchPlan>>;
+    pub async fn install_batch(&mut self, batch: &[BatchPlan], r: &Renderer) -> Result<()>;
     pub async fn remove(&mut self, p: &InstallPlan, rec: &InstalledRecord, r: &Renderer) -> Result<()>;
     // update = execute plan_update, then refresh the registry record (new version, logged Update).
     pub async fn update(&mut self, p: &InstallPlan, rec: &InstalledRecord,
@@ -472,7 +478,7 @@ locale = "auto"
 
 | Command | Purpose |
 |---------|---------|
-| `jii <name>` / `jii install <name>` | search → rank → plan → confirm → install |
+| `jii <name…>` / `jii install <name…>` | one or many: search → rank → plan → group/merge per source → one confirm → one run (ADR-0025) |
 | `jii remove <name>` | resolve source (registry→verify) → plan → remove |
 | `jii update [<name>]` | update one/all via the correct manager |
 | `jii search <query>` | show candidates only, no install |

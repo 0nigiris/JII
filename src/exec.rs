@@ -19,11 +19,27 @@ use crate::privilege::Privilege;
 use crate::ui::{Renderer, describe_action};
 
 /// Execute a plan's actions in order. Primes privilege escalation once up front if
-/// any action needs root, so a batch prompts at most once.
+/// any action needs root, so a batch prompts at most once. A thin wrapper over the
+/// two primitives ([`prime_for`] + [`run_actions`]) that batch install reuses to prime
+/// **once across many plans** and record successes as it goes.
 pub async fn run_plan(plan: &InstallPlan, privilege: &Privilege, renderer: &Renderer) -> Result<()> {
-    if plan.needs_root() {
+    prime_for(std::slice::from_ref(&plan), privilege).await?;
+    run_actions(plan, privilege, renderer).await
+}
+
+/// Prime privilege escalation once if **any** of `plans` needs root, so a whole batch
+/// of plans prompts for a password at most once (`sudo -v` up front).
+pub async fn prime_for(plans: &[&InstallPlan], privilege: &Privilege) -> Result<()> {
+    if plans.iter().any(|p| p.needs_root()) {
         privilege.prime().await?;
     }
+    Ok(())
+}
+
+/// Run one plan's actions in order (no priming — the caller primes first via
+/// [`prime_for`]). Each action is echoed with the same `describe_action` used by
+/// `--dry-run`, so what runs always matches what was previewed.
+pub async fn run_actions(plan: &InstallPlan, privilege: &Privilege, renderer: &Renderer) -> Result<()> {
     for action in &plan.actions {
         renderer.info(&describe_action(action));
         run_action(action, privilege).await?;

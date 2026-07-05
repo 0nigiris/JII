@@ -85,6 +85,18 @@ impl Provider for Go {
         Ok(go_install_plan(&candidate.name, reasons))
     }
 
+    async fn plan_install_many(
+        &self,
+        candidates: &[&PackageCandidate],
+    ) -> Result<Option<InstallPlan>> {
+        // `go install a@latest b@latest` builds each module's command in one run.
+        let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
+        let mut argv = vec![BIN.to_string(), "install".to_string()];
+        argv.extend(names.iter().map(|n| format!("{n}@latest")));
+        let reasons = vec![format!("Go modules (community): {}", names.join(", "))];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
+    }
+
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // Go has no uninstall; remove the installed binary (like the github provider).
         let bin = go_bin_dir()
@@ -260,5 +272,32 @@ mod tests {
             escape_module("github.com/junegunn/fzf"),
             "github.com/junegunn/fzf"
         );
+    }
+
+    #[tokio::test]
+    async fn batch_merges_into_one_go_install_with_latest_suffixes() {
+        let a = candidate("github.com/junegunn/fzf", &GoLatest { version: "v1".into() });
+        let b = candidate("github.com/x/y", &GoLatest { version: "v1".into() });
+        let plan = Go::new()
+            .plan_install_many(&[&a, &b])
+            .await
+            .unwrap()
+            .expect("go batches");
+        assert_eq!(plan.actions.len(), 1);
+        assert!(!plan.needs_root());
+        match &plan.actions[0] {
+            Action::RunCommand { argv, .. } => {
+                assert_eq!(
+                    argv,
+                    &[
+                        "go",
+                        "install",
+                        "github.com/junegunn/fzf@latest",
+                        "github.com/x/y@latest"
+                    ]
+                );
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
     }
 }

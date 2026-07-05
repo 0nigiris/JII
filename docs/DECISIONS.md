@@ -864,3 +864,79 @@ sources, and which source is the right next one.
 - Homebrew is expected to be a near-clone of the four registry providers; if it is, that
   is the signal to *evaluate* (not assume) a shared `RegistryProvider` scaffold — decided
   with five data points, per the 2/3/4-copies rule.
+
+---
+
+## ADR-0025 — Batch install is a first-class operation via an optional `plan_install_many` + engine grouping (no model change)
+
+**Status:** Accepted
+
+**Context:** `jii install a b c …` must install many packages as one operation (one
+preview, one confirmation, one root escalation, one run), and — where a source supports it
+— *merge* same-source installs into a single command (`dnf install a b c` instead of three
+runs). The requirement was explicitly to make batch a **natural extension** of the model,
+not per-provider batch code, and to stop and propose if it needed breaking the engine.
+
+**Decision:** Batch fits the existing model with **no change to `InstallPlan` or the
+Executor**. Four additions, all along existing seams:
+
+1. **One optional trait method** `Provider::plan_install_many(&[&PackageCandidate]) ->
+   Result<Option<InstallPlan>>`, default `Ok(None)`. A source that can batch overrides it
+   to assemble **one** multi-package command (dnf/cargo/npm/go do; each builds its own
+   argv via the shared `command_plan`); a source that can't inherits `None`. This is the
+   same optional-method growth as `is_installed`/`probe` (ADR-0022) — the engine **never
+   branches on the source**, it just uses the returned plan or falls back.
+2. **Engine grouping** `plan_install_batch(candidates) -> Vec<BatchPlan>`: group by
+   `source_id` (ranked order preserved); a **group of one** uses `plan_install` (richer
+   reasons, identical to a plain single install); a group of 2+ asks `plan_install_many`
+   and falls back to per-candidate `plan_install` on `None`. `BatchPlan { plan,
+   candidates }` keeps each plan paired with the installs it covers.
+3. **Engine execution** `install_batch`: prime privilege **once** across all plans, run
+   them in order, and **record each plan's candidates as it succeeds** — so a mid-batch
+   failure still leaves the registry accurate for what actually installed.
+4. **Executor primitives**: `run_plan` was split into `prime_for(&[&InstallPlan])` (prime
+   once if any needs root) + `run_actions(plan)` (run one plan, no priming); `run_plan`
+   is now a thin wrapper. This is the whole "one escalation across many plans" mechanism —
+   a small helper, not a new concept.
+
+Supporting decisions:
+- **Single install is now a batch of one.** The old `Engine::install` and the
+  `plan_install` engine wrapper were removed — one install write-path (`install_batch`),
+  no duplicated recording logic to drift.
+- **Trust barrier for a batch is governed by its least-trusted candidate**
+  (`prompt::confirm_install_batch`): if anything in the batch is below the auto-confirm
+  threshold, the whole batch needs an explicit answer even under `--auto` (ADR-0006 holds,
+  now for a set).
+- **A not-found package never cancels the rest**: misses are reported, and if anything did
+  resolve the user is offered to continue with the remainder.
+- **Bootstrap (installing a missing manager once for a group) is deferred, not faked.** It
+  needs the manager-install capability that does not exist yet (an ADR-0024 future
+  direction, with its own trust policy). The per-source grouping in `plan_install_batch` is
+  exactly the seam it will hook into; until then, a package whose only source's tool is
+  absent is simply reported not-found.
+
+**Alternatives considered:**
+- **Merge at the argv level in the engine** (splice package names into existing plans'
+  commands) — rejected: it would require the engine to know each source's command shape
+  (where npm's `--prefix` sits, that go needs `@latest`), leaking source knowledge into
+  the core and violating ADR-0004. The optional method keeps that knowledge in the
+  provider.
+- **A new `BatchPlan`-as-model-type executed specially** — rejected: unnecessary. A merged
+  plan is just a normal `InstallPlan` with one multi-arg `RunCommand`; the executor is
+  unchanged. `BatchPlan` is only an engine-internal pairing (plan + its candidates), not a
+  new executable concept.
+
+**Consequences:**
+- The model got **stronger, not bigger**: "install" is uniformly N≥1, with one write-path
+  and one confirmation path. No `InstallPlan`/Executor change.
+- **`batch update` and `batch remove` now need no new architecture** — the batch machinery
+  (group → optional `plan_*_many` → prime-once → run → record-as-you-go) is reusable.
+  `jii remove a b c` / `jii update a b c` would add symmetric optional methods
+  (`plan_remove_many`/`plan_update_many`) where merging helps (e.g. `dnf remove a b c`) and
+  an engine `remove_batch`/`update_batch` mirroring `install_batch`. The CLI for `update`
+  already takes many names; `remove` would widen to a `Vec`. Recorded here so this is not
+  re-litigated when Batch Operations lands.
+- **Further plan-merging across *different* sources is intentionally not pursued.** Merging
+  is only ever within one source (that's the only place a single command is meaningful);
+  cross-source "one super-command" is impossible and undesirable. The current granularity
+  (one plan per source group) is the right and final level — no deeper merging is planned.

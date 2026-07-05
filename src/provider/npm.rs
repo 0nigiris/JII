@@ -77,6 +77,25 @@ impl Provider for Npm {
         Ok(npm_plan(&candidate.name, "install", &prefix, reasons))
     }
 
+    async fn plan_install_many(
+        &self,
+        candidates: &[&PackageCandidate],
+    ) -> Result<Option<InstallPlan>> {
+        // One `npm install --global --prefix $HOME/.local a b c` (still no root).
+        let prefix = user_prefix()?;
+        let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
+        let mut argv = vec![
+            BIN.to_string(),
+            "install".to_string(),
+            "--global".to_string(),
+            "--prefix".to_string(),
+            prefix,
+        ];
+        argv.extend(names.iter().cloned());
+        let reasons = vec![format!("npm registry (community): {}", names.join(", "))];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
+    }
+
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let prefix = user_prefix()?;
         let reasons = vec![format!("Remove {} (installed via npm)", record.name)];

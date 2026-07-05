@@ -22,9 +22,9 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Package to install when no subcommand is given, e.g. `jii fastfetch`.
+    /// Package(s) to install when no subcommand is given, e.g. `jii fastfetch cava`.
     #[arg(value_name = "PACKAGE")]
-    pub package: Option<String>,
+    pub packages: Vec<String>,
 }
 
 /// Flags available on every command.
@@ -70,10 +70,11 @@ pub struct GlobalArgs {
 /// Sub-commands. See `docs/ARCHITECTURE.md` §13.
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Search, rank, recommend and install a package.
+    /// Search, rank, recommend and install one or more packages.
     Install {
-        /// Package name.
-        package: String,
+        /// Package name(s).
+        #[arg(required = true)]
+        packages: Vec<String>,
     },
     /// Remove a package using the source that installed it.
     Remove {
@@ -126,17 +127,18 @@ impl Cli {
         let renderer = Renderer::new(self.color_choice(&config), self.global.json);
 
         match &self.command {
-            // Explicit `jii install <pkg>` or bare `jii <pkg>`.
-            Some(Commands::Install { package }) => {
-                self.install(package, config, &renderer).await
+            // Explicit `jii install <pkg…>` or bare `jii <pkg…>`.
+            Some(Commands::Install { packages }) => {
+                self.install(packages, config, &renderer).await
             }
-            None => match &self.package {
-                Some(package) => self.install(package, config, &renderer).await,
-                None => {
-                    renderer.info("Usage: jii <package>  (try `jii --help`)");
+            None => {
+                if self.packages.is_empty() {
+                    renderer.info("Usage: jii <package…>  (try `jii --help`)");
                     Ok(())
+                } else {
+                    self.install(&self.packages, config, &renderer).await
                 }
-            },
+            }
 
             // Implemented in Phase 2.
             Some(Commands::Remove { package }) => self.remove(package, config, &renderer).await,
@@ -157,10 +159,14 @@ impl Cli {
         }
     }
 
-    /// Install path: search → rank → plan → confirm → execute.
+    /// Install path (one or many packages): for each package search → rank → pick best,
+    /// then let the engine group + optimize the chosen candidates into batched plans, and
+    /// run them as **one** operation (one preview, one confirmation, one root escalation,
+    /// one execution). A not-found package never cancels the rest (requirement: it is
+    /// reported and the user is offered to continue).
     async fn install(
         &self,
-        package: &str,
+        packages: &[String],
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
@@ -172,43 +178,118 @@ impl Cli {
             return Ok(());
         }
 
-        let query = Query::name(package);
-        renderer.info(&format!("Searching for '{}'...", query.raw));
-
-        let result = engine.search(&query).await;
-        for (source, reason) in &result.failed {
-            renderer.warn(&format!("✗ {source}: {reason}"));
+        // 1. Resolve each package to its best candidate; collect the misses separately.
+        //    A single package keeps the "Also available" alternatives view; a real batch
+        //    would make that too noisy, so it is shown only when installing one.
+        let single = packages.len() == 1;
+        let mut chosen: Vec<PackageCandidate> = Vec::new();
+        let mut not_found: Vec<String> = Vec::new();
+        for name in packages {
+            let query = Query::name(name);
+            renderer.info(&format!("Searching for '{}'...", query.raw));
+            let result = engine.search(&query).await;
+            for (source, reason) in &result.failed {
+                renderer.warn(&format!("✗ {source}: {reason}"));
+            }
+            let mut ranked = engine.rank(result.candidates);
+            if let Some(source) = &self.global.source {
+                ranked.retain(|c| &c.source_id == source);
+            }
+            if ranked.is_empty() {
+                not_found.push(name.clone());
+                continue;
+            }
+            let best = ranked.remove(0);
+            if single {
+                self.show_alternatives(&ranked, renderer);
+            }
+            chosen.push(best);
         }
 
-        let mut ranked = engine.rank(result.candidates);
-        if let Some(source) = &self.global.source {
-            ranked.retain(|c| &c.source_id == source);
+        // 2. Report misses. If nothing resolved, stop; otherwise offer to continue.
+        if !not_found.is_empty() {
+            let via = match &self.global.source {
+                Some(source) => format!(" via source '{source}'"),
+                None => String::new(),
+            };
+            renderer.error(&format!("Not found{via}: {}", not_found.join(", ")));
         }
-        if ranked.is_empty() {
-            renderer.error(&self.no_candidate_message(package));
+        if chosen.is_empty() {
             return Ok(());
         }
+        if !not_found.is_empty() {
+            let flags = self.prompt_flags(engine.config().install.auto);
+            if !prompt::confirm(renderer, "Continue installing the rest?", true, &flags) {
+                renderer.info("Aborted.");
+                return Ok(());
+            }
+        }
 
-        // First is the recommendation; the rest are alternatives.
-        let best = ranked.remove(0);
-        let plan = engine.plan_install(&best).await?;
-        renderer.plan(&plan);
-        self.show_alternatives(&ranked, renderer);
+        // 3. Group + optimize into batched plans (merged per source where it can batch).
+        let batch = engine.plan_install_batch(chosen).await?;
+
+        // 4. Preview: grouped summary by source, then the full action preview.
+        self.preview_batch(&batch, renderer);
 
         if self.global.dry_run {
             renderer.info("(dry-run: nothing was installed)");
             return Ok(());
         }
 
+        // 5. One confirmation, governed by the least-trusted candidate (untrusted always
+        //    needs an explicit answer, even under --auto — ADR-0006).
+        let installed: Vec<String> = batch
+            .iter()
+            .flat_map(|b| b.candidates.iter().map(|c| c.name.clone()))
+            .collect();
+        let least_trusted = batch
+            .iter()
+            .flat_map(|b| b.candidates.iter())
+            .map(|c| c.trust)
+            .max()
+            .unwrap_or(crate::model::TrustLevel::Official);
         let flags = self.prompt_flags(engine.config().install.auto);
-        if !prompt::confirm_install(renderer, &best, engine.config(), &flags) {
+        if !prompt::confirm_install_batch(
+            renderer,
+            least_trusted,
+            installed.len(),
+            engine.config(),
+            &flags,
+        ) {
             renderer.info("Aborted.");
             return Ok(());
         }
 
-        engine.install(&plan, &best, renderer).await?;
-        renderer.success(&format!("Installed {package} via {}.", plan.source_id));
+        // 6. One escalation, one run; records are written as each plan succeeds.
+        engine.install_batch(&batch, renderer).await?;
+        renderer.success(&format!("Installed {}.", installed.join(", ")));
         Ok(())
+    }
+
+    /// Batch preview: a grouped "what will be installed, by source" summary, then each
+    /// plan's action preview (so the merged commands are visible before confirming).
+    fn preview_batch(&self, batch: &[crate::engine::BatchPlan], renderer: &Renderer) {
+        if renderer.is_json() {
+            for bp in batch {
+                renderer.plan(&bp.plan);
+            }
+            return;
+        }
+        renderer.info("Summary:");
+        for bp in batch {
+            renderer.info(&format!("{}:", bp.plan.source_id));
+            for candidate in &bp.candidates {
+                let version = candidate
+                    .version
+                    .as_ref()
+                    .map(|v| format!(" (v{v})"))
+                    .unwrap_or_default();
+                renderer.info(&format!("  - {}{version}", candidate.name));
+            }
+        }
+        for bp in batch {
+            renderer.plan(&bp.plan);
+        }
     }
 
     /// Print the non-recommended candidates as a compact "also available" list.
@@ -229,14 +310,6 @@ impl Cli {
                 version,
                 candidate.trust.label()
             ));
-        }
-    }
-
-    /// Error message for an empty candidate list, mentioning `--source` if set.
-    fn no_candidate_message(&self, package: &str) -> String {
-        match &self.global.source {
-            Some(source) => format!("'{package}' is not available via source '{source}'."),
-            None => format!("No installation candidate found for '{package}'."),
         }
     }
 

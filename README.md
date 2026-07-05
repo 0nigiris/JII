@@ -53,7 +53,7 @@ $ jii fastfetch --auto
 ## Commands
 
 ```
-jii <name>          search → rank → recommend → install
+jii <name…>         search → rank → recommend → install (one or many packages)
 jii remove <name>   remove using the source that installed it
 jii update [<name>] update one/all with the correct manager
 jii search <query>  show options without installing
