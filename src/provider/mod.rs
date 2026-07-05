@@ -22,6 +22,7 @@ pub mod flatpak;
 pub mod github;
 pub mod go;
 pub mod homebrew;
+pub mod nix;
 pub mod npm;
 pub mod pacman;
 pub mod pipx;
@@ -165,6 +166,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("zypper") {
             providers.push(Box::new(zypper::Zypper::new()));
+        }
+        if config.is_enabled("nix") {
+            providers.push(Box::new(nix::Nix::new()));
         }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));

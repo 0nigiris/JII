@@ -16,7 +16,7 @@ use crate::model::TrustLevel;
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
     "dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github", "cargo", "npm",
-    "pipx", "go", "brew",
+    "pipx", "go", "brew", "nix",
 ];
 
 /// Top-level configuration.
@@ -102,7 +102,7 @@ impl Default for SourcesConfig {
         SourcesConfig {
             priority: [
                 "dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github", "cargo",
-                "npm", "pipx", "go", "brew",
+                "npm", "pipx", "go", "brew", "nix",
             ]
             .iter()
             .map(|s| s.to_string())
