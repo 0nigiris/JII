@@ -38,6 +38,14 @@ pub struct BatchPlan {
     pub candidates: Vec<PackageCandidate>,
 }
 
+/// One row of `jii sources`: an enabled provider, its trust, and whether it is usable
+/// on this machine right now. Cheaper than [`SourceHealth`] — availability only.
+pub struct SourceEntry {
+    pub id: &'static str,
+    pub trust: TrustLevel,
+    pub available: bool,
+}
+
 /// Diagnostic for one source, produced by `diagnose` (backs `jii doctor`).
 pub struct SourceHealth {
     pub id: String,
@@ -369,6 +377,20 @@ impl Engine {
     /// Trust level of a source, if it is enabled.
     pub fn source_trust(&self, source_id: &str) -> Option<crate::model::TrustLevel> {
         self.providers.get(source_id).map(|p| p.trust())
+    }
+
+    /// List the enabled providers with their trust and live availability (backs
+    /// `jii sources`). Availability only — no network health probe (that is `doctor`).
+    pub async fn source_catalog(&self) -> Vec<SourceEntry> {
+        let mut out = Vec::new();
+        for provider in self.providers.iter() {
+            out.push(SourceEntry {
+                id: provider.id(),
+                trust: provider.trust(),
+                available: provider.is_available().await,
+            });
+        }
+        out
     }
 
     /// Probe each source's live health (backs `jii doctor`). Each provider reports

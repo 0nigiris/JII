@@ -231,9 +231,15 @@ land. Keep tasks small enough to complete and verify in one sitting.
 
 Finish the whole terminal version before the first public Beta. Ordered T1→T8.
 
-- [ ] **T1 — Read-only honesty layer** (in progress): `jii search`, `jii info`, `jii sources`.
-      Pure rendering over the engine's existing `search`/`rank` — no new architecture.
-      `ProviderRegistry` gains a known-vs-available catalog for `sources`.
+- [x] **T1 — Read-only honesty layer**: `jii search`, `jii info`, `jii sources`. Pure
+      rendering over the engine's existing `search`/`rank` — no new architecture. Engine
+      gained `source_catalog()` (enabled providers + trust + live availability). `search`
+      lists ranked candidates (top marked `→`); `info` lists sources + recommendation with a
+      **source-agnostic** rationale (`recommendation_reasons`, no branching on source id);
+      `sources` groups active vs enabled-but-unavailable. Summaries collapsed to one line
+      (`one_line`). README de-lied (`config` removed; search/info/sources documented as real).
+      Verified live on Fedora (dnf/cargo/npm ranked for ripgrep; pipx shown unavailable).
+      104 tests.
 - [ ] **T2 — Batch symmetry:** `jii update a b c`, `jii remove a b c`. Optional
       `plan_update_many`/`plan_remove_many` + engine `update_batch`/`remove_batch`; CLI
       widened to `Vec`. (ADR-0025 pre-committed: no new architecture.)

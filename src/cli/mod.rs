@@ -110,6 +110,8 @@ pub enum Commands {
     List,
     /// Show installation history.
     History,
+    /// List installation sources (providers) and whether each is usable here.
+    Sources,
 }
 
 impl Cli {
@@ -153,9 +155,9 @@ impl Cli {
                 self.update(package.as_deref(), config, &renderer).await
             }
 
-            // Stubbed until their phase (ROADMAP.md).
-            Some(Commands::Search { .. }) => not_yet(&renderer, "search", "Phase 3"),
-            Some(Commands::Info { .. }) => not_yet(&renderer, "info", "Phase 3"),
+            Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
+            Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
+            Some(Commands::Sources) => self.sources(config, &renderer).await,
         }
     }
 
@@ -492,6 +494,132 @@ impl Cli {
         ranked.into_iter().next()
     }
 
+    /// Search path: show ranked candidates for a query without installing anything.
+    /// Read-only — same search→rank the install path uses, just rendered, not executed.
+    async fn search(
+        &self,
+        terms: &[String],
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        crate::platform::Platform::detect().require_supported()?;
+        let engine = Engine::new(self.apply_profile(config))?;
+        if !engine.has_providers() {
+            renderer.error("No installation sources are enabled.");
+            return Ok(());
+        }
+        let name = terms.join(" ");
+        let ranked = self.ranked_for(&engine, &name, renderer).await;
+        if ranked.is_empty() {
+            renderer.error(&format!("No candidates found for '{name}'."));
+            return Ok(());
+        }
+        if renderer.is_json() {
+            renderer.json_value(&serde_json::json!(ranked));
+            return Ok(());
+        }
+        renderer.info(&format!("Candidates for '{name}' (best first):"));
+        for (i, candidate) in ranked.iter().enumerate() {
+            let mark = if i == 0 { "→" } else { " " };
+            renderer.info(&format!("{mark} {}", candidate_line(candidate)));
+        }
+        Ok(())
+    }
+
+    /// Info path: show every enabled source that offers a package, the recommended one,
+    /// and why — for transparency, without installing. Read-only.
+    async fn info(
+        &self,
+        package: &str,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        crate::platform::Platform::detect().require_supported()?;
+        let engine = Engine::new(self.apply_profile(config))?;
+        if !engine.has_providers() {
+            renderer.error("No installation sources are enabled.");
+            return Ok(());
+        }
+        let ranked = self.ranked_for(&engine, package, renderer).await;
+        if ranked.is_empty() {
+            renderer.error(&format!("'{package}' is not available from any enabled source."));
+            return Ok(());
+        }
+        if renderer.is_json() {
+            renderer.json_value(&serde_json::json!(ranked));
+            return Ok(());
+        }
+        renderer.info(&format!(
+            "{package} — available from {} source(s):",
+            ranked.len()
+        ));
+        for candidate in &ranked {
+            renderer.info(&format!("  {}", candidate_line(candidate)));
+        }
+        let best = &ranked[0];
+        renderer.info(&format!("Recommended: {}", best.source_id));
+        for reason in recommendation_reasons(best) {
+            renderer.info(&format!("  ✓ {reason}"));
+        }
+        Ok(())
+    }
+
+    /// Sources path: list enabled providers and whether each is usable on this machine.
+    async fn sources(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let catalog = engine.source_catalog().await;
+
+        if renderer.is_json() {
+            let rows: Vec<_> = catalog
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "id": e.id, "trust": e.trust.label(), "available": e.available,
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        let (active, inactive): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.available);
+        if !active.is_empty() {
+            renderer.info("Active sources:");
+            for e in &active {
+                renderer.info(&format!("  ✓ {:8} ({})", e.id, e.trust.label()));
+            }
+        }
+        if !inactive.is_empty() {
+            renderer.info("Enabled but unavailable (tool not installed):");
+            for e in &inactive {
+                renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.label()));
+            }
+        }
+        renderer.info("More sources arrive in upcoming releases — see docs/ROADMAP.md.");
+        Ok(())
+    }
+
+    /// Search + rank a name across enabled sources, printing any source failures (a
+    /// source that was unavailable/errored). Shared by the read-only `search`/`info`
+    /// paths; honors `--source`.
+    async fn ranked_for(
+        &self,
+        engine: &Engine,
+        name: &str,
+        renderer: &Renderer,
+    ) -> Vec<PackageCandidate> {
+        let query = Query::name(name);
+        let result = engine.search(&query).await;
+        for (source, reason) in &result.failed {
+            renderer.warn(&format!("✗ {source}: {reason}"));
+        }
+        let mut ranked = engine.rank(result.candidates);
+        if let Some(source) = &self.global.source {
+            ranked.retain(|c| &c.source_id == source);
+        }
+        ranked
+    }
+
     /// Explain how and why a package was installed (from the registry).
     fn why(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
@@ -706,7 +834,114 @@ impl UpdateJob {
     }
 }
 
-fn not_yet(renderer: &Renderer, cmd: &str, phase: &str) -> crate::error::Result<()> {
-    renderer.warn(&format!("`jii {cmd}` is not implemented yet (arrives in {phase})."));
-    Ok(())
+/// A compact one-line description of a candidate for `search`/`info`:
+/// `source  vX  trust  — summary`.
+fn candidate_line(candidate: &PackageCandidate) -> String {
+    let version = candidate
+        .version
+        .as_ref()
+        .map(|v| format!("v{v}  "))
+        .unwrap_or_default();
+    let summary = candidate
+        .summary
+        .as_deref()
+        .map(|s| format!("  — {}", one_line(s, 80)))
+        .unwrap_or_default();
+    format!(
+        "{:8} {version}{}{summary}",
+        candidate.source_id,
+        candidate.trust.label()
+    )
+}
+
+/// Collapse a (possibly multi-line) summary to a single trimmed line, truncated to
+/// `max` chars with an ellipsis — keeps `search`/`info` rows one line each.
+fn one_line(text: &str, max: usize) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() > max {
+        let mut s: String = flat.chars().take(max.saturating_sub(1)).collect();
+        s.push('…');
+        s
+    } else {
+        flat
+    }
+}
+
+/// Why the recommended candidate was chosen, derived only from **source-agnostic** model
+/// fields (trust, signature, version, arch) — deliberately no branching on the concrete
+/// source id (ADR-0004 holds in the UI too). Richer, plan-level reasons appear at install
+/// time; this is the lightweight read-only rationale for `jii info`.
+fn recommendation_reasons(candidate: &PackageCandidate) -> Vec<String> {
+    let mut reasons = vec![format!("{} source", candidate.trust.label())];
+    if candidate.signed {
+        reasons.push("signature/checksum verifiable".to_string());
+    }
+    if let Some(version) = &candidate.version {
+        reasons.push(format!("version {version}"));
+    }
+    if !candidate.arch_ok {
+        reasons.push("⚠ may not match this architecture".to_string());
+    }
+    reasons
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{PkgVersion, TrustLevel};
+
+    fn candidate(trust: TrustLevel, signed: bool, version: Option<&str>) -> PackageCandidate {
+        PackageCandidate {
+            name: "example".into(),
+            source_id: "dnf".into(),
+            version: version.map(PkgVersion::new),
+            trust,
+            arch_ok: true,
+            signed,
+            summary: None,
+            raw: serde_json::Value::Null,
+        }
+    }
+
+    #[test]
+    fn reasons_lead_with_trust_and_include_signature_and_version() {
+        let reasons = recommendation_reasons(&candidate(TrustLevel::Official, true, Some("1.2")));
+        assert_eq!(reasons[0], "official source");
+        assert!(reasons.iter().any(|s| s.contains("verifiable")));
+        assert!(reasons.iter().any(|s| s == "version 1.2"));
+    }
+
+    #[test]
+    fn unsigned_candidate_omits_signature_reason() {
+        let reasons = recommendation_reasons(&candidate(TrustLevel::Untrusted, false, None));
+        assert_eq!(reasons, vec!["untrusted source".to_string()]);
+    }
+
+    #[test]
+    fn arch_mismatch_is_flagged() {
+        let mut c = candidate(TrustLevel::Community, false, None);
+        c.arch_ok = false;
+        assert!(
+            recommendation_reasons(&c)
+                .iter()
+                .any(|s| s.contains("architecture"))
+        );
+    }
+
+    #[test]
+    fn one_line_flattens_and_truncates() {
+        assert_eq!(one_line("a\n  b   c", 80), "a b c");
+        let long = "word ".repeat(40);
+        let out = one_line(&long, 20);
+        assert_eq!(out.chars().count(), 20);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn candidate_line_includes_source_version_trust() {
+        let line = candidate_line(&candidate(TrustLevel::Official, true, Some("2.0")));
+        assert!(line.contains("dnf"));
+        assert!(line.contains("v2.0"));
+        assert!(line.contains("official"));
+    }
 }

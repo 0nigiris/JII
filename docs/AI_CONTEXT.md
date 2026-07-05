@@ -158,20 +158,28 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 — track T1 (read-only honesty layer).** Priority changed (ADR-0026): finish the
-*whole* terminal version ("CLI 1.0") before the first public Beta, instead of going straight to
-Homebrew. A Product Review found the CLI advertises `search`/`info`/`config` that are stubs or
-absent — so T1 is `jii search` + `jii info` + `jii sources`, pure rendering over the engine's
-existing `search`/`rank` (zero new architecture). The full ordered plan is T1–T8 in
-[ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the scope + the three pre-declared architecture
-growths (platform-seam relax, provider-ordered versions, bootstrap-as-plan) are in **ADR-0026**.
+**Terminal 1.0 (ADR-0026) — T1 done; T2 next.** Priority changed (ADR-0026): finish the *whole*
+terminal version ("CLI 1.0") before the first public Beta, instead of going straight to Homebrew.
+The full ordered plan is T1–T8 in [ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the scope +
+the three pre-declared architecture growths (platform-seam relax, provider-ordered versions,
+bootstrap-as-plan) are in **ADR-0026**.
+
+**T1 (read-only honesty layer) landed:** `jii search` (ranked candidates, top marked `→`),
+`jii info` (sources + recommendation with a **source-agnostic** rationale — no branching on the
+source id), `jii sources` (active vs enabled-but-unavailable). Pure rendering over the engine's
+existing `search`/`rank`; engine gained `source_catalog()`. Summaries collapse to one line. The
+old `search`/`info` stubs and the `not_yet` helper are gone; README de-lied (`config` removed).
+Verified live on Fedora. This closed the Product Review's #1 blocker (CLI advertised commands it
+didn't have).
 
 ## Next recommended task
 
-**Continue Terminal 1.0 in order:** after T1, **T2 — batch `update`/`remove`** (ADR-0025
-machinery, no new architecture), then **T3 — Homebrew → Snap → AppImage**, T4 cross-distro,
-T5 choosers, T6 bootstrap, T7 hardening, T8 public polish. Homebrew (below) is now T3, not the
-immediate next step.
+**T2 — batch `update`/`remove`** (ADR-0025 machinery, no new architecture): widen the `Update`
+and `Remove` CLI to `Vec<String>`; add optional `Provider::plan_update_many`/`plan_remove_many`
+(where merging helps, e.g. `dnf remove a b c`) + engine `update_batch`/`remove_batch` mirroring
+`install_batch` (prime once, run in order, record as each succeeds). Then **T3 — Homebrew → Snap
+→ AppImage**, T4 cross-distro, T5 choosers, T6 bootstrap, T7 hardening, T8 public polish.
+Homebrew (below) is now T3, not the immediate next step.
 
 **Phase 5 / T3 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
 post-8-provider architecture review concluded the architecture is healthy — no code change
@@ -214,7 +222,9 @@ None.
 
 ## Test status
 
-`cargo test` — **99 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **104 passing, 0 failing**. Coverage: `info`/`search` rendering helpers
+(`recommendation_reasons` source-agnostic rationale, `one_line` summary flattening,
+`candidate_line`), dnf/flatpak parsers, ranking,
 registry (incl. `record_update` version refresh + `Update` history), cache, privilege
 elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
