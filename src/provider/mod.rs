@@ -63,8 +63,27 @@ pub trait Provider: Send + Sync {
     /// Build a removal plan for a previously installed record.
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan>;
 
+    /// Build **one** plan that removes several records at once (e.g. `dnf remove a b c`),
+    /// or `None` if this source can't batch — the engine then falls back to one
+    /// [`plan_remove`] per record. Default `None`. The remove-side twin of
+    /// [`plan_install_many`](Provider::plan_install_many): same optional-method growth
+    /// (ADR-0022/0025), the engine never branches on the source. `records` is non-empty and
+    /// all share this provider's `source_id`.
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        let _ = records;
+        Ok(None)
+    }
+
     /// Build an update plan for a previously installed record (drives `jii update`).
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan>;
+
+    /// Build **one** plan that updates several records at once (e.g. `dnf upgrade a b c`),
+    /// or `None` if this source can't batch — the engine falls back to one [`plan_update`]
+    /// per record. Default `None`. The update-side twin of `plan_install_many`.
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        let _ = records;
+        Ok(None)
+    }
 
     /// What is installed via this source, to verify the registry.
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>>;

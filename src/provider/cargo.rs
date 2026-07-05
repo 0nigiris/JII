@@ -95,10 +95,28 @@ impl Provider for Cargo {
         Ok(cargo_plan(&record.name, "uninstall", reasons))
     }
 
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // `cargo uninstall a b c` in one unprivileged run.
+        let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
+        let mut argv = vec![BIN.to_string(), "uninstall".to_string()];
+        argv.extend(names.iter().cloned());
+        let reasons = vec![format!("Remove (via cargo): {}", names.join(", "))];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
+    }
+
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `cargo install` reinstalls the newest published version if one exists.
         let reasons = vec![format!("Update {} via cargo (reinstall newest)", record.name)];
         Ok(cargo_plan(&record.name, "install", reasons))
+    }
+
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // `cargo install a b c` reinstalls each at its newest published version.
+        let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
+        let mut argv = vec![BIN.to_string(), "install".to_string()];
+        argv.extend(names.iter().cloned());
+        let reasons = vec![format!("Update (via cargo, reinstall newest): {}", names.join(", "))];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -308,6 +326,38 @@ cargo-edit v0.13.6 (/home/u/src/cargo-edit):
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, .. } => {
                 assert_eq!(argv, &["cargo", "install", "ripgrep", "bat"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_remove_merges_into_one_unprivileged_cargo_uninstall() {
+        let (a, b) = (
+            InstalledRecord {
+                name: "ripgrep".into(),
+                source_id: ID.into(),
+                version: None,
+                installed_at: chrono::Utc::now(),
+                verification: None,
+            },
+            InstalledRecord {
+                name: "bat".into(),
+                source_id: ID.into(),
+                version: None,
+                installed_at: chrono::Utc::now(),
+                verification: None,
+            },
+        );
+        let plan = Cargo::new()
+            .plan_remove_many(&[&a, &b])
+            .await
+            .unwrap()
+            .expect("cargo batches");
+        assert!(!plan.needs_root());
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["cargo", "uninstall", "ripgrep", "bat"]);
             }
             other => panic!("expected run, got {other:?}"),
         }

@@ -107,9 +107,27 @@ impl Provider for Dnf {
         Ok(root_plan(&record.name, &["remove", "-y", &record.name], reasons))
     }
 
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `dnf5 remove -y a b c` for the whole group (one escalation, one transaction).
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut args = vec!["remove", "-y"];
+        args.extend_from_slice(&names);
+        let reasons = vec![format!("Remove (via dnf): {}", names.join(", "))];
+        Ok(Some(root_plan(&names.join(", "), &args, reasons)))
+    }
+
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Update {} via dnf", record.name)];
         Ok(root_plan(&record.name, &["upgrade", "-y", &record.name], reasons))
+    }
+
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `dnf5 upgrade -y a b c` for the whole group.
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut args = vec!["upgrade", "-y"];
+        args.extend_from_slice(&names);
+        let reasons = vec![format!("Update (via dnf): {}", names.join(", "))];
+        Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -215,6 +233,52 @@ mod tests {
             crate::model::Action::RunCommand { argv, needs_root } => {
                 assert_eq!(argv, &["dnf5", "install", "-y", "git", "htop"]);
                 assert!(needs_root);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+    }
+
+    fn rec(name: &str) -> InstalledRecord {
+        InstalledRecord {
+            name: name.to_string(),
+            source_id: ID.to_string(),
+            version: None,
+            installed_at: chrono::Utc::now(),
+            verification: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_remove_merges_into_one_root_dnf_command() {
+        let (a, b) = (rec("git"), rec("htop"));
+        let refs = vec![&a, &b];
+        let plan = Dnf::new()
+            .plan_remove_many(&refs)
+            .await
+            .unwrap()
+            .expect("dnf batches");
+        assert_eq!(plan.actions.len(), 1);
+        assert!(plan.needs_root());
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["dnf5", "remove", "-y", "git", "htop"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_update_merges_into_one_root_dnf_command() {
+        let (a, b) = (rec("git"), rec("htop"));
+        let refs = vec![&a, &b];
+        let plan = Dnf::new()
+            .plan_update_many(&refs)
+            .await
+            .unwrap()
+            .expect("dnf batches");
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["dnf5", "upgrade", "-y", "git", "htop"]);
             }
             other => panic!("expected run, got {other:?}"),
         }

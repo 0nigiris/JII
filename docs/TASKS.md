@@ -240,9 +240,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       (`one_line`). README de-lied (`config` removed; search/info/sources documented as real).
       Verified live on Fedora (dnf/cargo/npm ranked for ripgrep; pipx shown unavailable).
       104 tests.
-- [ ] **T2 — Batch symmetry:** `jii update a b c`, `jii remove a b c`. Optional
-      `plan_update_many`/`plan_remove_many` + engine `update_batch`/`remove_batch`; CLI
-      widened to `Vec`. (ADR-0025 pre-committed: no new architecture.)
+- [x] **T2 — Batch symmetry**: `jii update a b c`, `jii remove a b c` (and `jii update`
+      = all). Optional `plan_remove_many`/`plan_update_many` (dnf/copr/flatpak/cargo/npm +
+      go-update; go-remove/github/pipx inherit `None` → per-record fallback). Engine gained
+      a generic `group_by_source`, `RecordOp`, `plan_record_batch` (→ `RecordBatch { plans,
+      unplannable }` — an un-updatable package is reported, not fatal), and
+      `remove_batch`/`update_batch` mirroring `install_batch` (prime once, run in order,
+      record as each succeeds). CLI `Remove`/`Update` widened to `Vec`; update carries the
+      **post-update** record (version = refreshed target), engine stamps installed_at/
+      verification. Single = batch of one (old `Engine::remove`/`update`/`plan_remove`/
+      `plan_update` + `exec::run_plan` removed — one write-path). Verified via isolated
+      `XDG_STATE_HOME` dry-runs: merged `dnf5 remove/upgrade -y a b`, mixed dnf+cargo
+      grouping, version transitions, single-package richer plan. **109 tests.**
 - [ ] **T3 — Provider breadth:** `provider/homebrew.rs` → `snap.rs` → `appimage.rs`. Empirical
       check at Homebrew: is a shared `RegistryProvider` scaffold now worth it?
 - [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`

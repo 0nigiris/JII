@@ -87,9 +87,27 @@ impl Provider for Flatpak {
         Ok(user_plan(&record.name, &["uninstall", "-y", &record.name], reasons))
     }
 
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `flatpak uninstall -y a b c` (flatpak handles its own polkit — no JII root).
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut args = vec!["uninstall", "-y"];
+        args.extend_from_slice(&names);
+        let reasons = vec![format!("Remove (via flatpak): {}", names.join(", "))];
+        Ok(Some(user_plan(&names.join(", "), &args, reasons)))
+    }
+
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Update {} via flatpak", record.name)];
         Ok(user_plan(&record.name, &["update", "-y", &record.name], reasons))
+    }
+
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `flatpak update -y a b c`.
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut args = vec!["update", "-y"];
+        args.extend_from_slice(&names);
+        let reasons = vec![format!("Update (via flatpak): {}", names.join(", "))];
+        Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -254,5 +272,29 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert_eq!(c.source_id, "flatpak");
         assert_eq!(c.trust, TrustLevel::Community);
         assert_eq!(c.raw.get("remote").unwrap().as_str(), Some("flathub"));
+    }
+
+    #[tokio::test]
+    async fn batch_update_merges_into_one_unprivileged_flatpak_command() {
+        let mk = |name: &str| InstalledRecord {
+            name: name.to_string(),
+            source_id: "flatpak".into(),
+            version: None,
+            installed_at: chrono::Utc::now(),
+            verification: None,
+        };
+        let (a, b) = (mk("org.gimp.GIMP"), mk("org.videolan.VLC"));
+        let plan = Flatpak::new()
+            .plan_update_many(&[&a, &b])
+            .await
+            .unwrap()
+            .expect("flatpak batches");
+        assert!(!plan.needs_root());
+        match &plan.actions[0] {
+            Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["flatpak", "update", "-y", "org.gimp.GIMP", "org.videolan.VLC"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
     }
 }

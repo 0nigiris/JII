@@ -936,6 +936,12 @@ Supporting decisions:
   an engine `remove_batch`/`update_batch` mirroring `install_batch`. The CLI for `update`
   already takes many names; `remove` would widen to a `Vec`. Recorded here so this is not
   re-litigated when Batch Operations lands.
+  **Landed as predicted (T2, ADR-0026):** exactly these additions, plus a generic
+  `group_by_source` helper (the grouping was now used 2×) and a `RecordOp`-driven
+  `plan_record_batch` that unifies remove+update planning (branches on the *operation*, never
+  the source). `RecordBatch { plans, unplannable }` reports an un-actionable package (e.g. a
+  github install has no update path) instead of aborting the batch — the `SearchResult`
+  facts-not-failures shape. No `InstallPlan`/Executor/model change, confirming the prediction.
 - **Further plan-merging across *different* sources is intentionally not pursued.** Merging
   is only ever within one source (that's the only place a single command is meaningful);
   cross-source "one super-command" is impossible and undesirable. The current granularity

@@ -118,6 +118,17 @@ impl Provider for Go {
         Ok(go_install_plan(&record.name, reasons))
     }
 
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // `go install a@latest b@latest` rebuilds each module's binary in one run.
+        // (No `plan_remove_many`: removal deletes individual binaries — `RemoveFile`
+        // per record — so there is no single command to merge into.)
+        let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
+        let mut argv = vec![BIN.to_string(), "install".to_string()];
+        argv.extend(names.iter().map(|n| format!("{n}@latest")));
+        let reasons = vec![format!("Update (via go install, newest): {}", names.join(", "))];
+        Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // Go has no global list mapping binaries back to modules cheaply; the registry
         // records what jii installed, and `is_installed` verifies a record via the file.

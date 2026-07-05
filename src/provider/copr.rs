@@ -97,6 +97,15 @@ impl Provider for Copr {
         ))
     }
 
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `dnf5 -y remove a b c` (COPR packages live in dnf once enabled).
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut argv = vec![BIN, "-y", "remove"];
+        argv.extend_from_slice(&names);
+        let reasons = vec![format!("Remove (via copr/dnf): {}", names.join(", "))];
+        Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
+    }
+
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![format!("Update {} via copr", record.name)];
         Ok(root_plan(
@@ -104,6 +113,15 @@ impl Provider for Copr {
             vec![vec![BIN, "-y", "upgrade", &record.name]],
             reasons,
         ))
+    }
+
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        // One `dnf5 -y upgrade a b c`.
+        let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
+        let mut argv = vec![BIN, "-y", "upgrade"];
+        argv.extend_from_slice(&names);
+        let reasons = vec![format!("Update (via copr/dnf): {}", names.join(", "))];
+        Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {

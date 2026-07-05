@@ -38,6 +38,33 @@ pub struct BatchPlan {
     pub candidates: Vec<PackageCandidate>,
 }
 
+/// One unit of a batch remove/update: a plan plus the records it covers. The record twin
+/// of [`BatchPlan`] (which pairs a plan with the *candidates* it installs). A source that
+/// batches yields one per source; one that can't yields one per record.
+pub struct RecordBatchPlan {
+    pub plan: InstallPlan,
+    pub records: Vec<InstalledRecord>,
+}
+
+/// The result of planning a batch remove/update: the plans to run, plus the records that
+/// could **not** be planned (e.g. github has no update path). Reporting them instead of
+/// aborting keeps one un-actionable package from cancelling the rest — the same
+/// facts-not-failures shape as [`SearchResult`].
+pub struct RecordBatch {
+    pub plans: Vec<RecordBatchPlan>,
+    /// `(name, reason)` for each record whose plan could not be built.
+    pub unplannable: Vec<(String, String)>,
+}
+
+/// Which record operation a batch planner is building. This selects the provider method
+/// to call — it is the *operation*, never the source; the engine still never branches on
+/// a concrete source id (ADR-0004).
+#[derive(Clone, Copy)]
+pub enum RecordOp {
+    Remove,
+    Update,
+}
+
 /// One row of `jii sources`: an enabled provider, its trust, and whether it is usable
 /// on this machine right now. Cheaper than [`SourceHealth`] — availability only.
 pub struct SourceEntry {
@@ -220,13 +247,7 @@ impl Engine {
         candidates: Vec<PackageCandidate>,
     ) -> Result<Vec<BatchPlan>> {
         // Group by source_id, preserving the order sources first appear in.
-        let mut groups: Vec<(String, Vec<PackageCandidate>)> = Vec::new();
-        for candidate in candidates {
-            match groups.iter_mut().find(|(id, _)| id == &candidate.source_id) {
-                Some((_, group)) => group.push(candidate),
-                None => groups.push((candidate.source_id.clone(), vec![candidate])),
-            }
-        }
+        let groups = group_by_source(candidates, |c| c.source_id.as_str());
 
         let mut plans = Vec::new();
         for (source_id, group) in groups {
@@ -285,48 +306,115 @@ impl Engine {
         outcome
     }
 
-    /// Build a removal plan for a recorded install via its owning provider.
-    pub async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        self.provider(&record.source_id)?.plan_remove(record).await
+    /// Group records by owning source and, per group, ask the source for **one** batched
+    /// plan (`plan_remove_many`/`plan_update_many`); on `None` fall back to one plan per
+    /// record. A group of one keeps the richer single-record plan (identical to a plain
+    /// `jii remove <pkg>` / `jii update <pkg>`). A record whose single plan cannot be built
+    /// (e.g. github has no update path) is collected into `unplannable` rather than
+    /// aborting the batch. Symmetric with [`plan_install_batch`]; the engine never branches
+    /// on the source id — only on the *operation* (ADR-0004/0025).
+    pub async fn plan_record_batch(
+        &self,
+        records: Vec<InstalledRecord>,
+        op: RecordOp,
+    ) -> Result<RecordBatch> {
+        let groups = group_by_source(records, |r| r.source_id.as_str());
+        let mut plans = Vec::new();
+        let mut unplannable = Vec::new();
+        for (source_id, group) in groups {
+            let provider = self.provider(&source_id)?;
+
+            // A group of one is not worth merging (identical command) and the per-record
+            // plan carries richer reasons, so keep single-package output byte-identical.
+            if group.len() == 1 {
+                let record = group.into_iter().next().expect("len checked");
+                match plan_one_record(provider, &record, op).await {
+                    Ok(plan) => plans.push(RecordBatchPlan { plan, records: vec![record] }),
+                    Err(e) => unplannable.push((record.name, e.to_string())),
+                }
+                continue;
+            }
+
+            let refs: Vec<&InstalledRecord> = group.iter().collect();
+            let merged = match op {
+                RecordOp::Remove => provider.plan_remove_many(&refs).await?,
+                RecordOp::Update => provider.plan_update_many(&refs).await?,
+            };
+            match merged {
+                Some(plan) => plans.push(RecordBatchPlan { plan, records: group }),
+                None => {
+                    // Source can't batch this op: one plan per record (skipping any that
+                    // cannot be planned, so the rest still proceed).
+                    for record in group {
+                        match plan_one_record(provider, &record, op).await {
+                            Ok(plan) => plans.push(RecordBatchPlan { plan, records: vec![record] }),
+                            Err(e) => unplannable.push((record.name, e.to_string())),
+                        }
+                    }
+                }
+            }
+        }
+        Ok(RecordBatch { plans, unplannable })
     }
 
-    /// Build an update plan for a recorded install via its owning provider.
-    pub async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        self.provider(&record.source_id)?.plan_update(record).await
-    }
-
-    /// Execute an update plan, then refresh the registry record. Mirrors `install_batch`
-    /// (same execute-then-write path) but logs an update and carries the refreshed
-    /// version: `new_version` is the just-installed latest (from a re-search), falling
-    /// back to the prior recorded version when the owning source no longer reports one.
-    pub async fn update(
+    /// Execute a batch of removal plans as one operation: prime privilege **once**, run
+    /// each plan in order, and record each removal as its plan succeeds — so a mid-batch
+    /// failure still leaves the registry accurate. Mirrors `install_batch`.
+    pub async fn remove_batch(
         &mut self,
-        plan: &InstallPlan,
-        record: &InstalledRecord,
-        new_version: Option<PkgVersion>,
+        batch: &[RecordBatchPlan],
         renderer: &Renderer,
     ) -> Result<()> {
-        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
-        self.registry.record_update(InstalledRecord {
-            name: record.name.clone(),
-            source_id: record.source_id.clone(),
-            version: new_version.or_else(|| record.version.clone()),
-            installed_at: Utc::now(),
-            verification: plan_verification(plan),
-        });
-        self.registry.save()
+        let plans: Vec<&InstallPlan> = batch.iter().map(|b| &b.plan).collect();
+        crate::exec::prime_for(&plans, &self.privilege).await?;
+
+        let mut outcome = Ok(());
+        for bp in batch {
+            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+                outcome = Err(e);
+                break;
+            }
+            for record in &bp.records {
+                self.registry.record_remove(&record.name, &record.source_id);
+            }
+        }
+        self.registry.save()?;
+        outcome
     }
 
-    /// Execute a removal plan, then update the registry.
-    pub async fn remove(
+    /// Execute a batch of update plans as one operation: prime **once**, run each in order,
+    /// and record each update as its plan succeeds. Each carried record supplies the
+    /// **post-update** coordinate — its `version` is the refreshed target the caller set;
+    /// the engine stamps `installed_at`/verification from the plan (as `install_batch`
+    /// does), so there is one place that shapes a written record. Mirrors `install_batch`.
+    pub async fn update_batch(
         &mut self,
-        plan: &InstallPlan,
-        record: &InstalledRecord,
+        batch: &[RecordBatchPlan],
         renderer: &Renderer,
     ) -> Result<()> {
-        crate::exec::run_plan(plan, &self.privilege, renderer).await?;
-        self.registry.record_remove(&record.name, &record.source_id);
-        self.registry.save()
+        let plans: Vec<&InstallPlan> = batch.iter().map(|b| &b.plan).collect();
+        crate::exec::prime_for(&plans, &self.privilege).await?;
+
+        let mut outcome = Ok(());
+        for bp in batch {
+            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+                outcome = Err(e);
+                break;
+            }
+            let now = Utc::now();
+            let verification = plan_verification(&bp.plan);
+            for record in &bp.records {
+                self.registry.record_update(InstalledRecord {
+                    name: record.name.clone(),
+                    source_id: record.source_id.clone(),
+                    version: record.version.clone(),
+                    installed_at: now,
+                    verification: verification.clone(),
+                });
+            }
+        }
+        self.registry.save()?;
+        outcome
     }
 
     /// Resolve which source owns an installed package.
@@ -512,9 +600,47 @@ fn audit_concerns(trust: Option<TrustLevel>, verification: &AuditVerification) -
     concerns
 }
 
+/// Group items by their owning source id, preserving the order sources first appear in.
+/// Shared by the batch planners (install/remove/update) so the "group, first-seen order"
+/// invariant lives in exactly one place.
+fn group_by_source<T>(items: Vec<T>, source_of: impl Fn(&T) -> &str) -> Vec<(String, Vec<T>)> {
+    let mut groups: Vec<(String, Vec<T>)> = Vec::new();
+    for item in items {
+        let id = source_of(&item).to_string();
+        match groups.iter_mut().find(|(gid, _)| gid == &id) {
+            Some((_, group)) => group.push(item),
+            None => groups.push((id, vec![item])),
+        }
+    }
+    groups
+}
+
+/// Build a single-record plan for the given operation. The one spot that maps a
+/// [`RecordOp`] to its `Provider` method — keeps `plan_record_batch` readable.
+async fn plan_one_record(
+    provider: &dyn crate::provider::Provider,
+    record: &InstalledRecord,
+    op: RecordOp,
+) -> Result<InstallPlan> {
+    match op {
+        RecordOp::Remove => provider.plan_remove(record).await,
+        RecordOp::Update => provider.plan_update(record).await,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn groups_by_source_preserving_first_seen_order() {
+        let items = vec![("dnf", 1), ("cargo", 2), ("dnf", 3), ("npm", 4), ("cargo", 5)];
+        let groups = group_by_source(items, |(src, _)| src);
+        let ids: Vec<&str> = groups.iter().map(|(id, _)| id.as_str()).collect();
+        assert_eq!(ids, vec!["dnf", "cargo", "npm"]);
+        assert_eq!(groups[0].1, vec![("dnf", 1), ("dnf", 3)]);
+        assert_eq!(groups[1].1, vec![("cargo", 2), ("cargo", 5)]);
+    }
 
     #[test]
     fn verification_resolution() {

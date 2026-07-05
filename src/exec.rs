@@ -18,15 +18,6 @@ use crate::model::{Action, InstallPlan, Verification};
 use crate::privilege::Privilege;
 use crate::ui::{Renderer, describe_action};
 
-/// Execute a plan's actions in order. Primes privilege escalation once up front if
-/// any action needs root, so a batch prompts at most once. A thin wrapper over the
-/// two primitives ([`prime_for`] + [`run_actions`]) that batch install reuses to prime
-/// **once across many plans** and record successes as it goes.
-pub async fn run_plan(plan: &InstallPlan, privilege: &Privilege, renderer: &Renderer) -> Result<()> {
-    prime_for(std::slice::from_ref(&plan), privilege).await?;
-    run_actions(plan, privilege, renderer).await
-}
-
 /// Prime privilege escalation once if **any** of `plans` needs root, so a whole batch
 /// of plans prompts for a password at most once (`sudo -v` up front).
 pub async fn prime_for(plans: &[&InstallPlan], privilege: &Privilege) -> Result<()> {

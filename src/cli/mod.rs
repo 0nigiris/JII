@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 
 use crate::config::{ColorChoice, Config, Profile};
 use crate::engine::Engine;
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, Query};
+use crate::model::{InstalledRecord, PackageCandidate, Query};
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
@@ -76,15 +76,16 @@ pub enum Commands {
         #[arg(required = true)]
         packages: Vec<String>,
     },
-    /// Remove a package using the source that installed it.
+    /// Remove one or more packages using the source that installed each.
     Remove {
-        /// Package name.
-        package: String,
+        /// Package name(s).
+        #[arg(required = true)]
+        packages: Vec<String>,
     },
-    /// Update one package, or everything if omitted.
+    /// Update one or more packages, or everything if none are named.
     Update {
-        /// Package name (optional).
-        package: Option<String>,
+        /// Package name(s); empty updates everything.
+        packages: Vec<String>,
     },
     /// Show candidates without installing.
     Search {
@@ -143,7 +144,7 @@ impl Cli {
             }
 
             // Implemented in Phase 2.
-            Some(Commands::Remove { package }) => self.remove(package, config, &renderer).await,
+            Some(Commands::Remove { packages }) => self.remove(packages, config, &renderer).await,
             Some(Commands::Why { package }) => self.why(package, config, &renderer),
             Some(Commands::List) => self.list(config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
@@ -151,9 +152,7 @@ impl Cli {
             Some(Commands::Doctor) => self.doctor(config, &renderer).await,
             Some(Commands::Audit) => self.audit(config, &renderer),
 
-            Some(Commands::Update { package }) => {
-                self.update(package.as_deref(), config, &renderer).await
-            }
+            Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
 
             Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
@@ -323,51 +322,98 @@ impl Cli {
         config
     }
 
-    /// Remove path: resolve the owning source (registry + verification), plan, and
-    /// execute the removal.
+    /// Remove path (one or many packages): resolve each to its owning record, then let the
+    /// engine group + merge same-source removals into one command where the source can
+    /// (`dnf remove a b c`), and run them as **one** operation (one preview, one
+    /// confirmation, one root escalation, one execution). A not-installed package is
+    /// reported and never cancels the rest (offer to continue).
     async fn remove(
         &self,
-        package: &str,
+        packages: &[String],
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
         crate::platform::Platform::detect().require_supported()?;
 
         let mut engine = Engine::new(config)?;
-        let record = match engine.resolve_installed(package).await {
-            Ok(r) => r,
-            Err(e) => {
-                renderer.error(&e.to_string());
+
+        // 1. Resolve each name to its owning record; collect the ones jii didn't install.
+        let mut records: Vec<InstalledRecord> = Vec::new();
+        let mut not_installed: Vec<String> = Vec::new();
+        for name in packages {
+            match engine.resolve_installed(name).await {
+                Ok(record) => records.push(record),
+                Err(_) => not_installed.push(name.clone()),
+            }
+        }
+        if !not_installed.is_empty() {
+            renderer.error(&format!("Not installed via jii: {}", not_installed.join(", ")));
+        }
+        if records.is_empty() {
+            return Ok(());
+        }
+        if !not_installed.is_empty() {
+            let flags = self.prompt_flags(false);
+            if !prompt::confirm(renderer, "Continue removing the rest?", true, &flags) {
+                renderer.info("Aborted.");
                 return Ok(());
             }
-        };
+        }
 
-        let plan = engine.plan_remove(&record).await?;
-        renderer.plan(&plan);
+        // 2. Group + merge into batched plans.
+        let batch = engine
+            .plan_record_batch(records, crate::engine::RecordOp::Remove)
+            .await?;
+        for (name, reason) in &batch.unplannable {
+            renderer.warn(&format!("✗ {name}: cannot plan removal ({reason})"));
+        }
+        if batch.plans.is_empty() {
+            renderer.info("Nothing to remove.");
+            return Ok(());
+        }
 
+        // 3. Preview, dry-run guard, one confirmation (default no — removal is destructive).
+        self.preview_record_batch(&batch.plans, renderer);
         if self.global.dry_run {
             renderer.info("(dry-run: nothing was removed)");
             return Ok(());
         }
-
+        let names = record_batch_names(&batch.plans);
         let flags = self.prompt_flags(false);
-        if !prompt::confirm(renderer, &format!("Remove {package}?"), false, &flags) {
+        let question = if names.len() == 1 {
+            format!("Remove {}?", names[0])
+        } else {
+            format!("Remove {} packages?", names.len())
+        };
+        if !prompt::confirm(renderer, &question, false, &flags) {
             renderer.info("Aborted.");
             return Ok(());
         }
 
-        engine.remove(&plan, &record, renderer).await?;
-        renderer.success(&format!("Removed {package} via {}.", record.source_id));
+        // 4. One escalation, one run; records cleared as each plan succeeds.
+        engine.remove_batch(&batch.plans, renderer).await?;
+        renderer.success(&format!("Removed {}.", names.join(", ")));
         Ok(())
     }
 
-    /// Update path: for one named package or every recorded install, re-search its
-    /// owning source for the latest version and run that source's `plan_update` through
-    /// the same preview → confirm → execute pipeline as install/remove. There is no
-    /// per-source branching — the engine resolves each record's provider (ADR-0004).
+    /// Batch preview for remove/update: each plan's action preview (the merged commands
+    /// are visible before confirming). In JSON mode, the plans as JSON.
+    fn preview_record_batch(&self, batch: &[crate::engine::RecordBatchPlan], renderer: &Renderer) {
+        for bp in batch {
+            renderer.plan(&bp.plan);
+        }
+    }
+
+    /// Update path (one, many, or all packages): for each recorded install, re-search its
+    /// owning source for the latest version, skip provably-current packages, then let the
+    /// engine group + merge same-source updates into one command where the source can
+    /// (`dnf upgrade a b c`) and run them as **one** operation. No per-source branching —
+    /// the engine resolves each record's provider (ADR-0004/0025). A named package that is
+    /// not installed is reported; a package whose source can't update is warned and
+    /// skipped, never cancelling the rest.
     async fn update(
         &self,
-        package: Option<&str>,
+        packages: &[String],
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
@@ -379,26 +425,33 @@ impl Cli {
             return Ok(());
         }
 
-        // The records to consider: one named package (must be installed), or all.
-        let records = match package {
-            Some(name) => match engine.resolve_installed(name).await {
-                Ok(record) => vec![record],
-                Err(e) => {
-                    renderer.error(&e.to_string());
-                    return Ok(());
+        // The records to consider: named packages (each must be installed), or all.
+        let records = if packages.is_empty() {
+            engine.registry().installed().to_vec()
+        } else {
+            let mut resolved = Vec::new();
+            let mut not_installed = Vec::new();
+            for name in packages {
+                match engine.resolve_installed(name).await {
+                    Ok(record) => resolved.push(record),
+                    Err(_) => not_installed.push(name.clone()),
                 }
-            },
-            None => engine.registry().installed().to_vec(),
+            }
+            if !not_installed.is_empty() {
+                renderer.error(&format!("Not installed via jii: {}", not_installed.join(", ")));
+            }
+            resolved
         };
         if records.is_empty() {
             renderer.info("Nothing installed via jii yet.");
             return Ok(());
         }
 
-        // Build the update jobs: re-search each record's source for the latest version
-        // (same search→rank path as install), skip those already newest, and plan the
-        // update via the owning provider.
-        let mut jobs: Vec<UpdateJob> = Vec::new();
+        // Re-search each record's source for the latest version, skip those already newest,
+        // and build the **post-update** records (version set to the refreshed target) plus
+        // human transition lines. The engine stamps installed_at/verification on write.
+        let mut refreshed: Vec<InstalledRecord> = Vec::new();
+        let mut transitions: Vec<String> = Vec::new();
         let mut up_to_date = 0usize;
         for record in records {
             if let Some(source) = &self.global.source
@@ -416,13 +469,23 @@ impl Cli {
                 up_to_date += 1;
                 continue;
             }
-            match engine.plan_update(&record).await {
-                Ok(plan) => jobs.push(UpdateJob { record, plan, target }),
-                Err(e) => renderer.warn(&format!("✗ {}: cannot plan update ({e})", record.name)),
+            // Post-update version: the refreshed target, falling back to the prior version
+            // when the owning source no longer reports one.
+            let new_version = target
+                .as_ref()
+                .and_then(|c| c.version.clone())
+                .or_else(|| record.version.clone());
+            if let (Some(old), Some(new)) = (&record.version, &new_version)
+                && old != new
+            {
+                transitions.push(format!("{}: {old} → {new}", record.name));
             }
+            let mut post = record.clone();
+            post.version = new_version;
+            refreshed.push(post);
         }
 
-        if jobs.is_empty() {
+        if refreshed.is_empty() {
             if up_to_date > 0 {
                 renderer.success(&format!("All {up_to_date} package(s) already up to date."));
             } else {
@@ -431,13 +494,23 @@ impl Cli {
             return Ok(());
         }
 
-        // Preview every planned update (with its version transition when known).
-        for job in &jobs {
-            if let Some(line) = job.transition() {
-                renderer.info(&line);
-            }
-            renderer.plan(&job.plan);
+        // Group + merge into batched update plans (skipping any source can't plan).
+        let batch = engine
+            .plan_record_batch(refreshed, crate::engine::RecordOp::Update)
+            .await?;
+        for (name, reason) in &batch.unplannable {
+            renderer.warn(&format!("✗ {name}: cannot plan update ({reason})"));
         }
+        if batch.plans.is_empty() {
+            renderer.info("No updatable packages.");
+            return Ok(());
+        }
+
+        // Preview: version transitions, then each plan.
+        for line in &transitions {
+            renderer.info(line);
+        }
+        self.preview_record_batch(&batch.plans, renderer);
         if up_to_date > 0 {
             renderer.info(&format!("({up_to_date} already up to date)"));
         }
@@ -447,36 +520,21 @@ impl Cli {
             return Ok(());
         }
 
-        // One confirmation for the whole batch.
+        // One confirmation, one escalation, one run; records refreshed as each succeeds.
+        let names = record_batch_names(&batch.plans);
         let flags = self.prompt_flags(engine.config().install.auto);
-        let question = if jobs.len() == 1 {
-            format!("Update {}?", jobs[0].record.name)
+        let question = if names.len() == 1 {
+            format!("Update {}?", names[0])
         } else {
-            format!("Update {} packages?", jobs.len())
+            format!("Update {} packages?", names.len())
         };
         if !prompt::confirm(renderer, &question, true, &flags) {
             renderer.info("Aborted.");
             return Ok(());
         }
 
-        // Execute each update, recording the refreshed version on success.
-        let mut updated = 0usize;
-        for job in &jobs {
-            let target_version = job.target.as_ref().and_then(|c| c.version.clone());
-            match engine.update(&job.plan, &job.record, target_version, renderer).await {
-                Ok(()) => {
-                    updated += 1;
-                    renderer.success(&format!(
-                        "Updated {} via {}.",
-                        job.record.name, job.record.source_id
-                    ));
-                }
-                Err(e) => renderer.error(&format!("Failed to update {}: {e}", job.record.name)),
-            }
-        }
-        if updated > 1 {
-            renderer.success(&format!("Updated {updated} package(s)."));
-        }
+        engine.update_batch(&batch.plans, renderer).await?;
+        renderer.success(&format!("Updated {}.", names.join(", ")));
         Ok(())
     }
 
@@ -812,26 +870,13 @@ impl Cli {
     }
 }
 
-/// One planned update: the record being updated, its `plan_update`, and the latest
-/// candidate from a re-search (used for the version transition shown in the preview
-/// and recorded on success). `target` is `None` when the owning source no longer
-/// offers the package.
-struct UpdateJob {
-    record: InstalledRecord,
-    plan: InstallPlan,
-    target: Option<PackageCandidate>,
-}
-
-impl UpdateJob {
-    /// A `name: current → latest` line, only when both versions are known and differ.
-    fn transition(&self) -> Option<String> {
-        let latest = self.target.as_ref()?.version.as_ref()?;
-        let current = self.record.version.as_ref()?;
-        if latest == current {
-            return None;
-        }
-        Some(format!("{}: {current} → {latest}", self.record.name))
-    }
+/// The names covered by a remove/update batch, flattened across plans (each plan may
+/// cover several records when the source merged them).
+fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
+    batch
+        .iter()
+        .flat_map(|bp| bp.records.iter().map(|r| r.name.clone()))
+        .collect()
 }
 
 /// A compact one-line description of a candidate for `search`/`info`:

@@ -102,11 +102,19 @@ impl Provider for Npm {
         Ok(npm_plan(&record.name, "uninstall", &prefix, reasons))
     }
 
+    async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        Ok(Some(npm_many("uninstall", records, "Remove (via npm)")?))
+    }
+
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // Reinstalling the package pulls the newest published version.
         let prefix = user_prefix()?;
         let reasons = vec![format!("Update {} via npm (reinstall newest)", record.name)];
         Ok(npm_plan(&record.name, "install", &prefix, reasons))
+    }
+
+    async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
+        Ok(Some(npm_many("install", records, "Update (via npm, reinstall newest)")?))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -202,6 +210,22 @@ fn npm_plan(name: &str, verb: &str, prefix: &str, reasons: Vec<String>) -> Insta
         name.to_string(),
     ];
     command_plan(ID, name, argv, false, reasons)
+}
+
+/// One `npm <verb> --global --prefix $HOME/.local a b c` for a whole group (no root).
+fn npm_many(verb: &str, records: &[&InstalledRecord], label: &str) -> Result<InstallPlan> {
+    let prefix = user_prefix()?;
+    let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
+    let mut argv = vec![
+        BIN.to_string(),
+        verb.to_string(),
+        "--global".to_string(),
+        "--prefix".to_string(),
+        prefix,
+    ];
+    argv.extend(names.iter().cloned());
+    let reasons = vec![format!("{label}: {}", names.join(", "))];
+    Ok(command_plan(ID, &names.join(", "), argv, false, reasons))
 }
 
 /// Parse `npm ls -g --json` output into installed records (top-level deps only).

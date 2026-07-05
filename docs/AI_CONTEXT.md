@@ -158,28 +158,37 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 (ADR-0026) — T1 done; T2 next.** Priority changed (ADR-0026): finish the *whole*
-terminal version ("CLI 1.0") before the first public Beta, instead of going straight to Homebrew.
-The full ordered plan is T1–T8 in [ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the scope +
-the three pre-declared architecture growths (platform-seam relax, provider-ordered versions,
-bootstrap-as-plan) are in **ADR-0026**.
+**Terminal 1.0 (ADR-0026) — T1 & T2 done; T3 next.** Priority changed (ADR-0026): finish the
+*whole* terminal version ("CLI 1.0") before the first public Beta, instead of going straight to
+Homebrew. The full ordered plan is T1–T8 in [ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the
+scope + the three pre-declared architecture growths (platform-seam relax, provider-ordered
+versions, bootstrap-as-plan) are in **ADR-0026**.
 
-**T1 (read-only honesty layer) landed:** `jii search` (ranked candidates, top marked `→`),
-`jii info` (sources + recommendation with a **source-agnostic** rationale — no branching on the
-source id), `jii sources` (active vs enabled-but-unavailable). Pure rendering over the engine's
-existing `search`/`rank`; engine gained `source_catalog()`. Summaries collapse to one line. The
-old `search`/`info` stubs and the `not_yet` helper are gone; README de-lied (`config` removed).
-Verified live on Fedora. This closed the Product Review's #1 blocker (CLI advertised commands it
-didn't have).
+**T1 (read-only honesty layer) landed:** `jii search` (ranked candidates, top `→`), `jii info`
+(sources + recommendation with a **source-agnostic** rationale — no branching on the source id),
+`jii sources` (active vs enabled-but-unavailable). Pure rendering over `search`/`rank`; engine
+gained `source_catalog()`. Old `search`/`info` stubs + `not_yet` gone; README de-lied.
+
+**T2 (batch update/remove) landed:** `jii update a b c` / `jii remove a b c` (and `jii update` =
+all). Exactly the ADR-0025 machinery — **no new architecture**. Optional
+`plan_remove_many`/`plan_update_many` (dnf/copr/flatpak/cargo/npm + go-update; the rest inherit
+`None` → per-record fallback). Engine gained generic `group_by_source`, `RecordOp`,
+`plan_record_batch` (→ `RecordBatch { plans, unplannable }`: an un-updatable package like a
+github install is reported, never fatal), and `remove_batch`/`update_batch` mirroring
+`install_batch`. Single = batch of one; the old single `Engine::remove`/`update`/`plan_remove`/
+`plan_update` and `exec::run_plan` were removed (one write-path). Update carries the post-update
+record (version = refreshed target); engine stamps installed_at/verification. Verified via
+isolated `XDG_STATE_HOME` dry-runs (merged `dnf5 remove/upgrade`, mixed dnf+cargo grouping,
+version transitions, single-package richer plan).
 
 ## Next recommended task
 
-**T2 — batch `update`/`remove`** (ADR-0025 machinery, no new architecture): widen the `Update`
-and `Remove` CLI to `Vec<String>`; add optional `Provider::plan_update_many`/`plan_remove_many`
-(where merging helps, e.g. `dnf remove a b c`) + engine `update_batch`/`remove_batch` mirroring
-`install_batch` (prime once, run in order, record as each succeeds). Then **T3 — Homebrew → Snap
-→ AppImage**, T4 cross-distro, T5 choosers, T6 bootstrap, T7 hardening, T8 public polish.
-Homebrew (below) is now T3, not the immediate next step.
+**T3 — provider breadth on the proven shape: `provider/homebrew.rs` → `snap.rs` → `appimage.rs`.**
+Additive `Provider`s (ADR-0004/0020), each with `plan_install_many`/`plan_remove_many`/
+`plan_update_many` where the tool batches. **Empirical check at Homebrew** (5th registry-user-space
+provider): does a thin shared `RegistryProvider` scaffold finally pay off? Decide from evidence.
+Then T4 cross-distro, T5 choosers, T6 bootstrap, T7 hardening, T8 public polish. Homebrew details
+below.
 
 **Phase 5 / T3 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
 post-8-provider architecture review concluded the architecture is healthy — no code change
@@ -222,9 +231,10 @@ None.
 
 ## Test status
 
-`cargo test` — **104 passing, 0 failing**. Coverage: `info`/`search` rendering helpers
-(`recommendation_reasons` source-agnostic rationale, `one_line` summary flattening,
-`candidate_line`), dnf/flatpak parsers, ranking,
+`cargo test` — **109 passing, 0 failing**. Coverage: `info`/`search` rendering helpers
+(`recommendation_reasons` source-agnostic rationale, `one_line`, `candidate_line`),
+`group_by_source` (first-seen order), batch remove/update merges (dnf root remove+upgrade,
+cargo uninstall, flatpak update), dnf/flatpak parsers, ranking,
 registry (incl. `record_update` version refresh + `Update` history), cache, privilege
 elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
