@@ -183,9 +183,20 @@ version transitions, single-package richer plan).
 
 ## Next recommended task
 
-**T3 in progress — Homebrew done; Snap next, then AppImage.**
+**T3 done (Homebrew + Snap + AppImage). Next: T4 — cross-distro system providers.**
 
-**Homebrew (`brew`) landed:** `provider/homebrew.rs`, same proven shape as cargo/npm/pipx/go —
+**T4 — `provider/apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs` behind the platform seam.** This is
+the biggest track and needs **its own ADR** for the platform-seam relaxation (ADR-0026 growth #1):
+`Platform::is_supported` stops meaning "distro == Fedora" and starts meaning "≥1 native system
+provider is available here"; each system provider gates itself via a **distro-aware
+`is_available`** (dnf false on Arch, pacman true). The core still never branches on the source;
+Fedora behaviour must not change. Start by writing that ADR + relaxing `platform.rs`/
+`require_supported`, then add the providers one at a time (apt first — Debian/Ubuntu are the
+biggest audience), each system-root with `_many` batching where the tool supports it.
+
+**T3 (provider breadth) landed — Homebrew, Snap, AppImage:**
+
+**Homebrew (`brew`):** `provider/homebrew.rs`, same proven shape as cargo/npm/pipx/go —
 formula API (`formulae.brew.sh/api/formula/<name>.json`) via `get_json_opt`, unprivileged `brew
 install/uninstall/upgrade` (+ `_many`), `brew list --versions`, community trust, no library filter
 (ADR-0023). Registered in config (`KNOWN_SOURCES` + default priority; `is_available` gates it off
@@ -195,26 +206,34 @@ are irreducibly per-provider; the genuine sharing already lives in the free-func
 (`get_json_opt`/`command_plan`/`run_capture`/`which`/…). Verified: real formula API shape matches
 the structs (curl), 404→empty, `jii sources` lists brew.
 
-**Next: `provider/snap.rs`** (snapd) — a **system** provider (snap install needs root, unlike the
-user-space registry providers), store search API. Then `provider/appimage.rs` (download + place,
-github-like; untrusted trust). After T3: **T4 cross-distro** (Apt/Pacman/Zypper/Nix behind the
-platform seam — its own ADR), T5 choosers, T6 bootstrap, T7 hardening, T8 public polish.
+**Snap (`snap`):** `provider/snap.rs` — first **system** provider in the breadth track (root;
+`sudo snap install`). Store info API (`api.snapcraft.io/v2/snaps/info/<name>?fields=…`, needs the
+`Snap-Device-Series` header → `http_client` directly, like github/copr). `snap install/remove/
+refresh` (+ `_many`). **Classic confinement** handled: verifying the live API showed `confinement`
+is only returned as an explicit `fields` item (and `fields` restricts the response), so the query
+lists `version,confinement,summary,title`; classic snaps get `--classic`, and a classic snap in a
+batch declines the merge (`--classic` can't apply selectively) → per-snap fallback. `snap list`
+parsed. Community trust; registered near flatpak in priority.
 
-**Phase 5 / T3 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
-post-8-provider architecture review concluded the architecture is healthy — no code change
-— and Homebrew is the right next source: it completes user-space ecosystem coverage on the
-*proven* registry-user-space shape at zero new architectural axis). Same shape as
-cargo/npm/pipx/go: `is_available` (`brew`), `search` via the formula API
+**AppImage (ADR-0028): not a standalone provider.** It has no manager/API and its catalog
+(`appimage.github.io/feed.json`) has no download URLs — it is a *delivery format over GitHub
+releases*. So `github::classify` now accepts `.AppImage` assets as raw binaries **without** the
+`linux` token (AppImages are Linux-only; arch still required; `.AppImage.zsync` rejected).
+`jii owner/repo` installs an AppImage today; by-name discovery folds into T5 (repo chooser). The
+reserved `"appimage"` id was removed from `KNOWN_SOURCES`.
+
+<details><summary>Homebrew reference (from ADR-0024, the original T3 pick — now landed)</summary>
+
+Same shape as cargo/npm/pipx/go: `is_available` (`brew`), `search` via the formula API
 (`https://formulae.brew.sh/api/formula/<name>.json`) with `get_json_opt`, `plan_install`/
 `update`/`remove` = single unprivileged `brew install`/`upgrade`/`uninstall` via
 `command_plan` (no root; brew is user-owned), `list_installed` (`brew list --versions` or
 `--json`), community trust. Handle formula-vs-cask (casks are GUI apps; on Linux brew is
 formula-only, so start formula-only). **Empirical check while doing it:** this is the 5th
 registry-user-space provider — evaluate (do not assume) whether a thin shared
-`RegistryProvider` scaffold now pays off; prior is *still separate files* unless Homebrew
-proves otherwise. **After Homebrew:** the declarative `.repo`/COPR provider
-(`data/sources/*.toml`) is the recorded strategic next step (ADR-0024) — needs its own
-design pass (writes repo files / imports GPG keys as root).
+`RegistryProvider` scaffold now pays off (resolved: ADR-0027, no scaffold).
+
+</details>
 
 Recorded non-blocking debts to respect (ADR-0024): version comparison (add a
 provider-computed normalized key beside `PkgVersion`'s raw string only when version-aware
@@ -241,8 +260,10 @@ None.
 
 ## Test status
 
-`cargo test` — **115 passing, 0 failing**. Coverage: homebrew (formula→candidate, unprivileged
-plan, `brew list --versions` parse, batch merge), `info`/`search` rendering helpers
+`cargo test` — **123 passing, 0 failing**. Coverage: homebrew (formula→candidate, unprivileged
+plan, `brew list --versions`, batch), snap (candidate + classic detection, root plan, `--classic`,
+batch merge-vs-decline, `snap list`), github `.AppImage` acceptance (no-`linux` token, wrong-arch/
+`.zsync` rejection), `info`/`search` rendering helpers
 (`recommendation_reasons` source-agnostic rationale, `one_line`, `candidate_line`),
 `group_by_source` (first-seen order), batch remove/update merges (dnf root remove+upgrade,
 cargo uninstall, flatpak update), dnf/flatpak parsers, ranking,

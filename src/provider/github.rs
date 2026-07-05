@@ -366,9 +366,17 @@ fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
     if REJECT.iter().any(|tok| n.contains(tok)) {
         return None;
     }
-    // Require an explicit linux marker and a matching arch token, so we never install
-    // an artifact for the wrong OS/arch.
-    if !n.contains("linux") || !arch_tokens.iter().any(|t| n.contains(t)) {
+    let arch_ok = arch_tokens.iter().any(|t| n.contains(t));
+    // An AppImage is a self-contained, Linux-only executable, so accept it as a raw
+    // binary even without an explicit "linux" token (many are named `App-x86_64.AppImage`).
+    // Arch is still required, so we never install a wrong-arch build. `.AppImage.zsync`
+    // update files are already rejected above by the `.zsync` token.
+    if n.ends_with(".appimage") {
+        return arch_ok.then_some(AssetKind::Binary);
+    }
+    // Otherwise require an explicit linux marker and a matching arch token, so we never
+    // install an artifact for the wrong OS/arch.
+    if !n.contains("linux") || !arch_ok {
         return None;
     }
     if n.ends_with(".tar.gz") || n.ends_with(".tgz") {
@@ -637,6 +645,27 @@ mod tests {
         let (picked, kind) = select_asset(&a, "x86_64").unwrap();
         assert_eq!(picked.name, "eza_x86_64-unknown-linux-gnu.zip");
         assert_eq!(kind, AssetKind::Zip);
+    }
+
+    #[test]
+    fn installs_appimage_asset_without_linux_token() {
+        // AppImages are Linux-only and often named without the word "linux"; treat one
+        // as a raw binary (download + place + chmod), still arch-gated.
+        let a = vec![asset("Inkscape-1.3-x86_64.AppImage")];
+        let (picked, kind) = select_asset(&a, "x86_64").unwrap();
+        assert_eq!(picked.name, "Inkscape-1.3-x86_64.AppImage");
+        assert_eq!(kind, AssetKind::Binary);
+    }
+
+    #[test]
+    fn rejects_wrong_arch_appimage_and_zsync_updater() {
+        // A wrong-arch AppImage is not installed; the `.AppImage.zsync` updater (a delta
+        // file, not the app) is rejected by the `.zsync` token.
+        let a = vec![
+            asset("App-aarch64.AppImage"),
+            asset("App-x86_64.AppImage.zsync"),
+        ];
+        assert!(select_asset(&a, "x86_64").is_none());
     }
 
     #[test]

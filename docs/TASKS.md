@@ -252,7 +252,7 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       `plan_update` + `exec::run_plan` removed — one write-path). Verified via isolated
       `XDG_STATE_HOME` dry-runs: merged `dnf5 remove/upgrade -y a b`, mixed dnf+cargo
       grouping, version transitions, single-package richer plan. **109 tests.**
-- [ ] **T3 — Provider breadth:** `provider/homebrew.rs` ✅ → `snap.rs` → `appimage.rs`.
+- [x] **T3 — Provider breadth:** Homebrew ✅ → Snap ✅ → AppImage ✅ (as a github asset kind).
       - [x] **Homebrew** (`brew`, Linuxbrew): formula API (`formulae.brew.sh/api/formula/<n>.json`)
             via `get_json_opt`; unprivileged `brew install/uninstall/upgrade` (+ `_many`);
             `brew list --versions`; community trust; no library filter (ADR-0023). Registered
@@ -267,7 +267,12 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             declines batch-merge when mixed (verified against the live API: `confinement`
             is only returned as an explicit `fields` item). `snap list` parse; community
             trust. Registered in config. 121 tests.
-      - [ ] **AppImage** — download + place (github-like); untrusted trust.
+      - [x] **AppImage** — **not a standalone provider (ADR-0028)**: it has no manager/API and
+            its catalog has no download URLs. It is a *delivery format over GitHub releases*, so
+            `github::classify` now accepts `.AppImage` assets as raw binaries without the `linux`
+            token (arch still required; `.AppImage.zsync` rejected). `jii owner/repo` installs an
+            AppImage today; by-name discovery folds into T5 (repo chooser). Reserved `"appimage"`
+            id removed from `KNOWN_SOURCES`. 123 tests.
 - [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`
       behind the platform seam. Relax `Platform::is_supported`; distro-aware `is_available`.
       Own ADR for the "native system provider per distro" concept. Never break Fedora.

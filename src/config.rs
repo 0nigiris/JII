@@ -16,7 +16,6 @@ use crate::model::TrustLevel;
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
     "dnf", "copr", "flatpak", "snap", "github", "cargo", "npm", "pipx", "go", "brew",
-    "appimage",
 ];
 
 /// Top-level configuration.

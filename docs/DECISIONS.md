@@ -993,6 +993,52 @@ granularity of sharing.
   sources needing identical version-list fetching for the T5 version chooser — that specific logic
   gets its own free-function helper when it hits the 3×/4× threshold, not a god-trait.
 - Revisit only if the identical surface grows well beyond boilerplate; today it does not.
+
+## ADR-0028 — AppImage is a GitHub-release asset kind, not a standalone provider
+
+**Status:** Accepted
+
+**Context:** Terminal 1.0 (ADR-0026) T3 lists AppImage after Homebrew/Snap. Investigating the
+real ecosystem showed AppImage does not fit the `Provider`-as-a-source shape the way a package
+manager does:
+- **No manager, no install command, no download API.** "Installing" an AppImage is just
+  *download a file + place it + `chmod +x`* — which the **github provider already does**
+  (`Download` + `Place` with an exec mode).
+- **No usable search source.** The only catalog, `appimage.github.io/feed.json`, is a discovery
+  index of ~1388 names with descriptions/icons but **no download URLs** and frequently
+  `links: null` (e.g. Inkscape). When a link exists it points to a **GitHub repository** — i.e.
+  resolving an AppImage by name is the *same* name→repo→release-asset problem the github provider
+  already faces (and the T5 repository chooser will solve).
+- **github already classifies `.AppImage` as an installable binary** when the asset name carries
+  `linux` + an arch token; it only missed the common `App-x86_64.AppImage` naming (no `linux`).
+
+**Decision (user-approved):** **Do not build a standalone `appimage` provider.** Treat AppImage as
+a **delivery format over GitHub releases**:
+1. `github::classify` now accepts a `.AppImage` asset as a raw `Binary` (download + place + chmod)
+   **without** requiring the `linux` token — AppImages are Linux-only by definition — while still
+   requiring an arch match (never install a wrong-arch build). `.AppImage.zsync` updater deltas
+   stay rejected (the `.zsync` token). So `jii <owner>/<repo>` installs an AppImage release today.
+2. **AppImage-by-bare-name** folds into **T5 (repository chooser)** — the same name→repo
+   disambiguation, resolved visibly by the user, not a separate source.
+3. Removed the reserved `"appimage"` id from `KNOWN_SOURCES` — there is no such source.
+4. The catalog's icons/screenshots/metadata are a **GUI-era** concern (ROADMAP "Provider-supplied
+   metadata"), not a CLI necessity.
+
+**Alternatives considered:**
+- **A catalog-backed `appimage` provider** (search feed.json → GitHub repo → release asset).
+  Rejected: it duplicates github's release-asset resolution, and covers only the subset of catalog
+  entries that *have* a link and ship an `.AppImage` (Inkscape has neither in the feed). Half
+  coverage plus duplication — the opposite of the ADR-0027 principle.
+- **Defer AppImage entirely to T5.** Reasonable, but the github `.AppImage` acceptance is a
+  correct, ~6-line, independently-useful improvement, so it lands now; only *by-name discovery*
+  waits for T5.
+
+**Consequences:**
+- AppImage releases install through the existing github path — no new source, no duplication, one
+  trust story (untrusted binaries, always confirmed). T3's "AppImage" item is satisfied this way.
+- The "install an AppImage by friendly name" experience arrives with T5's repository chooser.
+- Confirms the ADR-0026/0027 stance: breadth is added by reusing seams, and a thing that isn't a
+  managed source doesn't get forced into the `Provider` mould.
 - **Further plan-merging across *different* sources is intentionally not pursued.** Merging
   is only ever within one source (that's the only place a single command is meaningful);
   cross-source "one super-command" is impossible and undesirable. The current granularity
