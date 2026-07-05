@@ -102,7 +102,7 @@ Cross-distro support (apt, pacman, zypper, nix, AUR) is planned.
 
 ## Documentation
 
-- [AGENTS.md](AGENTS.md) — start here if you are an AI or a new contributor.
+- [AGENTS.md](AGENTS.md) — start here if you are an AI or a new contributor. If you are just a user, nvm
 - [AI context](docs/AI_CONTEXT.md) — current state (phase, next task, build/test).
 - [Architecture](docs/ARCHITECTURE.md) — the source of truth for design.
 - [Decisions](docs/DECISIONS.md) — ADRs: why the architecture is the way it is.
