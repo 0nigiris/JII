@@ -10,8 +10,8 @@ You think about *software*. JII figures out *how* to install it — and explains
 ---
 
 JII is **not** a package manager. It sits on top of the ones you already have
-(DNF, COPR, Flatpak, Snap, GitHub Releases — incl. AppImage assets — Cargo, npm, pipx, Go,
-Homebrew…), searches all of them
+(DNF, COPR, apt, pacman, zypper, Nix, Flatpak, Snap, GitHub Releases — incl. AppImage assets —
+Cargo, npm, pipx, Go, Homebrew…), searches all of them
 at once, ranks the results, and installs the best option — transparently.
 
 ```console
@@ -85,7 +85,7 @@ CLI flag > env > config > default.
 
 ```toml
 [sources]
-priority = ["dnf", "copr", "flatpak", "snap", "github", "cargo", "npm", "pipx", "go", "brew"]
+priority = ["dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github", "cargo", "npm", "pipx", "go", "brew", "nix"]
 
 [install]
 profile = "stable"
@@ -98,8 +98,11 @@ allow_untrusted_auto = false
 
 ## Status
 
-🚧 **Early development.** MVP targets **Fedora** (dnf5, COPR, Flatpak, GitHub).
-Cross-distro support (apt, pacman, zypper, nix, AUR) is planned.
+🚧 **Early development.** Best exercised on **Fedora** (dnf5, COPR), but JII now runs
+cross-distro: **apt** (Debian/Ubuntu), **pacman** (Arch), **zypper** (openSUSE) and **Nix**,
+alongside Flatpak, Snap, GitHub Releases and the language managers. Each source self-gates on
+its tool, so JII uses whatever is present on your machine. (AUR and live clean-VM validation of
+every backend are still to come.)
 
 ## Documentation
 

@@ -22,7 +22,12 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Phase 5 — user-space sources & update (wrapping up).** Phases 0–4 done and verified.
+**Terminal 1.0 (ADR-0026) — T4 done.** T1–T4 landed; **T5 (interactive choosers) is next.**
+Cross-distro is real: JII now runs on Debian/Ubuntu (apt), Arch (pacman), openSUSE (zypper)
+and Nix, not just Fedora. Below is the pre-T4 Phase-5 context (still accurate for the
+providers it describes).
+
+**Phase 5 — user-space sources & update (done).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
 these providers. **`cargo`, `npm`, `pipx`, `go` are done** (pure `Provider`s, sharing
 `get_json_opt`/`command_plan`); **`jii update` is done** (no per-source branching); the
@@ -32,7 +37,35 @@ via optional `plan_install_many`, no model change). Next: **Homebrew** provider 
 
 ## Last completed work
 
-**Batch install — `jii install a b c …`.** Install many packages as one operation with no
+**T4 — cross-distro system providers + the platform-seam relaxation (ADR-0029, Accepted).**
+The whole codebase coupled to the distro in exactly one place (`Platform::is_supported` →
+`matches!(distro, Fedora)`); a full audit (real code) showed every provider already self-gates
+on its **binary** via `which`, never the distro. So T4 was not an engine refactor — it removed
+one artificial wall and de-privileged the `Distro` enum. Enacted: **removed**
+`Platform::is_supported`/`require_supported` and `JiiError::UnsupportedPlatform`; `Platform` is
+now a **pure host-facts value object** (`distro` kept as a fact, no reader until T6 config-seed/
+bootstrap). "Supported" is redefined as **"≥1 usable install source"** (`Engine::any_source_available`,
+the same `is_available` fan-out `source_catalog` uses), guarded at the 5 CLI entry points by a
+shared `ensure_usable_source` (distinguishes "none enabled" from "none available" — clearer than
+the distro wall even on Fedora). Then four providers, each a pure additive `Provider` that
+self-gates on its binary, with `_many` batching:
+- **apt** (Debian/Ubuntu): `apt-cache show` deb822 (pure `parse_show`, first stanza),
+  `apt-get install/remove/install --only-upgrade` (root), `dpkg-query` list. Official.
+- **pacman** (Arch): `pacman -Si` (pure `parse_si`), `pacman -S`/`-Rs` (root), `pacman -Q` list.
+  Official; official repos only (AUR is a separate future source).
+- **zypper** (openSUSE): `zypper --xmlout search` (dependency-free `<solvable>` attr parse),
+  `zypper --non-interactive install/remove/update` (root), `rpm -qa` list. Official.
+- **nix** (any distro): modern flakes CLI (`--extra-experimental-features`), `nix search --json`
+  (exact `pname` decided in code), `nix profile install/remove/upgrade` — **user-space, no root**;
+  empty list + `~/.nix-profile/bin/<name>` `is_installed` (go precedent). Community.
+Shared **`provider::run_capture_lax`** (stdout even on non-zero exit) added beside `run_capture`:
+apt-cache exits 100, `pacman -Si` 1, `zypper` 104 for "unknown package" = "no candidate", not a
+source failure. No core branch on the source. Fedora behaviour verified unchanged (`jii sources`,
+dnf dry-run). **146 tests.** **Debt:** nix `profile` CLI is version-fragile and was **not** verified
+on a live Nix host (none here) — flagged for the T7 clean-VM pass; the `id`/`id_like` distro
+predicate stays deferred to its first consumer (T6), per ADR-0029.
+
+**Prior — Batch install — `jii install a b c …`.** Install many packages as one operation with no
 change to `InstallPlan` or the Executor (ADR-0025). Each package runs the normal
 search→rank→pick; the engine groups the chosen candidates by source and **merges
 same-source installs into one command** where the source can (`dnf/cargo/npm/go install a b
@@ -158,6 +191,12 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
+**Terminal 1.0 (ADR-0026) — T1–T4 done; T5 (interactive choosers) next.** T4 (cross-distro +
+platform seam) is complete — see "Last completed work". The full ordered plan is T1–T8 in
+[ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md).
+
+<details><summary>Earlier T1–T3 detail (all landed)</summary>
+
 **Terminal 1.0 (ADR-0026) — T1 & T2 done; T3 next.** Priority changed (ADR-0026): finish the
 *whole* terminal version ("CLI 1.0") before the first public Beta, instead of going straight to
 Homebrew. The full ordered plan is T1–T8 in [ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the
@@ -180,19 +219,6 @@ github install is reported, never fatal), and `remove_batch`/`update_batch` mirr
 record (version = refreshed target); engine stamps installed_at/verification. Verified via
 isolated `XDG_STATE_HOME` dry-runs (merged `dnf5 remove/upgrade`, mixed dnf+cargo grouping,
 version transitions, single-package richer plan).
-
-## Next recommended task
-
-**T3 done (Homebrew + Snap + AppImage). Next: T4 — cross-distro system providers.**
-
-**T4 — `provider/apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs` behind the platform seam.** This is
-the biggest track and needs **its own ADR** for the platform-seam relaxation (ADR-0026 growth #1):
-`Platform::is_supported` stops meaning "distro == Fedora" and starts meaning "≥1 native system
-provider is available here"; each system provider gates itself via a **distro-aware
-`is_available`** (dnf false on Arch, pacman true). The core still never branches on the source;
-Fedora behaviour must not change. Start by writing that ADR + relaxing `platform.rs`/
-`require_supported`, then add the providers one at a time (apt first — Debian/Ubuntu are the
-biggest audience), each system-root with `_many` batching where the tool supports it.
 
 **T3 (provider breadth) landed — Homebrew, Snap, AppImage:**
 
@@ -250,6 +276,19 @@ not implement as silent heuristics):
 
 Full list in [TASKS.md](TASKS.md) Phase 5.
 
+</details>
+
+## Next recommended task
+
+**T5 — Interactive choosers.** GitHub repository chooser (paged select in `ui/prompt` — "never
+silently install the wrong repo", the deferred requirement) and, where a source offers real
+version choices, version selection. Needs its **own ADR** for the chooser/selection model (how a
+`Provider` surfaces multiple candidates and how the UI picks — kept out of the engine, which stays
+UI-free per ADR-0022). No core branching on the source. After T5: T6 (bootstrap a missing
+manager — where the `id`/`id_like` distro predicate finally gets built, ADR-0029), T7
+(hardening + **clean-VM testing on Fedora/Arch/Ubuntu/Debian/openSUSE**, incl. verifying the nix
+provider on a live host), T8 (public polish). Then the first Beta.
+
 ## Current blockers
 
 None.
@@ -260,7 +299,12 @@ None.
 
 ## Test status
 
-`cargo test` — **123 passing, 0 failing**. Coverage: homebrew (formula→candidate, unprivileged
+`cargo test` — **146 passing, 0 failing**. T4 coverage: apt (`parse_show` first-stanza deb822,
+Description-md5/folded-body excluded, batch install/remove/update-only-upgrade), pacman (`parse_si`
+first stanza with URL-in-value intact, `parse_query`, `-Rs` remove, batch), zypper (`parse_search_xml`
+skips `<solvable-list>` container, dep-free `attr`, non-interactive root plans), nix (`parse_search`
+exact-`pname` over near-names, unprivileged flake install/upgrade). Earlier coverage: homebrew
+(formula→candidate, unprivileged
 plan, `brew list --versions`, batch), snap (candidate + classic detection, root plan, `--classic`,
 batch merge-vs-decline, `snap list`), github `.AppImage` acceptance (no-`linux` token, wrong-arch/
 `.zsync` rejection), `info`/`search` rendering helpers
@@ -339,15 +383,27 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   now (single CLI frontend), but it must be decoupled (a progress-event/`ProgressSink`
   trait) **before** a GUI/second frontend or a workspace split. Meanwhile: **do not add
   new `ui` types to engine signatures.**
+- **nix provider is untested on a live host + version-fragile (T4).** Implemented against the
+  modern flakes CLI; no Nix host was available here. `nix profile` remove/list schemas have
+  shifted across Nix versions — `list_installed` returns empty and `is_installed` checks
+  `~/.nix-profile/bin/<name>` (go-style; name==binary caveat). Verify search/install/remove/
+  upgrade on a real Nix/NixOS box in the T7 clean-VM pass.
+- **apt/pacman version = first search stanza (T4).** `apt-cache show`/`pacman -Si` list versions
+  highest-first, so the first stanza is taken as the candidate version. It is informational; the
+  actual `apt-get`/`pacman` install resolves the real candidate regardless. Fine for MVP.
+- **apt non-interactive relies on `-y` only.** No `DEBIAN_FRONTEND=noninteractive` is set (the
+  `Action` model runs argv without env); revisit if a package's postinst prompts.
 
 ## Where things live
 
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + http_client/get_json_opt/command_plan + dnf, copr,
-                 flatpak, github, cargo, npm, pipx, go, homebrew
-  engine/        orchestration (search→rank→plan→execute) + ranking.rs
+  provider/      Provider trait + http_client/get_json_opt/command_plan/run_capture[_lax] +
+                 dnf, copr, apt, pacman, zypper, nix, flatpak, snap, github, cargo, npm,
+                 pipx, go, homebrew
+  engine/        orchestration (search→rank→plan→execute) + ranking.rs;
+                 any_source_available() = source-based "supported" (ADR-0029)
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)
   cache.rs       on-disk TTL search cache (stale-on-error)

@@ -273,9 +273,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             token (arch still required; `.AppImage.zsync` rejected). `jii owner/repo` installs an
             AppImage today; by-name discovery folds into T5 (repo chooser). Reserved `"appimage"`
             id removed from `KNOWN_SOURCES`. 123 tests.
-- [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`
-      behind the platform seam. Relax `Platform::is_supported`; distro-aware `is_available`.
-      Own ADR for the "native system provider per distro" concept. Never break Fedora.
+- [x] **T4 — Cross-distro system providers:** `apt.rs` ✅, `pacman.rs` ✅, `zypper.rs` ✅,
+      `nix.rs` ✅ behind the relaxed platform seam. **ADR-0029 enacted** (Accepted): removed
+      `Platform::is_supported`/`require_supported` + `JiiError::UnsupportedPlatform`; `Platform`
+      is now pure host facts; "supported" = `Engine::any_source_available` (≥1 usable source),
+      guarded at the 5 CLI entry points via `ensure_usable_source`. Providers self-gate on their
+      **binary** (no distro branch, ADR-0029 showed a distro-aware `is_available` was unneeded).
+      Fedora behaviour verified unchanged. Shared `run_capture_lax` (stdout even on non-zero
+      exit: apt-cache 100 / pacman 1 / zypper 104 = "no candidate"). apt=deb822 `apt-cache show`,
+      pacman=`pacman -Si`, zypper=`--xmlout search` (dep-free attr parse) + `rpm -qa`, nix=modern
+      flakes CLI (`nix search --json` / `nix profile`, user-space, no root). **Debt:** nix
+      profile CLI is version-fragile and untested on a live Nix host — revisit in T7.
 - [ ] **T5 — Interactive choosers:** GitHub repository chooser (paged select in `ui/prompt`;
       engine ranks/heuristics) + version chooser (`--version`; optional
       `Provider::available_versions`, provider-ordered). Own ADR for the version growth.
