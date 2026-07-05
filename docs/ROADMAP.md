@@ -115,7 +115,45 @@ problem.
 
 ---
 
+## Terminal 1.0 — the CLI completion plan 🎯 (ADR-0026)
+
+**Goal:** finish the *whole* terminal version — "CLI 1.0" — before cutting the first public
+Beta. This **promotes** the already-designed "Future ideas" below into an ordered delivery
+plan; it is not a redesign (the hard rules already written for each idea stand). GUI/daemon/
+Discover/plugins stay out (kept ready, not built). Ordered to minimise architectural risk:
+cheap read-only honesty first, the biggest cross-distro push only after additive breadth has
+exercised the model.
+
+- **T1 — Read-only honesty layer:** `jii search`, `jii info`, `jii sources`. Pure rendering
+  over the existing engine (`search`/`rank`) — zero new architecture. Closes the gap where the
+  CLI advertised `search`/`info`/`config` that were stubs/absent.
+- **T2 — Batch symmetry:** `jii update a b c`, `jii remove a b c` via the ADR-0025 machinery
+  (optional `plan_update_many`/`plan_remove_many` + engine `update_batch`/`remove_batch`).
+- **T3 — Provider breadth (proven shape):** Homebrew → Snap → AppImage (additive `Provider`s).
+  Empirical check at Homebrew: does a shared `RegistryProvider` scaffold finally pay off?
+- **T4 — Cross-distro system providers:** Apt, Pacman, Zypper, Nix behind the platform seam
+  (`is_supported` becomes "≥1 native system provider available"; distro-aware `is_available`).
+  Never breaks Fedora behaviour.
+- **T5 — Interactive choosers:** GitHub **repository chooser** (paged select; engine ranks,
+  CLI renders) and **version chooser** (provider surfaces + orders versions; engine stays
+  version-agnostic).
+- **T6 — Bootstrap a missing manager:** offer-then-install as a previewable plan step
+  (`Provider::bootstrap_plan`), strongest consent, never auto, never launders trust.
+- **T7 — Hardening:** CLI-level integration tests, registry-partial-failure test, error-message
+  quality, clean-VM runs on Fedora/Arch/Ubuntu/Debian/openSUSE.
+- **T8 — Public polish:** professional README, logo, screenshots/asciinema, architecture
+  diagram, CONTRIBUTING/SECURITY, examples, limitations — then cut the first Beta.
+
+**Done when:** `jii` is a *complete* universal Linux terminal installer — not "will become
+one" — verified on five clean distros and presented as a polished public repo.
+
+---
+
 ## Future 🌅
+
+> Cross-distro managers, the repository/version choosers, and bootstrapping are **now scheduled
+> under Terminal 1.0 (T3–T6)** above; the design notes for each live in "Future ideas" below.
+> The bullets here are what remains genuinely post-1.0.
 
 - SQLite migration (behind the same registry API).
 - Cargo workspace split.

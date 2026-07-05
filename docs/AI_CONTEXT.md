@@ -158,11 +158,22 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-None in progress — pick the next recommended task below.
+**Terminal 1.0 — track T1 (read-only honesty layer).** Priority changed (ADR-0026): finish the
+*whole* terminal version ("CLI 1.0") before the first public Beta, instead of going straight to
+Homebrew. A Product Review found the CLI advertises `search`/`info`/`config` that are stubs or
+absent — so T1 is `jii search` + `jii info` + `jii sources`, pure rendering over the engine's
+existing `search`/`rank` (zero new architecture). The full ordered plan is T1–T8 in
+[ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md); the scope + the three pre-declared architecture
+growths (platform-seam relax, provider-ordered versions, bootstrap-as-plan) are in **ADR-0026**.
 
 ## Next recommended task
 
-**Phase 5 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
+**Continue Terminal 1.0 in order:** after T1, **T2 — batch `update`/`remove`** (ADR-0025
+machinery, no new architecture), then **T3 — Homebrew → Snap → AppImage**, T4 cross-distro,
+T5 choosers, T6 bootstrap, T7 hardening, T8 public polish. Homebrew (below) is now T3, not the
+immediate next step.
+
+**Phase 5 / T3 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
 post-8-provider architecture review concluded the architecture is healthy — no code change
 — and Homebrew is the right next source: it completes user-space ecosystem coverage on the
 *proven* registry-user-space shape at zero new architectural axis). Same shape as

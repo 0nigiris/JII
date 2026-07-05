@@ -227,6 +227,31 @@ land. Keep tasks small enough to complete and verify in one sitting.
 - [ ] `--json` output schema stability.
 - [ ] Distribution: COPR repo + signed GitHub binary; self-install docs.
 
+## Terminal 1.0 — CLI completion plan 🎯 (ADR-0026)
+
+Finish the whole terminal version before the first public Beta. Ordered T1→T8.
+
+- [ ] **T1 — Read-only honesty layer** (in progress): `jii search`, `jii info`, `jii sources`.
+      Pure rendering over the engine's existing `search`/`rank` — no new architecture.
+      `ProviderRegistry` gains a known-vs-available catalog for `sources`.
+- [ ] **T2 — Batch symmetry:** `jii update a b c`, `jii remove a b c`. Optional
+      `plan_update_many`/`plan_remove_many` + engine `update_batch`/`remove_batch`; CLI
+      widened to `Vec`. (ADR-0025 pre-committed: no new architecture.)
+- [ ] **T3 — Provider breadth:** `provider/homebrew.rs` → `snap.rs` → `appimage.rs`. Empirical
+      check at Homebrew: is a shared `RegistryProvider` scaffold now worth it?
+- [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`
+      behind the platform seam. Relax `Platform::is_supported`; distro-aware `is_available`.
+      Own ADR for the "native system provider per distro" concept. Never break Fedora.
+- [ ] **T5 — Interactive choosers:** GitHub repository chooser (paged select in `ui/prompt`;
+      engine ranks/heuristics) + version chooser (`--version`; optional
+      `Provider::available_versions`, provider-ordered). Own ADR for the version growth.
+- [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
+      it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
+- [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,
+      error-message quality pass, clean-VM runs on Fedora/Arch/Ubuntu/Debian/openSUSE.
+- [ ] **T8 — Public polish:** professional README, logo, screenshots/asciinema, architecture
+      diagram, CONTRIBUTING/SECURITY, examples, limitations. Then cut the first public Beta.
+
 ---
 
 ### Definition of Done (every task)

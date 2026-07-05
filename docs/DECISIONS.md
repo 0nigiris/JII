@@ -940,3 +940,82 @@ Supporting decisions:
   is only ever within one source (that's the only place a single command is meaningful);
   cross-source "one super-command" is impossible and undesirable. The current granularity
   (one plan per source group) is the right and final level — no deeper merging is planned.
+
+## ADR-0026 — Terminal 1.0: complete the CLI before Beta; grow only via optional capabilities
+
+**Status:** Accepted
+
+**Context:** The priority shifted from "ship a narrow honest Beta now" to **finish the whole
+terminal version first — call it CLI 1.0 — and only then cut the first public Beta** (tested
+on clean Fedora/Arch/Ubuntu/Debian/openSUSE VMs, then a polished public repo). The scope named:
+the read-only `search`/`info`/`sources` commands, batch `update`/`remove`, more providers
+(Homebrew, Snap, AppImage, Nix), cross-distro system providers (Apt, Pacman, Zypper), an
+interactive GitHub **repository chooser**, a **version chooser**, and **bootstrapping a missing
+manager**. GUI/daemon/Discover/plugins stay out (kept ready, not built).
+
+Almost all of this was already anticipated in `ROADMAP.md` → "Future ideas" **with hard
+architectural rules already written** (repo chooser, version management, bootstrap, breadth-as-
+additive, cross-distro-as-Provider-behind-the-platform-seam). So this is **promotion into an
+ordered delivery plan, not a redesign** — the load-bearing decisions (ADR-0004 core-never-
+branches, ADR-0022 grow-via-optional-methods, ADR-0006 trust barrier) are unchanged.
+
+**Decision:** Deliver CLI 1.0 as an ordered sequence of tracks, each a small increment that
+keeps the build/tests green (the order minimises architectural risk — cheap read-only honesty
+first, the biggest cross-distro push only after the model is well-exercised by additive
+breadth):
+
+- **T1 — Read-only honesty layer:** `jii search`, `jii info`, `jii sources`. Engine already
+  exposes `search`/`rank`; these are **pure rendering**, zero new architecture. Closes the
+  Product Review's #1 blocker (README advertises `search`/`info`/`config` that are stubs/absent).
+- **T2 — Batch symmetry:** `jii update a b c`, `jii remove a b c`. Exactly the ADR-0025
+  machinery — optional `plan_update_many`/`plan_remove_many` + engine `update_batch`/
+  `remove_batch`, CLI widened to `Vec`. No new architecture (ADR-0025 pre-committed this).
+- **T3 — Provider breadth (proven shape):** Homebrew, then Snap, then AppImage — additive
+  `Provider`s (ADR-0004/0020). Empirical check at Homebrew (5th user-space provider): does a
+  shared `RegistryProvider` scaffold finally pay off? Decide from evidence, don't assume.
+- **T4 — Cross-distro system providers:** Apt, Pacman, Zypper, Nix behind the platform seam.
+- **T5 — Interactive choosers:** GitHub repository chooser (paged select) and version chooser.
+- **T6 — Bootstrap a missing manager:** offer-then-install, strongest consent.
+- **T7 — Hardening:** CLI-level integration tests (`assert_cmd`), registry-partial-failure test,
+  error-message quality, clean-VM runs on all five distros (the Product Review's Etap B/C).
+- **T8 — Public polish:** professional README, logo, screenshots/asciinema, architecture
+  diagram, CONTRIBUTING/SECURITY, limitations — the first-impression pass. Then cut Beta.
+
+This ADR commits to **three deliberate, minimal architecture growths** (each optional/data-
+driven, none a core branch), to be detailed in their own ADRs when their track lands:
+
+1. **Platform seam relaxes (T4):** `Platform::is_supported` stops meaning "distro == Fedora"
+   and starts meaning "at least one native system provider is available here." System
+   providers gate themselves via **distro-aware `is_available`** (dnf is unavailable on Arch,
+   pacman is available). The core still never branches on the source; Fedora behaviour is
+   untouched. A dedicated ADR will define the "native system provider per distro" concept.
+2. **Versions are surfaced by the provider, ordered by the provider (T5):** an optional
+   `Provider::available_versions` (or versions on the candidate); the engine stays
+   version-agnostic and never invents an ordering for `PkgVersion(String)` (ADR-0009 holds).
+   This is the source-provided answer to the recorded version-comparison debt — not a
+   jii-invented semver.
+3. **Bootstrap is a plan step, not engine special-casing (T6):** an optional
+   `Provider::bootstrap_plan() -> Option<InstallPlan>`; the engine offers it when a chosen
+   candidate's source is unavailable. Installing a manager demands the strongest consent
+   (own previewable plan, official install method, never `curl|sh`, never `--auto`), and
+   bootstrapping does not launder trust (ADR from ROADMAP "Bootstrapping" hard rule).
+
+**Alternatives considered:**
+- **Go straight to Homebrew (the prior ADR-0024 "next").** Rejected *as the next step*: the
+  Product Review showed the CLI advertises commands it doesn't have — adding a 9th provider
+  before `search`/`info` exist widens the honesty gap. T1 comes first.
+- **Ship the narrow Beta now, defer the rest.** Superseded by the user's explicit decision to
+  finish the CLI first. The narrow-Beta work is not lost — it folds in as T1 (search/info),
+  T7 (tests, clean-VM, errors) and T8 (README) under the larger arc.
+- **A cross-distro mega-refactor of the engine up front.** Rejected: cross-distro is additive
+  providers + a platform-seam relaxation, not an engine change. Doing T3 (additive breadth)
+  before T4 exercises the model so T4 stays a provider-and-platform change, not a core one.
+
+**Consequences:**
+- A single, ordered definition of "done" for the terminal version, recorded in the repo (not
+  a chat): CLI 1.0 = T1–T6 implemented, T7 hardened, T8 polished, then Beta.
+- Each track is independently shippable and reviewable; the build stays green throughout.
+- The three growths are pre-declared so they are not re-litigated per track — each still gets
+  its own ADR when it lands, but the *shape* (optional method, no core branch) is fixed here.
+- GUI/daemon/Discover/plugins remain out of scope; the engine↔UI seam (ADR-0022) must be
+  decoupled **before** any second frontend, which is a post-1.0 concern, not a T-track.
