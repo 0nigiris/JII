@@ -142,15 +142,26 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Post-8-provider architecture review, then choose the next provider.** With
-dnf/copr/flatpak/github/cargo/npm/pipx/go all landed plus `jii update`, do a written
-whole-project architecture review (what proved out, what disappointed, what got harder to
-follow, what to do differently, over- vs under-generalised spots, what will last), then
-sync `ARCHITECTURE.md` to the real code where it has drifted (docs only — no code change
-for docs' sake). Only after that, pick and argue for the next provider (not necessarily
-Homebrew) and give an architectural read on the big future directions (version mgmt, repo
-chooser, metadata API, bootstrap, `doctor --fix`, `jii setup`, GUI, Discover/GNOME
-Software, UPAC). No new heuristics that could hide a real program.
+**Phase 5 — `provider/homebrew.rs` (`brew`, Linux).** Chosen in **ADR-0024** (the
+post-8-provider architecture review concluded the architecture is healthy — no code change
+— and Homebrew is the right next source: it completes user-space ecosystem coverage on the
+*proven* registry-user-space shape at zero new architectural axis). Same shape as
+cargo/npm/pipx/go: `is_available` (`brew`), `search` via the formula API
+(`https://formulae.brew.sh/api/formula/<name>.json`) with `get_json_opt`, `plan_install`/
+`update`/`remove` = single unprivileged `brew install`/`upgrade`/`uninstall` via
+`command_plan` (no root; brew is user-owned), `list_installed` (`brew list --versions` or
+`--json`), community trust. Handle formula-vs-cask (casks are GUI apps; on Linux brew is
+formula-only, so start formula-only). **Empirical check while doing it:** this is the 5th
+registry-user-space provider — evaluate (do not assume) whether a thin shared
+`RegistryProvider` scaffold now pays off; prior is *still separate files* unless Homebrew
+proves otherwise. **After Homebrew:** the declarative `.repo`/COPR provider
+(`data/sources/*.toml`) is the recorded strategic next step (ADR-0024) — needs its own
+design pass (writes repo files / imports GPG keys as root).
+
+Recorded non-blocking debts to respect (ADR-0024): version comparison (add a
+provider-computed normalized key beside `PkgVersion`'s raw string only when version-aware
+work is next needed), and splitting `cli/mod.rs` (~615 lines) into `cli/commands/*` when it
+next grows.
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):

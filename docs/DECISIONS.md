@@ -801,3 +801,66 @@ previewable plan that the tool declines does not.
   rejects it clearly at install. Documented as a known, accepted limitation.
 - If PyPI/Go ever expose reliable entry-point metadata, the provider can add a filter
   with no core change — the rule is "filter when reliable", not "never filter".
+
+---
+
+## ADR-0024 — 8-provider architecture review: no changes warranted; Homebrew is the next provider
+
+**Status:** Accepted
+
+**Context:** After eight providers (dnf, copr, flatpak, github, cargo, npm, pipx, go) and
+`jii update`, a full-project architecture review was run (recorded in the session; summary
+below) to decide whether the load-bearing structure needs change before adding more
+sources, and which source is the right next one.
+
+**Decision:**
+
+1. **The architecture is healthy and needs no code change.** The `Provider` seam
+   (ADR-0004), `Plan`/`Action` model (ADR-0003/0007), trust threshold (ADR-0006),
+   registry-as-hint, and optional-method growth (ADR-0022) all held across three provider
+   *classes* (system-root, file-based, registry user-space) and a whole new command with
+   zero engine/model edits. No refactor is justified by this review.
+
+2. **Two debts are now "pressing but non-blocking", and are recorded, not acted on:**
+   - **Version comparison.** `PkgVersion(String)` (ADR-0009) has no ordering, so `jii
+     update` can only detect "already newest" by *exact string equality*, and the
+     `latest`/`minimal` profiles + freshness tie-breaker stay reserved. When version-aware
+     work is next needed, add a provider-computed normalized comparison key **beside** the
+     raw string (not a global semver — sources differ), as an optional capability.
+   - **`cli/mod.rs` size.** ~615 lines; split into `cli/commands/*` when it next grows.
+   - Minor: `PackageCandidate.raw: serde_json::Value` is used by only dnf/github; tolerated
+     (typing it would parameterize a hot model type for little gain).
+
+3. **The next provider is Homebrew** (`brew`, Linux). Rationale in full below; in short:
+   it completes the user-space/community-ecosystem coverage, slots into the *proven*
+   registry-user-space shape (`get_json_opt` + `command_plan`, community trust, no root,
+   `brew list`/`brew upgrade`) at **zero new architectural axis**, and is the empirical
+   test point for whether that pattern has stabilised enough to extract a thin
+   `RegistryProvider` scaffold (prior: still separate files — verify at Homebrew, don't
+   force it). Doing a bounded, proven-pattern consolidation immediately after a
+   clean-bill-of-health review is deliberately lower-risk than opening a new axis.
+
+**Alternatives considered (next provider):**
+- **Declarative `.repo`/COPR provider (`data/sources/*.toml` + `DeclarativeProvider`)** —
+  the higher-*leverage* choice: it's a promised-but-unbuilt core capability (ARCHITECTURE
+  §5), closes the biggest doc-vs-code gap, and hits the most common real Fedora-user gap
+  (vendor `.repo` apps: VSCode/Chrome/Docker). **Deferred to right-after Homebrew**, not
+  dropped: it is a larger, fuzzier design with genuine new security surface (writing
+  `/etc/yum.repos.d`, importing vendor GPG keys as root — only copr's two-step root plan
+  is precedent), and it deserves its own design pass with a concrete seed use-case. Right
+  move: do the bounded consolidation first, then this.
+- **apt/pacman/zypper** — highest long-term value but **premature**: the binding MVP
+  constraint is Fedora-first, cross-distro behind the `platform` abstraction (future).
+  These are the first real test of that seam and should wait until it's scoped.
+- **AppImage** — low architectural value: it repeats github's Download+Place path with a
+  weak/again-URL-driven search (no real registry), risking the "give me a URL" untrusted
+  pattern without teaching the model anything new. Later, if at all.
+
+**Consequences:**
+- A future agent has a recorded verdict ("architecture healthy, don't refactor") so the
+  review isn't re-litigated, and a recorded next-two-steps (Homebrew → declarative).
+- The version-comparison debt has a prescribed shape when it's next touched, so it won't
+  be solved by bolting semver onto every source.
+- Homebrew is expected to be a near-clone of the four registry providers; if it is, that
+  is the signal to *evaluate* (not assume) a shared `RegistryProvider` scaffold — decided
+  with five data points, per the 2/3/4-copies rule.
