@@ -23,6 +23,7 @@ pub mod github;
 pub mod go;
 pub mod homebrew;
 pub mod npm;
+pub mod pacman;
 pub mod pipx;
 pub mod snap;
 
@@ -158,6 +159,9 @@ impl ProviderRegistry {
         if config.is_enabled("apt") {
             providers.push(Box::new(apt::Apt::new()));
         }
+        if config.is_enabled("pacman") {
+            providers.push(Box::new(pacman::Pacman::new()));
+        }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));
         }
@@ -289,6 +293,20 @@ pub(crate) async fn run_capture(argv: &[&str]) -> Result<String> {
             stderr.trim()
         )));
     }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Like [`run_capture`], but returns stdout **even on a non-zero exit** (stderr ignored).
+/// The lenient sibling for tools whose "no such package" is an error exit rather than empty
+/// output — `apt-cache show` exits 100, `pacman -Si` exits 1. To JII that is "no candidate",
+/// not a source failure, so an empty search result reads correctly instead of tagging the
+/// source as broken. A spawn failure (the tool is absent) still errors.
+pub(crate) async fn run_capture_lax(argv: &[&str]) -> Result<String> {
+    let output = Command::new(argv[0])
+        .args(&argv[1..])
+        .output()
+        .await
+        .map_err(|e| JiiError::spawn(argv[0], e))?;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 

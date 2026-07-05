@@ -8,10 +8,9 @@
 
 use async_trait::async_trait;
 use serde_json::json;
-use tokio::process::Command;
 
-use super::{Provider, command_plan, run_capture, which};
-use crate::error::{JiiError, Result};
+use super::{Provider, command_plan, run_capture, run_capture_lax, which};
+use crate::error::Result;
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 /// The apt binary that runs (privileged) transactions. `apt-get` has a stable scripting
@@ -56,7 +55,7 @@ impl Provider for Apt {
         // name only). It exits non-zero for an unknown package — that is "no candidate",
         // not a source failure, so we read stdout laxly (empty → no match) rather than
         // erroring the whole search the way `run_capture` would.
-        let out = run_lax(&["apt-cache", "show", &query.raw]).await?;
+        let out = run_capture_lax(&["apt-cache", "show", &query.raw]).await?;
         Ok(parse_show(&out, self.id(), self.trust()))
     }
 
@@ -126,20 +125,6 @@ fn root_plan(name: &str, args: &[&str], reasons: Vec<String>) -> InstallPlan {
     let mut argv = vec![BIN.to_string()];
     argv.extend(args.iter().map(|s| s.to_string()));
     command_plan(ID, name, argv, true, reasons)
-}
-
-/// Run a command, returning stdout even on a non-zero exit. `apt-cache show` exits 100 for
-/// an unknown package (writing to stderr); to JII that is simply "no candidate", so stderr
-/// is ignored and empty stdout means no match. A spawn failure (apt-cache absent) still
-/// errors. Local to apt for now; extract to a shared `run_lax` once a second system
-/// provider needs the same lenient read (pacman/zypper — the 3× rule).
-async fn run_lax(argv: &[&str]) -> Result<String> {
-    let output = Command::new(argv[0])
-        .args(&argv[1..])
-        .output()
-        .await
-        .map_err(|e| JiiError::spawn(argv[0], e))?;
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Parse `apt-cache show` output into at most one candidate: the **first stanza** (apt
