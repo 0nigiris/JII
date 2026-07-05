@@ -19,6 +19,7 @@ pub mod copr;
 pub mod dnf;
 pub mod flatpak;
 pub mod github;
+pub mod go;
 pub mod npm;
 pub mod pipx;
 
@@ -135,6 +136,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("pipx") {
             providers.push(Box::new(pipx::Pipx::new()));
+        }
+        if config.is_enabled("go") {
+            providers.push(Box::new(go::Go::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

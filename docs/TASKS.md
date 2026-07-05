@@ -172,16 +172,24 @@ land. Keep tasks small enough to complete and verify in one sitting.
       package and lets `pipx install` reject non-apps (ADR-0023: prefer a visible false
       positive over silently hiding a real app). Verified: real PyPI search via JII
       (black + requests both offered), dry-run. 4 tests.
-- [ ] `provider/go.rs` (no root; `go install <pkg>@latest`, `~/go/bin` or `GOBIN`). Same
-      no-app-filter rule as pipx (only `main` packages are installable; module proxy can't
-      cheaply tell — ADR-0023). **At go, do the helper evaluation** (below).
-- [ ] **Helper evaluation (scheduled for `go`, the 4th user-space provider):** cargo/pipx
-      share an identical one-`RunCommand` `user_plan`; npm's differs only by threading a
-      `--prefix`. Extract a shared `provider::command_plan(source_id, argv, needs_root,
-      reasons)` (each provider assembles its own argv) **only if it genuinely shrinks
-      code** — it can also absorb dnf's `root_plan`. Also emerging: a tolerant "read stdout
-      regardless of exit status" spawn (npm + pipx = 2×) — extract to a `run_stdout` helper
-      if `go` needs it too. No new abstraction/model (ADR-0022).
+- [x] `provider/go.rs` (no root; `go install <mod>@latest`, `~/go/bin`/`$GOBIN`/`$GOPATH`).
+      Search via the Go module proxy (`{proxy}/<mod>/@latest`, uppercase→`!x` escaping); no
+      app-filter (only `main` packages install; the proxy can't cheaply tell — ADR-0023).
+      `plan_remove` deletes the installed binary (Go has no uninstall, like github);
+      `list_installed` empty (no cheap module→binary list; registry + file-existence
+      `is_installed` track it); `is_available` uses `go version` (not `--version`, which
+      exits non-zero). Community trust. Verified: real proxy search (fzf→v0.73.1;
+      BurntSushi/toml resolves via `!burnt!sushi`), dry-run (one unprivileged command), 4
+      unit tests. Registered in `provider/mod.rs`; no engine/model change (ADR-0022 holds).
+- [x] **Helper evaluation (done at `go`, the 4th user-space provider):** the search
+      404-dance and the one-`RunCommand` plan had each reached 3× (→ 4× with go). Extracted
+      `provider::get_json_opt` (GET → `Ok(None)` on 404, else typed JSON — replaces cargo/
+      npm/pipx/go's `error_for_status`+`json` dance) and `provider::command_plan(source_id,
+      name, argv, needs_root, reasons)` (each provider assembles its own argv; also absorbs
+      dnf's `root_plan` and npm's `--prefix` argv). Commit `f2e8377`. Deliberately did **not**
+      extract `PackageCandidate` construction (per-provider, would leak trust/arch_ok) or the
+      tolerant "read stdout regardless of exit status" spawn (only npm + pipx = 2×, go didn't
+      need it). Reduced maintenance cost, not line count. No new model (ADR-0022).
 - [ ] `cli/commands/update.rs` across managers (wires the existing `plan_update`).
 - [ ] `cli/commands/{undo,benchmark}.rs`.
 

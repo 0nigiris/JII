@@ -8,7 +8,7 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-04_
+_Last updated: 2026-07-05_
 
 ---
 
@@ -24,13 +24,33 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 **Phase 5 — user-space sources & update (in progress).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
-these providers. **`cargo`, `npm`, `pipx` are done** — pure `Provider`s, no core change.
-Next: `go` (and at `go`, evaluate extracting a shared `command_plan` helper), then
-`jii update`.
+these providers. **`cargo`, `npm`, `pipx`, `go` are done** — pure `Provider`s, no core
+change. The four user-space providers now share two helpers (`get_json_opt`,
+`command_plan`). Next: `jii update` (wire the existing `plan_update` across managers).
 
 ## Last completed work
 
-**`provider/pipx.rs` (PyPI, via pipx).** Third Phase 5 provider, mirrors cargo:
+**`provider/go.rs` (Go modules, via `go install`)** + the pre-`go` helper refactor
+(commit `f2e8377`). go is the 4th user-space provider, mirroring cargo/pipx: `search`
+resolves a module path via the Go module proxy (`{proxy}/<mod>/@latest`, uppercase → `!x`
+escaping), `plan_install`/`plan_update` = one unprivileged `go install <mod>@latest` into
+`$GOBIN`/`$GOPATH/bin`/`~/go/bin` (PATH-warn), `plan_remove` deletes the installed binary
+(Go has no uninstall — an `Action::RemoveFile`, like github), `list_installed` is empty
+(no cheap global module→binary list; the registry + a file-existence `is_installed` track
+it). **No app-filter (ADR-0023):** the proxy can't cheaply say which modules are `main`
+(installable), so — like pipx — go offers the module and lets `go install` be the
+authority. Community trust (go verifies checksums via `go.sum`/sum.golang.org).
+`is_available` overrides the shared `which` because go uses `go version`, not `--version`
+(the latter exits non-zero). Verified: real proxy search through JII (fzf→v0.73.1 offered,
+BurntSushi/toml resolves with `!burnt!sushi` escaping), dry-run (single unprivileged
+command). **Pre-`go` refactor:** the search 404-dance and single-command `InstallPlan`
+construction had each reached 3× across cargo/npm/pipx (→ 4× with go), so extracted
+`provider::get_json_opt` (GET → `Ok(None)` on 404, else typed JSON) and
+`provider::command_plan` (one-`RunCommand` plan). Deliberately did **not** extract
+`PackageCandidate` construction (per-provider, would leak trust/arch_ok) or the tolerant
+stdout read (only 2×) — reducing maintenance cost, not line count.
+
+**Prior — `provider/pipx.rs` (PyPI, via pipx).** Third Phase 5 provider, mirrors cargo:
 `pipx install/uninstall`, first-class `pipx upgrade`, `pipx list --json`, installs to
 `~/.local/bin` (no root), community trust. **Key decision — ADR-0023:** PyPI's API exposes
 no reliable program-vs-library signal (the `Environment :: Console` classifier is ~40%
@@ -107,16 +127,14 @@ None in progress — pick the next recommended task below.
 
 ## Next recommended task
 
-**Phase 5 — next provider: `provider/go.rs`.** Same shape as cargo/pipx: `is_available`
-(`go`), `search` — resolve a module path (query is likely `host/user/repo`, e.g.
-`github.com/junegunn/fzf`); the Go module proxy (`https://proxy.golang.org/<mod>/@latest`)
-gives the version. Only `main` packages are installable and the proxy can't cheaply tell,
-so **no app-filter** (ADR-0023) — offer it, let `go install` be the authority.
-`plan_install` = `go install <mod>@latest` (no root; installs to `~/go/bin` or `$GOBIN` —
-PATH-warn), `list_installed` (Go has no clean global list — likely scan `~/go/bin`, or
-accept an empty list like copr and rely on the registry hint), `plan_remove` (remove the
-binary from the bin dir). Community trust. **At go, run the helper evaluation** (extract
-`command_plan` if it shrinks code — see TASKS). Then `jii update` (wire `plan_update`).
+**Phase 5 — `jii update`.** All four user-space providers plus dnf/copr/flatpak/github
+already implement `plan_update`; the remaining work is the command surface: a `jii update
+[<pkg>]` that, for one package or every registry record, resolves the owning provider,
+builds its update plan, and runs the batch through the normal preview/confirm/execute path
+(reusing the engine's install/remove flow — no per-source branching). Respect trust
+thresholds and `--dry-run`. Decide behaviour for "already newest" (cargo/npm/go reinstall
+`@latest`; pipx/dnf have real upgrades) — a no-op should read as a no-op, not a reinstall
+surprise; if that needs a version compare, note it as follow-up rather than inventing one.
 
 Polish/hardening deferred (not blocking Phase 5; several are now **future features**, do
 not implement as silent heuristics):
@@ -138,7 +156,7 @@ None.
 
 ## Test status
 
-`cargo test` — **91 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
+`cargo test` — **95 passing, 0 failing**. Coverage: dnf/flatpak parsers, ranking,
 registry, cache, privilege elevation prefixing, the executor (sha256 digest,
 verification accept/reject/case-insensitive/fail-closed, place+mode+remove, tar.gz **and
 zip** extract + member selection, unknown-format rejection, run_action), github
@@ -147,7 +165,9 @@ plan shapes), copr (search parsing, exact-name + fedora/arch chroot selection, t
 root plan), cargo (binary-crate vs library-only candidate filtering, unprivileged plan
 shape, `cargo install --list` parsing), npm (CLI vs library-only filter incl. bin-as-
 string, user-prefixed plan shape, `npm ls -g --json` parsing), pipx (candidate shape,
-install/upgrade plans, `pipx list --json` parsing), audit (verification resolution +
+install/upgrade plans, `pipx list --json` parsing), go (candidate shape, unprivileged
+`go install @latest` plan, binary-name derivation incl. `/v2` major-version skip, proxy
+uppercase→`!x` escaping), audit (verification resolution +
 concern logic), and doctor health mapping (`health_from` precedence).
 
 ## Environment & commands
@@ -213,7 +233,8 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
 ```
 src/
   model.rs       core types (Action, InstallPlan, PackageCandidate, TrustLevel…)
-  provider/      Provider trait + http_client + dnf, copr, flatpak, github, cargo, npm, pipx
+  provider/      Provider trait + http_client/get_json_opt/command_plan + dnf, copr,
+                 flatpak, github, cargo, npm, pipx, go
   engine/        orchestration (search→rank→plan→execute) + ranking.rs
   exec.rs        plan executor (the one place that runs a plan's actions)
   privilege.rs   sudo/pkexec elevation (prime + run)
