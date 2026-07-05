@@ -23,6 +23,7 @@ pub mod go;
 pub mod homebrew;
 pub mod npm;
 pub mod pipx;
+pub mod snap;
 
 /// A source of installable software (a package manager, a repo, a registry).
 ///
@@ -176,6 +177,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("brew") {
             providers.push(Box::new(homebrew::Homebrew::new()));
+        }
+        if config.is_enabled("snap") {
+            providers.push(Box::new(snap::Snap::new()));
         }
 
         providers.sort_by_key(|p| config.source_rank(p.id()));

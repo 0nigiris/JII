@@ -260,7 +260,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (ADR-0027): NO shared `RegistryProvider`** — after 5 providers the identical part is
             ~8 lines of boilerplate; search/plans/list are irreducibly per-provider; the real
             sharing already lives in the free-function helpers. 115 tests.
-      - [ ] **Snap** (`snap`, snapd) — system provider (snap install is root); store search API.
+      - [x] **Snap** (`snap`, snapd): **system** provider (root, unlike registry ones) —
+            store info API (`api.snapcraft.io/v2/snaps/info/<n>?fields=…`, needs
+            `Snap-Device-Series` header, so `http_client` directly). `snap install/remove/
+            refresh` (+ `_many`). Detects **classic** confinement → adds `--classic` and
+            declines batch-merge when mixed (verified against the live API: `confinement`
+            is only returned as an explicit `fields` item). `snap list` parse; community
+            trust. Registered in config. 121 tests.
       - [ ] **AppImage** — download + place (github-like); untrusted trust.
 - [ ] **T4 — Cross-distro system providers:** `apt.rs`, `pacman.rs`, `zypper.rs`, `nix.rs`
       behind the platform seam. Relax `Platform::is_supported`; distro-aware `is_available`.
