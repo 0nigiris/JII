@@ -26,6 +26,7 @@ pub mod npm;
 pub mod pacman;
 pub mod pipx;
 pub mod snap;
+pub mod zypper;
 
 /// A source of installable software (a package manager, a repo, a registry).
 ///
@@ -161,6 +162,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("pacman") {
             providers.push(Box::new(pacman::Pacman::new()));
+        }
+        if config.is_enabled("zypper") {
+            providers.push(Box::new(zypper::Zypper::new()));
         }
         if config.is_enabled("flatpak") {
             providers.push(Box::new(flatpak::Flatpak::new()));
