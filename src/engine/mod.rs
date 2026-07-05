@@ -170,6 +170,20 @@ impl Engine {
         !self.providers.is_empty()
     }
 
+    /// Whether at least one enabled provider is usable here — its backing tool is present.
+    /// The honest, source-based replacement for the old Fedora-only wall (ADR-0029):
+    /// "supported" means "JII has a working source", a question only the provider set can
+    /// answer. Probes the same `is_available` fan-out `source_catalog` uses, short-circuiting
+    /// on the first hit. The core never inspects the distro to decide this.
+    pub async fn any_source_available(&self) -> bool {
+        for provider in self.providers.iter() {
+            if provider.is_available().await {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Search all providers concurrently, each bounded by the configured timeout.
     /// Unavailable/slow/erroring sources are collected into `failed` (tagged, e.g.
     /// "timeout") rather than aborting the search.

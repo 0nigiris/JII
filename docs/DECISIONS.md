@@ -1127,9 +1127,12 @@ driven, none a core branch), to be detailed in their own ADRs when their track l
 
 ## ADR-0029 — The platform seam: `Platform` is host *facts*; "supported" is "≥1 usable source" and lives in the engine, not in a distro check
 
-**Status:** Proposed (refines ADR-0026 growth #1). Foundation for Terminal 1.0 T4
-(cross-distro: apt, pacman, zypper, nix). No provider code lands under this ADR until it
-is accepted.
+**Status:** Accepted 2026-07-05 (refines ADR-0026 growth #1). Foundation for Terminal 1.0
+T4 (cross-distro: apt, pacman, zypper, nix). Enacted: `Platform::is_supported`/
+`require_supported` and `JiiError::UnsupportedPlatform` removed; `Platform` is now pure
+host facts; the CLI's five source-touching commands guard on
+`Engine::any_source_available` (source-based "supported"). Fedora behaviour verified
+unchanged. The `id`/`id_like` predicate remains deferred to its first consumer (T6).
 
 **Context:** T4 adds non-Fedora system providers. A full audit of the platform layer (real
 code, not assumptions) found that **the entire codebase couples to the distribution in exactly

@@ -11,10 +11,6 @@ pub type Result<T> = std::result::Result<T, JiiError>;
 /// All errors JII can produce.
 #[derive(Debug, thiserror::Error)]
 pub enum JiiError {
-    /// The current platform is not supported (MVP targets Fedora).
-    #[error("unsupported platform: {0}")]
-    UnsupportedPlatform(String),
-
     /// Failed to read or parse the configuration file.
     #[error("config error: {0}")]
     Config(String),

@@ -1,19 +1,23 @@
 //! Platform detection: distro, architecture, PATH, and session kind.
 //!
-//! Everything distro-specific is funneled through here so the rest of the code can
-//! stay platform-agnostic. The MVP supports Fedora; other distros are detected but
-//! not yet supported.
+//! `Platform` is a **pure host-facts value object** — it answers only *"what is this
+//! machine?"* (distro, arch, tty, PATH, elevation mechanism) and carries **no policy**.
+//! Whether JII can act here is not a distro question but a *source* question ("is any
+//! provider usable?"), so it lives in the engine, not here (ADR-0029). The core never
+//! branches on `distro`; providers self-gate on their backing binary.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use crate::error::{JiiError, Result};
-
 /// A Linux distribution family, parsed from `/etc/os-release`.
+///
+/// A detected host fact, not a support gate. No distro is privileged over another;
+/// the durable `id`/`id_like` family predicate is introduced when a real consumer
+/// needs it (T6 bootstrap), not speculatively (ADR-0029).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Distro {
     Fedora,
-    /// Any recognized `ID`/`ID_LIKE` we do not support yet.
+    /// Any other recognized `ID`.
     Other(String),
     Unknown,
 }
@@ -30,6 +34,9 @@ pub enum ElevationKind {
 /// Detected properties of the host, computed once and cached.
 #[derive(Debug, Clone)]
 pub struct Platform {
+    /// Detected distro family. A host fact only — the core never branches on it; it is
+    /// there for config-seeding / bootstrap (T6), which are its first real consumers.
+    #[allow(dead_code)]
     pub distro: Distro,
     /// Target arch as reported by the compiler (e.g. "x86_64", "aarch64").
     /// Consumed by GitHub release-asset filtering.
@@ -51,23 +58,6 @@ impl Platform {
             is_tty: detect_tty(),
             path_dirs: detect_path_dirs(),
         })
-    }
-
-    /// True when JII can operate on this platform (MVP: Fedora only).
-    pub fn is_supported(&self) -> bool {
-        matches!(self.distro, Distro::Fedora)
-    }
-
-    /// Return the platform, or an error if it is unsupported.
-    pub fn require_supported(&self) -> Result<()> {
-        if self.is_supported() {
-            Ok(())
-        } else {
-            Err(JiiError::UnsupportedPlatform(format!(
-                "{:?} (MVP targets Fedora)",
-                self.distro
-            )))
-        }
     }
 
     /// How to request elevation in the current session.

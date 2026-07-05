@@ -171,11 +171,8 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        crate::platform::Platform::detect().require_supported()?;
-
         let mut engine = Engine::new(self.apply_profile(config))?;
-        if !engine.has_providers() {
-            renderer.error("No installation sources are enabled.");
+        if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
 
@@ -322,6 +319,25 @@ impl Cli {
         config
     }
 
+    /// Guard shared by every source-touching command (install/remove/update/search/info):
+    /// stop early with a clear message when JII has no usable source on this machine. This
+    /// replaces the old Fedora-only `require_supported` wall with an honest, source-based
+    /// notion of "supported" (ADR-0029) — "any enabled source whose backing tool is present
+    /// here?". It distinguishes "none enabled" (config) from "none available" (no tool
+    /// installed), and improves on the distro wall even on Fedora (disabling every source now
+    /// says so plainly). Returns `true` to proceed, `false` after rendering the reason.
+    async fn ensure_usable_source(&self, engine: &Engine, renderer: &Renderer) -> bool {
+        if !engine.has_providers() {
+            renderer.error("No installation sources are enabled.");
+            return false;
+        }
+        if !engine.any_source_available().await {
+            renderer.error("No usable installation source found on this system.");
+            return false;
+        }
+        true
+    }
+
     /// Remove path (one or many packages): resolve each to its owning record, then let the
     /// engine group + merge same-source removals into one command where the source can
     /// (`dnf remove a b c`), and run them as **one** operation (one preview, one
@@ -333,9 +349,10 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        crate::platform::Platform::detect().require_supported()?;
-
         let mut engine = Engine::new(config)?;
+        if !self.ensure_usable_source(&engine, renderer).await {
+            return Ok(());
+        }
 
         // 1. Resolve each name to its owning record; collect the ones jii didn't install.
         let mut records: Vec<InstalledRecord> = Vec::new();
@@ -417,11 +434,8 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        crate::platform::Platform::detect().require_supported()?;
-
         let mut engine = Engine::new(self.apply_profile(config))?;
-        if !engine.has_providers() {
-            renderer.error("No installation sources are enabled.");
+        if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
 
@@ -560,10 +574,8 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        crate::platform::Platform::detect().require_supported()?;
         let engine = Engine::new(self.apply_profile(config))?;
-        if !engine.has_providers() {
-            renderer.error("No installation sources are enabled.");
+        if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
         let name = terms.join(" ");
@@ -592,10 +604,8 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        crate::platform::Platform::detect().require_supported()?;
         let engine = Engine::new(self.apply_profile(config))?;
-        if !engine.has_providers() {
-            renderer.error("No installation sources are enabled.");
+        if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
         let ranked = self.ranked_for(&engine, package, renderer).await;
