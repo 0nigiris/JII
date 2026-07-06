@@ -112,6 +112,12 @@ impl Provider for Apt {
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `apt-get upgrade -y` upgrades every installed package (D10).
+        let reasons = vec!["Upgrade all system packages (via apt)".to_string()];
+        Ok(Some(root_plan("system", &["upgrade", "-y"], reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // dpkg-query emits `name<TAB>version` lines — exactly the shape the shared
         // installed-records parser expects.

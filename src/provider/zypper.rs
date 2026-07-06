@@ -123,6 +123,13 @@ impl Provider for Zypper {
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `zypper --non-interactive update` (root_plan injects --non-interactive) updates
+        // every installed package (D10).
+        let reasons = vec!["Update all system packages (via zypper)".to_string()];
+        Ok(Some(root_plan("system", &["update"], reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // openSUSE is rpm-based; rpm gives clean `name<TAB>version` output that the shared
         // installed-records parser already understands.

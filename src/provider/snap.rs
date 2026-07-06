@@ -134,6 +134,13 @@ impl Provider for Snap {
         Ok(Some(snap_many("refresh", &names, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `snap refresh` with no names refreshes every installed snap (D10).
+        let reasons = vec!["Refresh all snaps".to_string()];
+        let argv = vec![BIN.to_string(), "refresh".to_string()];
+        Ok(Some(command_plan(ID, "all snaps", argv, true, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let out = run_capture(&[BIN, "list"]).await?;
         Ok(parse_list(&out, ID))

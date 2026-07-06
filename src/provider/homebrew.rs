@@ -106,6 +106,13 @@ impl Provider for Homebrew {
         Ok(Some(brew_many("upgrade", &names, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `brew upgrade` with no names upgrades every outdated formula (D10); user-space.
+        let reasons = vec!["Upgrade all Homebrew formulae".to_string()];
+        let argv = vec![BIN.to_string(), "upgrade".to_string()];
+        Ok(Some(command_plan(ID, "all formulae", argv, false, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let out = run_capture(&[BIN, "list", "--versions"]).await?;
         Ok(parse_versions(&out, ID))

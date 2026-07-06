@@ -117,6 +117,20 @@ impl Provider for Npm {
         Ok(Some(npm_many("install", records, "Update (via npm, reinstall newest)")?))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `npm update -g` updates every globally-installed package in our user prefix (D10).
+        let prefix = user_prefix()?;
+        let reasons = vec!["Update all global npm packages".to_string()];
+        let argv = vec![
+            BIN.to_string(),
+            "update".to_string(),
+            "--global".to_string(),
+            "--prefix".to_string(),
+            prefix,
+        ];
+        Ok(Some(command_plan(ID, "all global npm packages", argv, false, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let prefix = user_prefix()?;
         // `npm ls` can exit non-zero on benign warnings (extraneous/peer deps) while

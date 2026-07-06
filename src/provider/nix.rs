@@ -126,6 +126,14 @@ impl Provider for Nix {
         Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `nix profile upgrade --all` upgrades every package in the user profile (D10);
+        // user-space, no root (like the rest of the nix provider).
+        let reasons = vec!["Upgrade all packages in your Nix profile".to_string()];
+        let argv = nix_argv(&["profile", "upgrade", "--all"]);
+        Ok(Some(command_plan(ID, "nix profile", argv, false, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // `nix profile list --json` has changed schema across Nix versions; the registry
         // records what jii installed, and `is_installed` verifies via the profile symlink.

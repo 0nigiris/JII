@@ -112,6 +112,12 @@ impl Provider for Pacman {
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `pacman -Syu --noconfirm` = sync the db and upgrade the whole system (D10).
+        let reasons = vec!["Upgrade all system packages (via pacman)".to_string()];
+        Ok(Some(root_plan("system", &["-Syu", "--noconfirm"], reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // `pacman -Q` prints `name version` (single space) per installed package.
         let out = run_capture(&[BIN, "-Q"]).await?;

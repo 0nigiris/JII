@@ -88,6 +88,13 @@ impl Provider for Pipx {
         Ok(pipx_plan(&record.name, "upgrade", reasons))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `pipx upgrade-all` upgrades every pipx-installed app (D10); user-space.
+        let reasons = vec!["Upgrade all pipx apps".to_string()];
+        let argv = vec![BIN.to_string(), "upgrade-all".to_string()];
+        Ok(Some(command_plan(ID, "all pipx apps", argv, false, reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // `pipx list --json` may exit non-zero in benign states while still printing
         // JSON, so read stdout regardless of exit status (only a spawn failure is fatal).
