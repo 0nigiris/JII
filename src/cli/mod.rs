@@ -1191,16 +1191,18 @@ impl Cli {
             renderer.info("Nothing installed via jii yet.");
             return Ok(());
         }
-        for record in items {
-            let version = record
-                .version
-                .as_ref()
-                .map(|v| v.to_string())
-                .unwrap_or_default();
-            renderer.info(&format!(
-                "{}  {}  {}",
-                record.name, record.source_id, version
-            ));
+        let rows: Vec<Vec<String>> = items
+            .iter()
+            .map(|record| {
+                vec![
+                    record.name.clone(),
+                    record.source_id.clone(),
+                    version_or_unknown(record.version.as_ref()),
+                ]
+            })
+            .collect();
+        for line in table_lines(&["NAME", "SOURCE", "VERSION"], &rows) {
+            renderer.info(&line);
         }
         Ok(())
     }
@@ -1419,14 +1421,20 @@ impl Cli {
             renderer.info("No history yet.");
             return Ok(());
         }
-        for event in events.iter().rev() {
-            renderer.info(&format!(
-                "{}  {:?}  {} ({})",
-                event.at.format("%Y-%m-%d %H:%M"),
-                event.action,
-                event.name,
-                event.source_id
-            ));
+        let rows: Vec<Vec<String>> = events
+            .iter()
+            .rev()
+            .map(|event| {
+                vec![
+                    event.at.format("%Y-%m-%d %H:%M").to_string(),
+                    event.action.label().to_string(),
+                    event.name.clone(),
+                    event.source_id.clone(),
+                ]
+            })
+            .collect();
+        for line in table_lines(&["WHEN", "ACTION", "PACKAGE", "SOURCE"], &rows) {
+            renderer.info(&line);
         }
         Ok(())
     }
@@ -1461,27 +1469,29 @@ impl Cli {
             return Ok(());
         }
 
-        renderer.info(&format!(
-            "{:20} {:8} {:10} {:14} {}",
-            "NAME", "SOURCE", "TRUST", "VERIFIED", "STATUS"
-        ));
         let mut flagged = 0;
-        for e in &entries {
-            let trust = e.trust.map(|t| t.label()).unwrap_or("unknown");
-            let status = if e.concerns.is_empty() {
-                "ok".to_string()
-            } else {
-                flagged += 1;
-                let reasons: Vec<&str> = e.concerns.iter().map(|c| c.message()).collect();
-                format!("⚠ {}", reasons.join(", "))
-            };
-            renderer.info(&format!(
-                "{:20} {:8} {:10} {:14} {status}",
-                e.name,
-                e.source_id,
-                trust,
-                e.verification.label(),
-            ));
+        let rows: Vec<Vec<String>> = entries
+            .iter()
+            .map(|e| {
+                let trust = e.trust.map(|t| t.label()).unwrap_or("unknown");
+                let status = if e.concerns.is_empty() {
+                    "ok".to_string()
+                } else {
+                    flagged += 1;
+                    let reasons: Vec<&str> = e.concerns.iter().map(|c| c.message()).collect();
+                    format!("⚠ {}", reasons.join(", "))
+                };
+                vec![
+                    e.name.clone(),
+                    e.source_id.clone(),
+                    trust.to_string(),
+                    e.verification.label().to_string(),
+                    status,
+                ]
+            })
+            .collect();
+        for line in table_lines(&["NAME", "SOURCE", "TRUST", "VERIFIED", "STATUS"], &rows) {
+            renderer.info(&line);
         }
 
         if flagged > 0 {
@@ -1514,6 +1524,40 @@ fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
 /// Render an optional version, or `unknown` when a source doesn't report one.
 fn version_or_unknown(version: Option<&crate::model::PkgVersion>) -> String {
     version.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Render an aligned text table: a header row then one line per data row, each
+/// column padded to the widest cell in that column (the final column is left
+/// unpadded so trailing content never carries stray spaces). Widths are computed
+/// from the data so long names don't break alignment. Returns the rendered lines.
+fn table_lines(headers: &[&str], rows: &[Vec<String>]) -> Vec<String> {
+    let cols = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate().take(cols) {
+            widths[i] = widths[i].max(cell.chars().count());
+        }
+    }
+    let render = |cells: &[String]| -> String {
+        let mut line = String::new();
+        for (i, cell) in cells.iter().enumerate().take(cols) {
+            if i > 0 {
+                line.push_str("  ");
+            }
+            if i + 1 == cols {
+                line.push_str(cell); // last column: no trailing pad
+            } else {
+                let pad = widths[i].saturating_sub(cell.chars().count());
+                line.push_str(cell);
+                line.push_str(&" ".repeat(pad));
+            }
+        }
+        line
+    };
+    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+    let mut out = vec![render(&header_cells)];
+    out.extend(rows.iter().map(|r| render(r)));
+    out
 }
 
 /// A compact one-line description of a candidate for `search`/`info`:
@@ -1650,6 +1694,42 @@ mod tests {
             summary: None,
             raw: serde_json::Value::Null,
         }
+    }
+
+    #[test]
+    fn table_pads_columns_to_the_widest_cell() {
+        let rows = vec![
+            vec!["fastfetch".into(), "dnf".into(), "2.21".into()],
+            vec!["x".into(), "flatpak".into(), "1.0".into()],
+        ];
+        let lines = table_lines(&["NAME", "SOURCE", "VERSION"], &rows);
+        // Header + one line per row.
+        assert_eq!(lines.len(), 3);
+        // NAME column is as wide as "fastfetch" (9); each row's SOURCE column starts
+        // at the same offset.
+        let name_w = "fastfetch".len();
+        assert!(lines[1].starts_with("fastfetch  "));
+        assert_eq!(lines[2].find("flatpak"), Some(name_w + 2));
+        // Last column carries no trailing padding.
+        assert!(lines[1].ends_with("2.21"));
+        assert!(!lines[0].ends_with(' '));
+    }
+
+    #[test]
+    fn table_header_widens_when_it_is_the_longest_cell() {
+        // A header longer than any datum still sets the column width.
+        let rows = vec![vec!["a".into(), "b".into()]];
+        let lines = table_lines(&["PACKAGE", "SRC"], &rows);
+        assert!(lines[1].starts_with("a      ")); // padded to len("PACKAGE") == 7
+        assert_eq!(lines[1].find('b'), Some("PACKAGE".len() + 2));
+    }
+
+    #[test]
+    fn action_labels_are_human_readable_past_tense() {
+        use crate::registry::Action;
+        assert_eq!(Action::Install.label(), "installed");
+        assert_eq!(Action::Remove.label(), "removed");
+        assert_eq!(Action::Update.label(), "updated");
     }
 
     #[test]

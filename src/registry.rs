@@ -22,6 +22,17 @@ pub enum Action {
     Update,
 }
 
+impl Action {
+    /// A human-readable past-tense verb for history output.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Action::Install => "installed",
+            Action::Remove => "removed",
+            Action::Update => "updated",
+        }
+    }
+}
+
 /// One entry in the history log.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEvent {
