@@ -28,7 +28,7 @@ async fn main() -> std::process::ExitCode {
     let config = match Config::load() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("✗ {e}");
+            report(&e);
             return std::process::ExitCode::FAILURE;
         }
     };
@@ -36,8 +36,18 @@ async fn main() -> std::process::ExitCode {
     match cli.run(config).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("✗ {e}");
+            report(&e);
             std::process::ExitCode::FAILURE
         }
+    }
+}
+
+/// Print a top-level failure, followed by its actionable remedy when it has one (D7).
+/// Kept here (not the `Renderer`) because a config-load failure happens before a renderer
+/// exists; JSON callers surface their own structured errors upstream.
+fn report(err: &crate::error::JiiError) {
+    eprintln!("✗ {err}");
+    if let Some(remedy) = err.remedy() {
+        eprintln!("  → {remedy}");
     }
 }

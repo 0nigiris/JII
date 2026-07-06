@@ -45,4 +45,73 @@ impl JiiError {
     pub fn spawn(cmd: &str, source: std::io::Error) -> Self {
         JiiError::Other(anyhow::anyhow!("failed to run {cmd}: {source}"))
     }
+
+    /// A concrete next step for the user, if this error has one (D7 — actionable errors).
+    ///
+    /// Pure (no I/O) so it is unit-testable: it maps *what happened* to *what to do next*,
+    /// which the UI renders under the error line. Returns `None` when there is no honest,
+    /// specific remedy — better to stay silent than invent one.
+    pub fn remedy(&self) -> Option<String> {
+        match self {
+            JiiError::UnknownSource(id) => Some(format!(
+                "'{id}' is not a source JII knows. Known sources: {}. \
+                 Fix the `priority`/`disabled` list in your config (or run `jii setup`).",
+                crate::config::KNOWN_SOURCES.join(", ")
+            )),
+            JiiError::Config(_) => Some(
+                "Check the config file (usually ~/.config/jii/config.toml), or run \
+                 `jii setup` to regenerate it."
+                    .to_string(),
+            ),
+            JiiError::Io { path, source } => match source.kind() {
+                std::io::ErrorKind::NotFound => {
+                    Some(format!("{} does not exist.", path.display()))
+                }
+                std::io::ErrorKind::PermissionDenied => Some(format!(
+                    "Permission denied for {}. Check its ownership and permissions.",
+                    path.display()
+                )),
+                _ => None,
+            },
+            // `Other` wraps opaque text from many call sites; string-sniffing it would be
+            // fragile and often wrong, so we don't guess a remedy here.
+            JiiError::Other(_) => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_source_lists_the_known_ones() {
+        let r = JiiError::UnknownSource("dfn".to_string()).remedy().unwrap();
+        assert!(r.contains("dnf"), "should list real sources: {r}");
+        assert!(r.contains("'dfn'"));
+    }
+
+    #[test]
+    fn io_remedy_depends_on_kind() {
+        let not_found = JiiError::io(
+            "/no/such",
+            std::io::Error::from(std::io::ErrorKind::NotFound),
+        );
+        assert!(not_found.remedy().unwrap().contains("does not exist"));
+
+        let denied = JiiError::io(
+            "/root/secret",
+            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        );
+        assert!(denied.remedy().unwrap().contains("Permission denied"));
+
+        // An unremarkable I/O kind has no specific remedy.
+        let other = JiiError::io("/x", std::io::Error::from(std::io::ErrorKind::Other));
+        assert!(other.remedy().is_none());
+    }
+
+    #[test]
+    fn opaque_errors_have_no_invented_remedy() {
+        assert!(JiiError::Other(anyhow::anyhow!("boom")).remedy().is_none());
+    }
 }

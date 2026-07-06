@@ -1358,3 +1358,27 @@ The spec is **universal across every verb** that names a package — install, `r
 - No core/engine change and no clap change; a new pure parser is the only addition, and the "skip chooser when `:source` given" rule is one clause on existing gating.
 - Binds future work via the "package or command?" principle — new package attributes extend `PackageSpec`, keeping the CLI clean.
 - Locks the Terminal 1.0 CLI surface, so `@ref` is parsed (and cleanly rejected until version selection lands) rather than deferred, avoiding a later breaking grammar change.
+
+## ADR-0032 — Actionable errors: a pure `JiiError::remedy()` maps failures to next steps
+
+**Status:** Accepted 2026-07-06. Lands with Terminal 1.0 (ADR-0026) U6 (UX pass, problem D7). Small, additive.
+
+**Context:** An error message that only states *what went wrong* leaves a first-time user stuck ("unknown source: dfn" — and now what?). The UX evaluation (D7) asked every failure to also say *what to do next*, in JII's own voice, ideally the exact next command. JII's `JiiError` enum is deliberately thin (`Config`, `UnknownSource`, `Io`, and a catch-all `Other(anyhow)` that wraps opaque text from dozens of call sites).
+
+**Decision:** Add a **pure** method `JiiError::remedy(&self) -> Option<String>` that maps a *typed* error to a concrete next step, rendered by the caller on the line below the error (`  → …`). It is pure (no I/O) so it is unit-tested against fixed inputs (the ADR-0012 "isolate + test" discipline applied to error copy). Coverage:
+- `UnknownSource(id)` → names the id, lists `KNOWN_SOURCES`, points at the config `priority`/`disabled` list and `jii setup`.
+- `Config(_)` → points at the config file and `jii setup`.
+- `Io { path, source }` → branches on `ErrorKind` (`NotFound`/`PermissionDenied` get specific advice; other kinds get none).
+- `Other(_)` → **`None`**. Deliberately no string-sniffing: `Other` wraps free-form text from many sites, so keyword-matching it ("rate limit", "not found") would be fragile and frequently wrong. Better to stay silent than invent a misleading remedy.
+
+Rendered in `main.rs::report` (not the `Renderer`) because the highest-value case — a bad config — fails *before* a renderer exists.
+
+**Alternatives considered:**
+- **A rich `Remedy { summary, next_command }` struct.** Over-built for the current thin error set; a single formatted string is enough and easy to render. Revisit if remedies need to carry a runnable command the UI offers to execute.
+- **String-sniff `Other` for known phrases (GitHub rate limit, missing tool).** Rejected for now: fragile and coupling error copy to remedy logic. The right fix is to *promote* those conditions to typed variants (or surface them where they arise — e.g. the GitHub rate-limit remedy belongs to `doctor` Tier 1, ADR-0033), then map them here. Left as a forward hook, not a guess.
+- **Fold remedies into each `#[error("…")]` string.** Rejected: mixes the terse *what* with the verbose *how-to-fix*, and can't adapt to `ErrorKind`. Keeping `remedy()` separate lets the UI show or suppress it (e.g. `--json`) independently.
+
+**Consequences:**
+- Errors now teach: a typo in a config source, a missing config path, a permission problem each print an exact next step.
+- Adding a remedy for a new failure is a one-arm `match` + a unit test; the discipline ("no invented remedies for opaque errors") keeps it honest.
+- Forward hook: as high-value `Other` cases (GitHub rate limit, a source's tool missing → bootstrap offer) become typed or move to `doctor`, they slot into `remedy()`/Tier 1 without a redesign.
