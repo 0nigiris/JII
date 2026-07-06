@@ -450,17 +450,43 @@ impl Cli {
             return Ok(());
         }
 
-        // 1. Resolve each name to its owning record; collect the ones jii didn't install.
+        // 1. Resolve each name to its owning record(s). A package can be installed via more
+        //    than one source (e.g. ripgrep via dnf *and* cargo); when it is, let the user pick
+        //    which copy — or all — instead of guessing (UX #11). `--source` narrows to one; a
+        //    non-interactive session takes every owner (the removal preview + confirm below
+        //    still gate it). Names jii can't find anywhere are collected as not-installed.
         let mut records: Vec<InstalledRecord> = Vec::new();
         let mut not_installed: Vec<String> = Vec::new();
         for name in packages {
-            match engine.resolve_installed(name).await {
-                Ok(record) => records.push(record),
-                Err(_) => not_installed.push(name.clone()),
+            let mut owners = engine.resolve_all_installed(name).await;
+            if let Some(source) = &self.global.source {
+                owners.retain(|r| &r.source_id == source);
+            }
+            match owners.len() {
+                0 => not_installed.push(name.clone()),
+                1 => records.push(owners.pop().expect("len 1")),
+                _ if !self.interactive(renderer) => records.extend(owners),
+                _ => {
+                    let mut labels: Vec<String> = owners
+                        .iter()
+                        .map(|r| format!("{} ({})", r.source_id, version_or_unknown(r.version.as_ref())))
+                        .collect();
+                    labels.push("all of them".to_string());
+                    let header = format!("'{name}' is installed via several sources:");
+                    match prompt::choose(renderer, &header, &labels, 0) {
+                        // The extra last option ("all") sits at index owners.len().
+                        Some(index) if index == owners.len() => records.extend(owners),
+                        Some(index) => records.push(owners.swap_remove(index)),
+                        None => {
+                            renderer.info("Aborted.");
+                            return Ok(());
+                        }
+                    }
+                }
             }
         }
         if !not_installed.is_empty() {
-            renderer.error(&format!("Not installed via jii: {}", not_installed.join(", ")));
+            renderer.error(&format!("Not installed: {}", not_installed.join(", ")));
         }
         if records.is_empty() {
             return Ok(());
@@ -548,7 +574,7 @@ impl Cli {
                 }
             }
             if !not_installed.is_empty() {
-                renderer.error(&format!("Not installed via jii: {}", not_installed.join(", ")));
+                renderer.error(&format!("Not installed: {}", not_installed.join(", ")));
             }
             resolved
         };

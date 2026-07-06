@@ -200,9 +200,15 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
   presence reads as "already installed" (versions are opaque across sources, ADR-0009). To keep the
   hot install path fast, the check is a new **targeted** `Engine::installed_lookup` (registry hint,
   else *one* lookup in the recommended source only) — not the full multi-provider `resolve_installed`
-  fan-out (which measured ~1 s extra per fresh install and stays reserved for remove/update). Still
-  to do in U3: multi-owner `remove` via the chooser (#11). *Follow-up: a cheap single-package
-  `Provider::installed_version` would remove even the one `list_installed` the check still costs.*
+  fan-out (which measured ~1 s extra per fresh install and stays reserved for remove/update).
+  *Follow-up: a cheap single-package `Provider::installed_version` would remove even the one
+  `list_installed` the check still costs.*
+  - **done (#11):** `remove` now finds a package across **all** sources (`Engine::resolve_all_installed`,
+    a deliberate full fan-out — remove is not the hot path). When several sources own it, an
+    interactive session picks which — or "all of them" — via the existing chooser; `--source` narrows
+    to one; non-interactive takes every owner (the removal preview + confirm still gate it). Since the
+    resolver sees the whole system now (not just jii's registry), the miss message is the accurate
+    "Not installed:" (was "Not installed via jii"). **U3 complete.**
 
 ---
 

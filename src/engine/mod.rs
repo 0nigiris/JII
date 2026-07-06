@@ -464,6 +464,34 @@ impl Engine {
         )))
     }
 
+    /// Every enabled source that currently has `name` installed — a full fan-out, unlike
+    /// [`resolve_installed`] which returns the first owner. Backs multi-owner `remove` (UX
+    /// #11): a package present in several sources (e.g. ripgrep via dnf *and* cargo) must let
+    /// the user choose which copy to remove. File-based sources that can't enumerate (github)
+    /// are covered by folding in a verified registry record. Correctness over latency (remove
+    /// is not the hot path), so the cost of scanning every provider is deliberate.
+    pub async fn resolve_all_installed(&self, name: &str) -> Vec<InstalledRecord> {
+        let mut owners: Vec<InstalledRecord> = Vec::new();
+        for provider in self.providers.iter() {
+            if !provider.is_available().await {
+                continue;
+            }
+            if let Ok(installed) = provider.list_installed().await
+                && let Some(found) = installed.into_iter().find(|r| r.name == name)
+            {
+                owners.push(found);
+            }
+        }
+        // Fold in a recorded owner the scan missed (e.g. a github file-install), verified present.
+        if let Some(record) = self.registry.get(name)
+            && !owners.iter().any(|o| o.source_id == record.source_id)
+            && self.is_installed_via(record).await
+        {
+            owners.push(record.clone());
+        }
+        owners
+    }
+
     /// The cheap "is this already here?" for the **install pre-check** (UX #3): the registry
     /// hint (covers jii's own installs) verified against its owning provider, else a single
     /// lookup in just the **recommended** source's installed set. Deliberately *not* a full
