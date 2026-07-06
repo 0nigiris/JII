@@ -110,7 +110,7 @@ Configuration is via `~/.config/jii/config.toml` (see below), not a `jii config`
 command yet.
 
 Global flags: `--auto`, `--source <id>`, `--profile <stable|latest|sandbox|minimal>`,
-`--dry-run`, `-y/--yes`, `-n/--no`, `--json`, `--no-color`, `-v/--verbose`.
+`-d/--dry-run`, `-y/--yes`, `-n/--no`, `--json`, `--no-color`, `-v/--verbose`.
 
 **GitHub releases:** name the repo as `jii <owner>/<repo>` (e.g. `jii jqlang/jq`). JII
 picks the release binary for your architecture, verifies its sha256 when the release

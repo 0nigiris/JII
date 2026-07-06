@@ -51,7 +51,7 @@ pub struct GlobalArgs {
     pub profile: Option<Profile>,
 
     /// Show the plan without executing anything.
-    #[arg(long, global = true)]
+    #[arg(short = 'd', long, global = true)]
     pub dry_run: bool,
 
     /// Increase verbosity (repeatable).
