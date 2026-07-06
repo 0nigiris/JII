@@ -176,10 +176,23 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
 ## Progress
 
 - **U0 — measured** (above).
-- **U1 — done (first slice):** killed the unavailable-provider spam. `engine::search_one` now treats
-  "tool not installed" as the normal, silent state (a stale cache entry still counts); only genuine
-  errors/timeouts land in `SearchResult.failed`. `jii sources`/`doctor` still report availability.
-  Verified: `jii search git` went from 7 noise lines to 0. clippy clean, 150 tests green.
+- **U1 — in progress:**
+  - killed the unavailable-provider spam. `engine::search_one` now treats "tool not installed" as the
+    normal, silent state (a stale cache entry still counts); only genuine errors/timeouts land in
+    `SearchResult.failed`. `jii sources`/`doctor` still report availability. Verified: `jii search git`
+    7 noise lines → 0.
+  - de-duplicated the single-package install preview (#9): the grouped "Summary:" block now prints
+    only for a real batch (>1 plan or >1 package); a single install goes straight to its Plan, which
+    already carries source + version + reasons. Verified on `jii fastfetch --dry-run`.
+  - *still shows a real `copr: timeout` on every command here (copr's API is ~9 s > the 5 s budget).
+    That is a genuine, non-silent failure; suppressing/summarising non-fatal secondary-source failures
+    belongs to D8 friendly mode, not to unconditional hiding.*
+- **U2 — in progress:** confirmed by direct measurement that COPR's search API takes **~9 s** (http
+  200) on this box, so at the old 8 s budget it always timed out yet still cost the full wait. Lowered
+  the default `network.timeout_secs` **8 → 5**; cold `jii search git` dropped **8.05 s → 5.08 s** with
+  no loss of candidates (only copr, which was already lost, is skipped sooner). Availability
+  memoisation and background-straggler caching (to recover slow copr without the wait) remain as
+  follow-ups. clippy clean, 150 tests green throughout.
 
 ---
 

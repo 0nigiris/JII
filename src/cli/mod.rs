@@ -310,16 +310,22 @@ impl Cli {
             }
             return;
         }
-        renderer.info("Summary:");
-        for bp in batch {
-            renderer.info(&format!("{}:", bp.plan.source_id));
-            for candidate in &bp.candidates {
-                let version = candidate
-                    .version
-                    .as_ref()
-                    .map(|v| format!(" (v{v})"))
-                    .unwrap_or_default();
-                renderer.info(&format!("  - {}{version}", candidate.name));
+        // The grouped "what, by source" summary earns its space only for a real batch
+        // (more than one plan or more than one package). A single-package install would
+        // just repeat the Plan below it, so we skip straight to the plan (UX #9).
+        let total: usize = batch.iter().map(|bp| bp.candidates.len()).sum();
+        if batch.len() > 1 || total > 1 {
+            renderer.info("Summary:");
+            for bp in batch {
+                renderer.info(&format!("{}:", bp.plan.source_id));
+                for candidate in &bp.candidates {
+                    let version = candidate
+                        .version
+                        .as_ref()
+                        .map(|v| format!(" (v{v})"))
+                        .unwrap_or_default();
+                    renderer.info(&format!("  - {}{version}", candidate.name));
+                }
             }
         }
         for bp in batch {
