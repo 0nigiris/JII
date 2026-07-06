@@ -43,8 +43,7 @@ pub struct Platform {
     pub arch: &'static str,
     /// Whether stdin/stdout is an interactive terminal.
     pub is_tty: bool,
-    /// Directories on `PATH`. Used by the user-space PATH check in Phase 5.
-    #[allow(dead_code)]
+    /// Directories on `PATH`. Backs the user-space `~/.local/bin` check in `jii doctor`.
     pub path_dirs: Vec<PathBuf>,
 }
 
@@ -69,8 +68,7 @@ impl Platform {
         }
     }
 
-    /// Whether a directory is on `PATH` (used to warn about `~/.local/bin` in Phase 5).
-    #[allow(dead_code)]
+    /// Whether a directory is on `PATH` (used to check `~/.local/bin` in `jii doctor`).
     pub fn is_on_path(&self, dir: &std::path::Path) -> bool {
         self.path_dirs.iter().any(|d| d == dir)
     }

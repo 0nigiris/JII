@@ -1108,12 +1108,19 @@ impl Cli {
         Ok(())
     }
 
-    /// Report source availability, latency and health.
+    /// Report source availability, latency and health (per-source), then a short set of
+    /// **Tier-1 system checks** about JII itself working — is `~/.local/bin` on `PATH` (where
+    /// user-space installs land), is a GitHub token set (rate limit). Read-only: each check
+    /// reports and advises; nothing is changed (Analyze → Explain, no auto-apply — U6/D6).
     async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        // Capture what the system checks need before `config` moves into the engine.
+        let token_env = config.network.github_token_env.clone();
         let engine = Engine::new(config)?;
         let diagnostics = engine.diagnose().await;
 
         if renderer.is_json() {
+            // JSON stays the stable per-source array; the Tier-1 checks are a human-facing
+            // addition and don't change the machine schema.
             let rows: Vec<_> = diagnostics
                 .iter()
                 .map(|d| {
@@ -1130,6 +1137,7 @@ impl Cli {
             return Ok(());
         }
 
+        renderer.info("Sources:");
         for d in &diagnostics {
             let mark = if d.available { "✓" } else { "✗" };
             let detail = match &d.detail {
@@ -1142,6 +1150,29 @@ impl Cli {
                 d.health.label(),
                 d.latency.as_millis()
             ));
+        }
+
+        // Tier-1 system checks.
+        let local_bin = directories::BaseDirs::new().map(|b| b.home_dir().join(".local/bin"));
+        let on_path = local_bin
+            .as_deref()
+            .map(|p| crate::platform::Platform::detect().is_on_path(p))
+            .unwrap_or(true); // can't resolve HOME → don't cry wolf
+        let token_set = std::env::var(&token_env).map(|v| !v.is_empty()).unwrap_or(false);
+        let local_bin = local_bin.unwrap_or_else(|| std::path::PathBuf::from("~/.local/bin"));
+
+        let checks = system_checks(&local_bin, on_path, &token_env, token_set);
+        renderer.info("");
+        renderer.info("System checks:");
+        for c in &checks {
+            if c.ok {
+                renderer.success(&c.label);
+            } else {
+                renderer.warn(&c.label);
+            }
+            if let Some(advice) = &c.advice {
+                renderer.info(&format!("    → {advice}"));
+            }
         }
         Ok(())
     }
@@ -1320,6 +1351,60 @@ fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>)
     reasons
 }
 
+/// One Tier-1 `doctor` check about JII itself working (not a source's live health).
+/// `ok` renders a green ✓; otherwise a yellow ⚠ with the optional `advice` beneath it.
+struct SystemCheck {
+    ok: bool,
+    label: String,
+    advice: Option<String>,
+}
+
+/// Compute the Tier-1 environment checks from already-gathered facts. Pure (no I/O — the
+/// caller resolves PATH/HOME/token) so the wording and pass/fail logic are unit-tested.
+fn system_checks(
+    local_bin: &std::path::Path,
+    local_bin_on_path: bool,
+    token_env: &str,
+    token_set: bool,
+) -> Vec<SystemCheck> {
+    let bin = local_bin.display();
+    vec![
+        if local_bin_on_path {
+            SystemCheck {
+                ok: true,
+                label: format!("{bin} is on your PATH"),
+                advice: None,
+            }
+        } else {
+            SystemCheck {
+                ok: false,
+                label: format!("{bin} is not on your PATH"),
+                advice: Some(
+                    "User-space installs (cargo, npm, pipx, go, GitHub binaries) land there, so \
+                     their commands won't be found. Add it, e.g.:  echo 'export \
+                     PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && exec $SHELL"
+                        .to_string(),
+                ),
+            }
+        },
+        if token_set {
+            SystemCheck {
+                ok: true,
+                label: format!("{token_env} is set — GitHub requests aren't rate-limited"),
+                advice: None,
+            }
+        } else {
+            SystemCheck {
+                ok: false,
+                label: format!("{token_env} is not set — GitHub is limited to ~60 requests/hour"),
+                advice: Some(format!(
+                    "Optional: export {token_env}=<a GitHub token> to lift the anonymous rate limit."
+                )),
+            }
+        },
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1393,5 +1478,33 @@ mod tests {
         assert!(line.contains("dnf"));
         assert!(line.contains("v2.0"));
         assert!(line.contains("official"));
+    }
+
+    #[test]
+    fn system_checks_pass_when_path_and_token_are_set() {
+        let bin = std::path::Path::new("/home/x/.local/bin");
+        let checks = system_checks(bin, true, "GITHUB_TOKEN", true);
+        assert!(checks.iter().all(|c| c.ok));
+        assert!(checks.iter().all(|c| c.advice.is_none()));
+    }
+
+    #[test]
+    fn system_checks_flag_missing_path_with_advice() {
+        let bin = std::path::Path::new("/home/x/.local/bin");
+        let checks = system_checks(bin, false, "GITHUB_TOKEN", true);
+        let path_check = &checks[0];
+        assert!(!path_check.ok);
+        assert!(path_check.label.contains("/home/x/.local/bin"));
+        assert!(path_check.advice.as_deref().unwrap().contains("PATH"));
+    }
+
+    #[test]
+    fn system_checks_flag_missing_token_with_its_env_name() {
+        let bin = std::path::Path::new("/home/x/.local/bin");
+        let checks = system_checks(bin, true, "GH_PAT", false);
+        let token_check = &checks[1];
+        assert!(!token_check.ok);
+        assert!(token_check.label.contains("GH_PAT"));
+        assert!(token_check.advice.as_deref().unwrap().contains("GH_PAT"));
     }
 }
