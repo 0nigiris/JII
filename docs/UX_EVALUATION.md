@@ -258,3 +258,139 @@ declarative integration as a separate, opt-in, research-grade surface under the 
 onboarding / cross-distro" umbrella — **never** as silent edits to a user's Nix configuration. The
 architecture already accommodates the honest 90%; the remaining 10% is a paradigm JII deliberately
 does not own.
+
+---
+
+# Second UX pass — architectural notes (evaluation only, 2026-07-06)
+
+Four follow-up questions from the user after reviewing U0–U3. Architectural opinion only; nothing
+implemented here.
+
+## A. Progressive results (show fast sources first, stream in the slow ones)
+
+**The user is right that U2 treated the symptom.** The real cause is the barrier at
+`engine::search`: `futures::future::join_all(...)` waits for *every* provider before returning one
+`SearchResult`; the CLI then ranks and renders once. So the slowest source gates the fast ones even
+though search is already parallel. Lowering the timeout only shrinks the worst case.
+
+**Does progressive fit, or is it a redesign? It fits — as an additive change to two seams, with the
+core model untouched.** What changes:
+- `engine::search` swaps `join_all` for a **`FuturesUnordered`** (or an mpsc channel / a stream
+  return), emitting `(provider_id, result)` as each completes instead of collecting.
+- the text renderer prints **append-only** in arrival order — exactly the user's mock (a first block
+  for the fast sources + a live "Recommended", then an "Additional sources" block as stragglers land).
+  Append-only means no ANSI cursor rewriting, so it still behaves under a pipe.
+
+The `Provider` trait, `PackageCandidate`, `ranking`, and the cache are **all unchanged**. This is a
+refinement of *how results are consumed*, squarely within ADR-0010 (parallel search already
+decided); it warrants its own small ADR for the streaming API + the rule below, not a redesign.
+
+**Why it's safe here specifically — priority correlates with speed.** The recommendation is the
+highest-*priority* source that matched (dnf > … > github). On this system the high-priority sources
+are **local and fast** (dnf, flatpak) and the slow ones are **network and lower-priority** (copr,
+github, cargo). So the early recommendation from the fast set is almost always the final one; a
+straggler arrives *below* it and only fills the "Additional sources" list. The one pathological case
+— a slow source ranked *above* the current best (e.g. dnf disabled, slow copr outranks fast flatpak)
+— is handled by a cheap, well-defined rule: **hold the final "Recommended:" line until every source
+ranked above the current best has reported** (those are few, and usually the fast ones anyway).
+
+**Bonus: streaming subsumes U2's trade-off.** Because slow sources no longer gate the felt
+experience, we can *raise the timeout back up* (let copr take its ~9 s in the background and fill in
+late) without the search ever *feeling* slow — best of both. So progressive is the better home for
+"fast search", and I'd re-open the U2 timeout as part of it.
+
+**Costs to name honestly:** `--json` must stay one coherent document, so JSON **buffers** (collects)
+while text streams — trivial to gate. The install path is more than rendering: to let the user act on
+the fast result immediately you either (a) still collect the full set before the chooser/plan (so
+only the *perceived* wait improves — safe, easy), or (b) go fully progressive on install
+(act-then-background) — more complex, more edge cases. I'd ship (a) first: stream the "✓ DNF /
+Recommended" feedback, still gather all candidates before the chooser/confirm.
+
+**Verdict: worth doing, as its own track (fold into an expanded U2). Additive, ADR-0010-aligned, no
+core redesign.**
+
+## B. Single-dash long flags (`-source` instead of `--source`)
+
+**clap (v4, derive) facts:** clap models exactly two flag shapes — `short` (`-s`, a single char) and
+`long` (`--source`, always double-dash). There is **no** per-arg "single-dash long" (Go/`flag`-style
+`-source`). Single-dash multi-char also collides conceptually with clap's short **bundling** (`-yn`
+= `-y -n`), which is why clap doesn't offer it.
+
+**Could we support it anyway?** Only by **normalising argv before clap sees it** — a shim that
+rewrites a leading-single-dash token matching a known long name (`-source` → `--source`) while
+leaving real shorts (`-y`, `-n`, `-v`, `-`, bundles) and value-like `-…` alone. It's doable but:
+- clap's **help, error messages, and shell completions stay `--source`** (clap only knows the long
+  form), so the single-dash form would be an undocumented, second-class alias — inconsistent, and a
+  new maintenance/edge-case surface (values that look like flags, bundles, `--` passthrough).
+- it trains users a habit that breaks the moment they use `--help`, tab-completion, or any other
+  Linux tool.
+
+**Recommendation: keep `--source` canonical; do *not* adopt single-dash longs.** Better ways to kill
+the friction the user actually feels:
+1. **Short aliases** for the common flags — `-s`/`--source`, `-p`/`--profile` — trivial, idiomatic,
+   clap-native, and shown in help.
+2. **Make the flag rarely needed at all.** The interactive chooser (U4/T5.1) already means you *pick*
+   the source from a menu instead of typing `--source`. That is the cooperative-assistant answer
+   (§C): the fix is *needing the flag less*, not making the flag shorter. Typing `--source flatpak`
+   should be the rare power-user path, not the everyday one.
+
+If you still want the single-dash form after this, the argv-shim is the only route and I'd scope it
+tightly (whitelist of known longs) and accept the help/completion inconsistency — but I recommend
+against it.
+
+## C. The cooperation lens (JII must never feel like "its own package manager")
+
+Agreed, and it is already the load-bearing principle (**ADR-0020: universal layer, not a manager**).
+Proposal: make it a **standing review question** applied to every command — *"does this cooperate
+with the system, or behave like it owns it?"* Current **ownership smells** and how the pass detoxes
+each:
+- "Not installed **via jii**" wording — implies jii only knows its own world. *Fixed in U3* (whole-
+  system resolver → "Not installed:").
+- `remove`/`update`/`list` historically saw only jii's registry. *`remove` now sees all sources
+  (U3 #11); `update` for the whole system is U7 (#10 `plan_update_all`); `list` should grow toward
+  "what's on this system", not just "what jii installed".*
+- Re-installing something already present — *fixed in U3* (already-installed pre-check).
+- The recommendation stated as a verdict without alternatives/reasons — *U4 chooser + D5 highlights*
+  turn it into "here's what I'd pick and why; you decide".
+- `doctor` reporting jii's own source health rather than helping the system — *U6 Tier 1/Tier 2*.
+
+I'll carry this lens explicitly through U4–U8 and note, per command, which side of the line it lands
+on.
+
+## D. Friction inventory (a first-time-user walkthrough)
+
+Pretending never to have seen JII, going command by command over the *current* code. Each item is a
+small friction + the proposed simplification (no code yet); tags map to the tracks above.
+
+- **Every source-touching command prints `Searching for 'x'...`** — fine for one slow search, noise
+  when repeated in a batch or when results are instant. → progressive/append-only feedback (A); drop
+  the line entirely once the fast block prints. *(A, D8)*
+- **`⚠ ✗ copr: timeout` on essentially every command** — two problems: the marker is a doubled
+  `⚠ ✗` (`warn()` prepends `⚠` to a string already starting with `✗`), and a transient *secondary*
+  source failure is shown even when it didn't affect the result. → single marker; in friendly mode
+  **summarise or suppress** non-fatal secondary-source failures ("1 source timed out"), show detail
+  only in advanced/`-v` or `doctor`. *(U1 polish + D8)*
+- **`jii sources` prints "More sources arrive in upcoming releases — see docs/ROADMAP.md." every
+  time** — advertising as recurring noise. → drop it (or show only in the wizard/`--help`). *(U1)*
+- **`search`/`info` rows** (`source  vX  trust — summary`, a leading `→`) — functional but hard to
+  scan. → align columns, a `⭐`/`recommended` tag on the top row, group by trust, humanise. *(U4/#12)*
+- **`info` "Recommended" reasons are thin** ("official source"). → D5 source highlights ("Official
+  Fedora package · native · auto-updates"). *(U4/D5)*
+- **Single-candidate trusted install still asks `Install? [Y/n]`** — for a "just install it" tool a
+  one-keystroke default-yes is acceptable, but consider a tighter one-line confirm (name + source +
+  version on one line) rather than the multi-line Plan for the friendly path. *(D8)*
+- **The full `Plan:` block** (`privileges: root required`, `actions: # dnf5 install -y x`) shows on
+  every install/dry-run — advanced-grade detail. → friendly shows a one-line "will install X (vY)
+  via dnf [needs sudo]"; advanced/`--dry-run` shows the full plan. *(D8)*
+- **`update` version transitions** printed as separate lines then the plan — could be one compact
+  "X: a → b" block. *(D8/#9)*
+- **`list`/`history`/`audit` columns** use ad-hoc spacing (`{}  {}  {}`) — → aligned, headers,
+  humanised dates. *(U1/#12)*
+- **Bare `jii`** → `Usage: jii <package…> (try \`jii --help\`)` — a cold landing. → the first-run
+  wizard (DW) makes the very first bare `jii` a warm welcome; afterwards a compact hint is fine.
+- **`Aborted.` / `Nothing to do.`** — terse but clear; keep, maybe warm the wording in friendly mode.
+- **Errors are flat strings with no next step** — → D7 remedies (what/why/how-to-fix).
+
+Most of these converge on **D8 (friendly vs advanced verbosity)** as the single biggest lever, plus
+the progressive-search feel (A). Neither is a redesign; both are contained UI/config work over the
+existing seams.
