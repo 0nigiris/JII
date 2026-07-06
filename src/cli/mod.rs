@@ -433,10 +433,11 @@ impl Cli {
     }
 
     /// Parse each argument into a [`PackageSpec`] (`name[:source][@ref]`, ADR-0031) — the one
-    /// place package tokens are parsed. Returns `None` (after rendering a clear error) if any
-    /// token is malformed, or if any carries a version/channel `@ref`: the spec grammar is
-    /// locked for 1.0 but version selection isn't built yet, so we reject `@ref` explicitly
-    /// rather than silently install the latest (respecting the user's intent).
+    /// place package tokens are parsed, shared by install/remove/update/info. Returns `None`
+    /// (after rendering a clear error) if any token is malformed, names an unknown source, or
+    /// carries a version/channel `@ref`: the spec grammar is locked for 1.0 but version
+    /// selection isn't built yet, so we reject `@ref` explicitly rather than act on a version
+    /// we can't honour (respecting the user's intent).
     fn parse_specs(&self, packages: &[String], renderer: &Renderer) -> Option<Vec<PackageSpec>> {
         let mut specs = Vec::with_capacity(packages.len());
         for raw in packages {
@@ -467,7 +468,7 @@ impl Cli {
             let r = spec.reference.as_deref().unwrap_or("");
             renderer.error(&format!(
                 "Version/channel pinning ('@{r}') isn't supported yet — it's coming with the \
-                 version chooser. Try 'jii {}' to install the latest.",
+                 version chooser. Use '{}' without the '@' part for now.",
                 spec.name
             ));
             return None;
@@ -518,16 +519,27 @@ impl Cli {
             return Ok(());
         }
 
+        // Parse arguments as package specs (ADR-0031). A per-package `:source` pins which copy
+        // to remove and — like the multi-owner chooser it replaces — is the explicit answer to
+        // "which one?". `@ref` is rejected (jii removes what's installed, not a version).
+        let specs = match self.parse_specs(packages, renderer) {
+            Some(specs) => specs,
+            None => return Ok(()),
+        };
+
         // 1. Resolve each name to its owning record(s). A package can be installed via more
         //    than one source (e.g. ripgrep via dnf *and* cargo); when it is, let the user pick
-        //    which copy — or all — instead of guessing (UX #11). `--source` narrows to one; a
-        //    non-interactive session takes every owner (the removal preview + confirm below
-        //    still gate it). Names jii can't find anywhere are collected as not-installed.
+        //    which copy — or all — instead of guessing (UX #11). A pinned `:source` (or the
+        //    whole-command `--source`) narrows to one and skips the chooser; a non-interactive
+        //    session takes every owner (the removal preview + confirm below still gate it).
+        //    Names jii can't find anywhere are collected as not-installed.
         let mut records: Vec<InstalledRecord> = Vec::new();
         let mut not_installed: Vec<String> = Vec::new();
-        for name in packages {
+        for spec in &specs {
+            let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
+            let name = &spec.name;
             let mut owners = engine.resolve_all_installed(name).await;
-            if let Some(source) = &self.global.source {
+            if let Some(source) = pkg_source {
                 owners.retain(|r| &r.source_id == source);
             }
             match owners.len() {
@@ -633,12 +645,29 @@ impl Cli {
         let records = if packages.is_empty() {
             engine.registry().installed().to_vec()
         } else {
+            // Parse arguments as package specs (ADR-0031): a `:source` picks which installed
+            // copy to update; `@ref` is rejected (targeting a version is the version chooser's
+            // job). Without a pinned source we resolve the owning record cheaply (registry hint
+            // first); the fan-out only runs when a source needs matching.
+            let specs = match self.parse_specs(packages, renderer) {
+                Some(specs) => specs,
+                None => return Ok(()),
+            };
             let mut resolved = Vec::new();
             let mut not_installed = Vec::new();
-            for name in packages {
-                match engine.resolve_installed(name).await {
-                    Ok(record) => resolved.push(record),
-                    Err(_) => not_installed.push(name.clone()),
+            for spec in &specs {
+                let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
+                let record = match pkg_source {
+                    Some(source) => engine
+                        .resolve_all_installed(&spec.name)
+                        .await
+                        .into_iter()
+                        .find(|r| &r.source_id == source),
+                    None => engine.resolve_installed(&spec.name).await.ok(),
+                };
+                match record {
+                    Some(record) => resolved.push(record),
+                    None => not_installed.push(spec.name.clone()),
                 }
             }
             if !not_installed.is_empty() {
@@ -768,8 +797,10 @@ impl Cli {
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
+        // `search` is free-text discovery, not a package spec (ADR-0031) — the terms are the
+        // query verbatim; `--source` still narrows the results.
         let name = terms.join(" ");
-        let ranked = self.ranked_for(&engine, &name, renderer).await;
+        let ranked = self.ranked_for(&engine, &name, self.global.source.as_ref(), renderer).await;
         if ranked.is_empty() {
             renderer.error(&format!("No candidates found for '{name}'."));
             return Ok(());
@@ -798,9 +829,18 @@ impl Cli {
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
-        let ranked = self.ranked_for(&engine, package, renderer).await;
+        // Parse the argument as a package spec (ADR-0031): a `:source` narrows `info` to that
+        // provider; `@ref` is rejected until version selection lands.
+        let specs = match self.parse_specs(&[package.to_string()], renderer) {
+            Some(specs) => specs,
+            None => return Ok(()),
+        };
+        let spec = &specs[0];
+        let name = &spec.name;
+        let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
+        let ranked = self.ranked_for(&engine, name, pkg_source, renderer).await;
         if ranked.is_empty() {
-            renderer.error(&format!("'{package}' is not available from any enabled source."));
+            renderer.error(&format!("'{name}' is not available from any enabled source."));
             return Ok(());
         }
         if renderer.is_json() {
@@ -808,7 +848,7 @@ impl Cli {
             return Ok(());
         }
         renderer.info(&format!(
-            "{package} — available from {} source(s):",
+            "{name} — available from {} source(s):",
             ranked.len()
         ));
         for candidate in &ranked {
@@ -858,13 +898,14 @@ impl Cli {
         Ok(())
     }
 
-    /// Search + rank a name across enabled sources, printing any source failures (a
-    /// source that was unavailable/errored). Shared by the read-only `search`/`info`
-    /// paths; honors `--source`.
+    /// Search + rank a name across enabled sources, printing any source failures (a source
+    /// that was unavailable/errored). Shared by the read-only `search`/`info` paths; `source`
+    /// (a `:source` spec or `--source`) narrows the result to one provider when given.
     async fn ranked_for(
         &self,
         engine: &Engine,
         name: &str,
+        source: Option<&String>,
         renderer: &Renderer,
     ) -> Vec<PackageCandidate> {
         let query = Query::name(name);
@@ -873,7 +914,7 @@ impl Cli {
             renderer.warn(&format!("✗ {source}: {reason}"));
         }
         let mut ranked = engine.rank(result.candidates);
-        if let Some(source) = &self.global.source {
+        if let Some(source) = source {
             ranked.retain(|c| &c.source_id == source);
         }
         ranked
