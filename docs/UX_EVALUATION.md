@@ -228,6 +228,22 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
     `@ref` rejected everywhere; `search` stays free-text (a query, not a spec). Backwards compatible.
   - 162 tests, clippy clean; verified on Fedora (info highlights + narrowing, pty chooser, remove/
     update/info spec paths, @ref rejection, did-you-mean). **U4 complete.**
+- **U5 — done (D8 + DW):**
+  - **Friendly/Advanced modes (D8):** `config::OutputMode { Friendly (default), Advanced }` in
+    `[ui] mode`; `Renderer::is_friendly()`; `-v`/`--verbose` forces Advanced for one run without
+    editing the config. Friendly **hides secondary-source failure noise** (`report_source_failures`
+    is a no-op in Friendly — no `copr: timeout` on a normal search) and **collapses the install
+    preview** to one line per package (`Install <name> (<ver>) via <source> — <why>  [needs sudo]`);
+    `--dry-run` and Advanced keep the full Plan block.
+  - **First-run wizard + `jii setup` (DW):** `Config::save()` + `MetaConfig::first_run_completed` +
+    `is_first_run()`; a bare `jii` in an interactive first-run session offers a 30-second setup
+    (welcome → mode chooser → optional doctor → save), declining still marks it done; `jii setup`
+    re-runs it on demand; non-interactive/`--json`/piped never triggers it.
+  - **clap parse fix (found while testing):** a global flag *before* a subcommand (`jii -v search git`,
+    `jii --json search git`) used to misparse as `install` — `args_conflicts_with_subcommands` removed,
+    full parse matrix re-verified.
+  - 165 tests, clippy clean; wizard + Friendly paths pty-verified in an isolated `XDG_CONFIG_HOME`.
+    **U5 complete.**
 
 ---
 

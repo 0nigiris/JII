@@ -8,7 +8,7 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-05_
+_Last updated: 2026-07-06_
 
 ---
 
@@ -42,6 +42,27 @@ change); and **batch install is done** (ADR-0025: `jii install a b c`, same-sour
 via optional `plan_install_many`, no model change). Next: **Homebrew** provider (ADR-0024).
 
 ## Last completed work
+
+**U5 — the Friendly/Advanced UX pass (2026-07-06).** A big verbosity + onboarding pass, all
+landed as small commits, no architectural change:
+- **Friendly/Advanced output modes (D8).** `config::OutputMode { Friendly (default), Advanced }`
+  (serde lowercase, in `[ui] mode`). `Renderer` carries the mode; `is_friendly()` is `!json &&
+  Friendly`. `-v`/`--verbose` forces Advanced for one run without touching the config. Friendly
+  **hides secondary-source failure noise** (`report_source_failures` returns early — no more
+  `⚠ copr: timeout` spam on a normal search) and **collapses the install preview** to one short
+  scannable line per package (`Install <name> (<ver>) via <source> — <why>  [needs sudo]`);
+  `--dry-run` and Advanced still print the full Plan block (the point of a dry-run is the detail).
+- **First-run wizard + `jii setup` (DW).** `config::MetaConfig { first_run_completed }` +
+  `Config::save()` (toml::to_string_pretty, `create_dir_all`) + `is_first_run()`. A bare `jii` in
+  an interactive first-run session offers a 30-second setup (welcome → mode chooser → optional
+  doctor → save); declining still marks it done so it never nags again. `jii setup` re-runs it on
+  demand. Non-interactive/`--json`/piped sessions never trigger it.
+- **A clap parse fix** discovered while testing: a global flag *before* a subcommand
+  (`jii -v search git`, `jii --json search git`) used to misparse as `install ["search","git"]`
+  because of `args_conflicts_with_subcommands = true` — removed; the full parse matrix re-verified.
+- Neutral chooser prompt wording ("Your choice [N] (or 'n' to cancel):") so it reads the same for
+  install/remove/setup. **165 tests green, clippy clean**, wizard + Friendly paths pty-verified in
+  an isolated `XDG_CONFIG_HOME`.
 
 **T5 (slice 1) — the interactive candidate chooser (`ui/prompt::choose`).** A single
 interactive install that resolves to **more than one** candidate now shows a numbered source
@@ -227,7 +248,9 @@ fine; cold search was 8s because one straggler — copr, ~9s API — burned the 
 parallelism problem); U1 killed unavailable-provider spam + de-duped the single-package preview; U2
 lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-installed pre-check
 (targeted `installed_lookup`, in-place update offer) and multi-owner `remove` (`resolve_all_installed`
-+ chooser with "all"). 150 tests green throughout.
++ chooser with "all"). U4 landed the `PackageSpec` grammar (ADR-0031) across install/remove/update/
+info; **U5** added Friendly/Advanced modes + the first-run wizard/`jii setup`. 165 tests green
+throughout.
 
 **CLI grammar LOCKED — ADR-0031.** After a first-principles pass (UX_EVALUATION §E/§E.1) the package
 spec **`name[:source][@ref]`** is now the *language of JII*: source/version/channel belong to the
@@ -251,11 +274,17 @@ multi-owner chooser); `update node:brew` picks the copy to update; `info firefox
 (`ranked_for` gained a `source` override). `@ref` rejected everywhere; `search` stays free-text.
 **U4 complete** — 162 tests green, clippy clean.
 
-**Next: U5** — Friendly/Advanced verbosity (D8) + first-run wizard/`jii setup` (DW, needs
-`Config::save`). Then U6 (errors D7 + doctor Tier1/Tier2 recommend-catalog), U7 (system-wide update
-D10 `plan_update_all`). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real speed fix
-and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the flag-shed
-follow-ups from ADR-0031.
+**U5 landed (D8 + DW, all [A], no ADR).** Friendly/Advanced output modes (`config::OutputMode`,
+`Renderer::is_friendly`, `-v` forces Advanced), Friendly hides secondary-source noise + collapses
+the install preview to one line/package (full plan still under `--dry-run`/Advanced), first-run
+wizard + `jii setup` (`Config::save`, `MetaConfig::first_run_completed`, `is_first_run`), plus a
+clap fix (a global flag before a subcommand no longer misparses as install). **165 tests green.**
+
+**Next: U6** — actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog (codecs/GPU drivers/
+fonts/RPM Fusion/Steam-Wine/battery — the decided 1.0 scope, own catalog ADR). Then U7 (system-wide
+update D10 `plan_update_all`). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real
+speed fix and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the
+flag-shed follow-ups from ADR-0031.
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 
@@ -371,7 +400,10 @@ None.
 
 ## Test status
 
-`cargo test` — **150 passing, 0 failing**. T5 coverage: `prompt::parse_choice` (empty→default,
+`cargo test` — **165 passing, 0 failing**. U5 coverage: `config` mode/first-run
+(`mode_defaults_to_friendly_and_first_run_is_true`, TOML round-trip, partial-TOML mode parse). U4
+coverage: `PackageSpec::parse` (11 cases — plain/source/ref combos, npm scope safety, last-colon/
+last-at split, trimming, structural errors). T5 coverage: `prompt::parse_choice` (empty→default,
 `n`/`no`/`q`/`quit`/`cancel`→cancel, in-range number→zero-based pick, out-of-range/garbage→invalid).
 T4 coverage: apt (`parse_show` first-stanza deb822,
 Description-md5/folded-body excluded, batch install/remove/update-only-upgrade), pacman (`parse_si`
@@ -446,8 +478,11 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   — they need comparable versions / dependency-footprint data not yet collected.
 - **GPG / sigstore verification** are stubbed to fail closed in `exec.rs::verify_bytes`
   — implement when a source needs them (GitHub).
-- **`cli/mod.rs`** (~410 lines) holds command handlers inline; split into
-  `cli/commands/*` if it grows unwieldy.
+- **`cli/mod.rs`** (~1400 lines after U4/U5 — spec parsing, the wizard, Friendly preview)
+  holds every command handler inline. It has now crossed the "unwieldy" line flagged in
+  ADR-0024; splitting into `cli/commands/*` (one module per subcommand + a shared helpers
+  module) is the next structural cleanup, best done between UX slices so it doesn't collide
+  with in-flight feature work.
 - **pipx/go offer libraries (ADR-0023, by design):** PyPI/Go expose no reliable
   program-vs-library signal, so `pipx`/`go` don't pre-filter (cargo/npm do). They offer
   the package; the tool rejects a non-app at install. Accepted — a visible false positive

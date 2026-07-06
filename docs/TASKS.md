@@ -311,19 +311,25 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       - [x] **U0** measured; **U1** unavailable-spam killed + single-pkg preview de-duped; **U2**
             search timeout 8→5s (streaming search is the better long-term fix, UX_EVALUATION §A);
             **U3** already-installed pre-check + multi-owner remove.
-      - [ ] **CLI grammar LOCKED (ADR-0031):** the package spec **`name[:source][@ref]`** is the
+      - [x] **CLI grammar LOCKED (ADR-0031):** the package spec **`name[:source][@ref]`** is the
             language of JII — source/version/channel belong to the *spec*, not flags; `@ref` is
             source-interpreted (ADR-0004/0009). Durable principle: *"package or command?"* — package
-            attributes extend `PackageSpec`, never a new flag. Implement in **U4** (pure
+            attributes extend `PackageSpec`, never a new flag. Implemented in **U4** (pure
             `PackageSpec::parse`, clap untouched; `:source` suppresses the chooser — one clause;
             `@ref` parsed but explicitly rejected until the version chooser lands). `--auto`→`-y`,
-            `--profile`→config, `--source` demoted to whole-command synonym.
-      - [ ] **U4** chooser presentation (#4) + **D5** source-supplied recommendation highlights (ADR)
-            + the `PackageSpec` grammar (ADR-0031). **U5** Friendly/Advanced verbosity (D8) + first-run
-            wizard/`jii setup` (DW). **U6** actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog.
+            `--profile`→config, `--source` demoted to whole-command synonym *(flag-shed still TODO)*.
+      - [x] **U4** chooser presentation (#4) + **D5** source-supplied recommendation highlights +
+            the `PackageSpec` grammar (ADR-0031), universal across install/remove/update/info.
+      - [x] **U5** Friendly/Advanced verbosity (D8: `OutputMode`, `-v` forces Advanced, Friendly hides
+            secondary-source noise + collapses the install preview) + first-run wizard/`jii setup`
+            (DW: `Config::save`, `first_run_completed`) + a clap fix (global flag before a subcommand
+            no longer misparses as install). 165 tests green.
+      - [ ] **U6** actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog (codecs/GPU drivers/
+            fonts/RPM Fusion/Steam-Wine/battery — own catalog ADR).
             **U7** system-wide `update` (D10 `plan_update_all`). **U8** first-run walkthrough polish.
             Also on the list: **streaming/progressive search** (UX_EVALUATION §A, own ADR) — the real
-            fix for perceived speed; lets the timeout be raised again.
+            fix for perceived speed; lets the timeout be raised again. Structural cleanup queued:
+            **split `cli/mod.rs`** (~1400 lines) into `cli/commands/*`.
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,

@@ -65,7 +65,18 @@ jii doctor          source health, latency, rate limits
 jii audit           verify signatures & trust
 jii history         installation history
 jii list            what JII installed
+jii setup           re-run the first-run wizard (output mode, optional doctor)
 ```
+
+**Package spec — `name[:source]`.** Pin a source right on the name to skip the chooser:
+`jii firefox:flatpak`, `jii remove firefox:flatpak`, `jii info node:npm`. The same spec
+works across install/remove/update/info; `search` stays free-text. (A `@version`/`@channel`
+suffix is reserved — parsed but not yet honored, so it errors with a clear message.)
+
+**Output modes.** JII defaults to **Friendly** — short, jargon-free output that hides
+secondary-source noise and shows a one-line install preview. Pass `-v`/`--verbose` (or set
+`[ui] mode = "advanced"`) for full detail: per-source failures and the complete plan. The
+first bare `jii` run offers a 30-second setup to pick your mode; `jii setup` re-runs it.
 
 Configuration is via `~/.config/jii/config.toml` (see below), not a `jii config`
 command yet.
@@ -91,6 +102,9 @@ priority = ["dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github
 profile = "stable"
 default_yes = true
 default_yes_max_trust = "community"   # below this trust level, JII still asks
+
+[ui]
+mode = "friendly"                     # "friendly" (default) or "advanced"
 
 [trust]
 allow_untrusted_auto = false
