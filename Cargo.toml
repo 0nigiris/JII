@@ -24,6 +24,9 @@ sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Arrow-key TUI choosers (Select); default features off — we only need the menu,
+# not fuzzy/history/password/editor (keeps the dep to console + shell-words).
+dialoguer = { version = "0.12.0", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
