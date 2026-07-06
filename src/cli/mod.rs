@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 
 use crate::config::{ColorChoice, Config, Profile};
 use crate::engine::Engine;
-use crate::model::{InstalledRecord, PackageCandidate, Query};
+use crate::model::{InstalledRecord, PackageCandidate, PackageSpec, Query};
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
@@ -176,15 +176,28 @@ impl Cli {
             return Ok(());
         }
 
+        // 0. Parse each argument as a package spec — `name[:source][@ref]` (ADR-0031). Parsing
+        //    lives only here (via PackageSpec::parse); the rest of the flow works on name +
+        //    optional source. Version/channel pinning (`@ref`) is parsed but not yet
+        //    implemented, so reject it clearly rather than silently installing the latest.
+        let specs = match self.parse_specs(packages, renderer) {
+            Some(specs) => specs,
+            None => return Ok(()),
+        };
+
         // 1. Resolve each package to its best candidate; collect the misses separately.
         //    A single package keeps the "Also available" alternatives view; a real batch
         //    would make that too noisy, so it is shown only when installing one.
-        let single = packages.len() == 1;
+        let single = specs.len() == 1;
         let effective_auto = self.global.auto || engine.config().install.auto;
         let mut chosen: Vec<PackageCandidate> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         let mut chose_interactively = false;
-        for name in packages {
+        for spec in &specs {
+            // A per-package `:source` (ADR-0031) pins the provider and, like `--source`,
+            // suppresses the chooser; it takes precedence over the whole-command `--source`.
+            let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
+            let name = &spec.name;
             let query = Query::name(name);
             renderer.info(&format!("Searching for '{}'...", query.raw));
             let result = engine.search(&query).await;
@@ -192,7 +205,7 @@ impl Cli {
                 renderer.warn(&format!("✗ {source}: {reason}"));
             }
             let mut ranked = engine.rank(result.candidates);
-            if let Some(source) = &self.global.source {
+            if let Some(source) = pkg_source {
                 ranked.retain(|c| &c.source_id == source);
             }
             if ranked.is_empty() {
@@ -253,7 +266,7 @@ impl Cli {
             // --yes/--no or a non-TTY skip the chooser too (they already express intent).
             let offer_choice = single
                 && ranked.len() > 1
-                && self.global.source.is_none()
+                && pkg_source.is_none()
                 && !effective_auto
                 && !self.global.yes
                 && !self.global.no
@@ -405,6 +418,49 @@ impl Cli {
     /// Gates the candidate chooser (and any future interactive selection).
     fn interactive(&self, renderer: &Renderer) -> bool {
         !renderer.is_json() && crate::platform::Platform::detect().is_tty
+    }
+
+    /// Parse each argument into a [`PackageSpec`] (`name[:source][@ref]`, ADR-0031) — the one
+    /// place package tokens are parsed. Returns `None` (after rendering a clear error) if any
+    /// token is malformed, or if any carries a version/channel `@ref`: the spec grammar is
+    /// locked for 1.0 but version selection isn't built yet, so we reject `@ref` explicitly
+    /// rather than silently install the latest (respecting the user's intent).
+    fn parse_specs(&self, packages: &[String], renderer: &Renderer) -> Option<Vec<PackageSpec>> {
+        let mut specs = Vec::with_capacity(packages.len());
+        for raw in packages {
+            match PackageSpec::parse(raw) {
+                Ok(spec) => specs.push(spec),
+                Err(reason) => {
+                    renderer.error(&format!("Invalid package '{raw}': {reason}"));
+                    return None;
+                }
+            }
+        }
+        // A pinned source must be a real source id — catch a typo (`:flatpakk`) here with the
+        // known list, rather than letting it silently become a "not found" after a search.
+        // ADR-0031 places this validation (the did-you-mean) in the CLI, which holds the config.
+        for spec in &specs {
+            if let Some(source) = &spec.source
+                && !crate::config::KNOWN_SOURCES.contains(&source.as_str())
+            {
+                renderer.error(&format!(
+                    "Unknown source '{source}' in '{}:{source}'. Known sources: {}.",
+                    spec.name,
+                    crate::config::KNOWN_SOURCES.join(", ")
+                ));
+                return None;
+            }
+        }
+        if let Some(spec) = specs.iter().find(|s| s.reference.is_some()) {
+            let r = spec.reference.as_deref().unwrap_or("");
+            renderer.error(&format!(
+                "Version/channel pinning ('@{r}') isn't supported yet — it's coming with the \
+                 version chooser. Try 'jii {}' to install the latest.",
+                spec.name
+            ));
+            return None;
+        }
+        Some(specs)
     }
 
     /// Fold the `--profile` flag into the config.
