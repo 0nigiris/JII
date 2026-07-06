@@ -43,6 +43,23 @@ via optional `plan_install_many`, no model change). Next: **Homebrew** provider 
 
 ## Last completed work
 
+**U7 — system-wide update (2026-07-06, D10, ADR-0034).** Bare `jii update` now updates the **whole
+system**, not just JII's registry slice (#15, "the universal update command"). New **optional**
+`Provider::plan_update_all() -> Result<Option<InstallPlan>>` (default `None`): "upgrade everything
+this source owns". `Engine::plan_update_all` aggregates every available provider's `Some(plan)` into
+a `SystemUpdate { plans, sources }`; `Engine::run_system_update` primes privilege **once** across the
+mixed root/user plans and runs them — the engine never branches on the source id. **Non-regression:**
+sources with no bulk path (github/cargo/go → `None`) still get their JII-installed packages updated
+per-record, via a fallback batch appended to the same run (the version-refresh loop is extracted to
+`refresh_for_update`, shared with the named path). Named `jii update <pkg>` is unchanged (registry
+path; `:source` still pins). Implemented for **all** bulk managers: dnf `upgrade`, flatpak `update`,
+apt `upgrade`, pacman `-Syu`, zypper `update`, snap `refresh`, nix `profile upgrade --all`, brew
+`upgrade`, pipx `upgrade-all`, npm `update -g`. Bulk plans upgrade beyond JII's ledger so they are
+**not** recorded (only the per-record fallbacks refresh the registry) → `jii list` may show a stale
+version for a bulk-updated tracked package (documented debt). **177 tests green, clippy clean**;
+verified on Fedora (bare `update --dry-run` = dnf + flatpak, friendly one-line preview, `-n` abort,
+named path intact). Non-Fedora bulk impls unverified on a live host (T7 debt).
+
 **U6 — helpful failure & doctor (2026-07-06).** All small commits, no architectural change to the
 core; two ADRs (0032, 0033):
 - **Actionable errors (D7, ADR-0032).** A pure, unit-tested `JiiError::remedy() -> Option<String>`
@@ -276,7 +293,8 @@ lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-ins
 + chooser with "all"). U4 landed the `PackageSpec` grammar (ADR-0031) across install/remove/update/
 info; **U5** added Friendly/Advanced modes + the first-run wizard/`jii setup`; **U6** added
 actionable errors (ADR-0032), doctor Tier 1 system checks, and the recommend-catalog (ADR-0033:
-`jii recommend` list + apply). 175 tests green throughout.
+`jii recommend` list + apply); **U7** made bare `jii update` a system-wide upgrade (ADR-0034:
+`plan_update_all` across all bulk managers + per-record fallback). 177 tests green throughout.
 
 **CLI grammar LOCKED — ADR-0031.** After a first-principles pass (UX_EVALUATION §E/§E.1) the package
 spec **`name[:source][@ref]`** is now the *language of JII*: source/version/channel belong to the
@@ -302,17 +320,17 @@ multi-owner chooser); `update node:brew` picks the copy to update; `info firefox
 
 **U5 landed (D8 + DW).** Friendly/Advanced output modes + first-run wizard/`jii setup` + a clap fix.
 **U6 landed (D7 + D6, ADR-0032/0033).** Actionable errors (`JiiError::remedy`), doctor Tier 1
-system checks, and the recommend-catalog (`jii recommend` list + `jii recommend <id>` apply). Both
-detailed under "Last completed work". **175 tests green.**
+system checks, recommend-catalog. **U7 landed (D10, ADR-0034).** System-wide `jii update`
+(`plan_update_all` across all bulk managers + per-record fallback). Both detailed under "Last
+completed work". **177 tests green.**
 
-**Next: U7** — system-wide `update` (D10: an optional `Provider::plan_update_all() -> Option<InstallPlan>`,
-default `None`; bare `jii update` aggregates every provider that offers one into the usual batched,
-previewable, single-confirmation run; named `jii update <pkg>` keeps today's registry path). Then
-**U8** (first-run walkthrough polish). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the
-real speed fix and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the
-flag-shed follow-ups from ADR-0031. Structural cleanup queued: **split `cli/mod.rs`** (~1600 lines)
-into `cli/commands/*`. Recommend follow-ups: interactive multi-pick, skip already-satisfied entries,
-a real repo-enable capability (so RPM Fusion becomes a previewable plan, not a shown command).
+**Next: U8** — first-run walkthrough polish (the last UX track). Then the UX pass is complete.
+Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real speed fix and is on the list.
+`--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the flag-shed follow-ups from ADR-0031.
+Structural cleanup queued: **split `cli/mod.rs`** (~1700 lines) into `cli/commands/*`. Recommend
+follow-ups: interactive multi-pick, skip already-satisfied entries, a real repo-enable capability (so
+RPM Fusion becomes a previewable plan, not a shown command). Update debt: a bulk-updated tracked
+package can show a stale version in `jii list`.
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 
@@ -428,7 +446,8 @@ None.
 
 ## Test status
 
-`cargo test` — **175 passing, 0 failing**. U6 coverage: `error::remedy` (unknown-source lists the
+`cargo test` — **177 passing, 0 failing**. U7 coverage: dnf/flatpak `plan_update_all` (whole-system
+upgrade, root vs user). U6 coverage: `error::remedy` (unknown-source lists the
 known ones, Io branches on `ErrorKind`, opaque errors invent nothing), `cli::system_checks` (PATH +
 token pass/fail + advice + env-name), `recommend` (embedded catalog parses, ids unique, empty-distros
 applies everywhere, distro filter selects matching). U5 coverage: `config` mode/first-run
@@ -509,8 +528,8 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   — they need comparable versions / dependency-footprint data not yet collected.
 - **GPG / sigstore verification** are stubbed to fail closed in `exec.rs::verify_bytes`
   — implement when a source needs them (GitHub).
-- **`cli/mod.rs`** (~1600 lines after U4/U5/U6 — spec parsing, the wizard, Friendly preview,
-  doctor Tier 1, `recommend`) holds every command handler inline. It has now well crossed the
+- **`cli/mod.rs`** (~1700 lines after U4–U7 — spec parsing, the wizard, Friendly preview,
+  doctor Tier 1, `recommend`, system update) holds every command handler inline. It has now well crossed the
   "unwieldy" line flagged in ADR-0024; splitting into `cli/commands/*` (one module per subcommand
   + a shared helpers module) is the next structural cleanup, best done between UX slices so it
   doesn't collide with in-flight feature work.
@@ -519,6 +538,12 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   clean VM**; verify in the T7 clean-VM pass. Non-Fedora entries are deliberately empty until
   verified on a real host. `manual` (repo-enable) entries are shown, never run — a real repo-enable
   capability (previewable plan) is a follow-up.
+- **System update doesn't refresh the registry (ADR-0034).** Bare `jii update` runs each manager's
+  bulk upgrade (`dnf upgrade`, `flatpak update`, …), which upgrades packages beyond JII's ledger, so
+  those plans are **not** recorded — only the per-record fallbacks (github/cargo/go) refresh the
+  registry. Consequence: after a system update, `jii list` may show a stale version for a
+  bulk-updated *tracked* dnf/flatpak package. Re-querying every tracked version per update is
+  expensive; accepted for MVP. The non-Fedora `plan_update_all` impls are unverified on a live host.
 - **pipx/go offer libraries (ADR-0023, by design):** PyPI/Go expose no reliable
   program-vs-library signal, so `pipx`/`go` don't pre-filter (cargo/npm do). They offer
   the package; the tool rejects a non-app at install. Accepted — a visible false positive

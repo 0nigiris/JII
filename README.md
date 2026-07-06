@@ -56,7 +56,7 @@ $ jii fastfetch --auto
 ```
 jii <name…>         search → rank → recommend → install (one or many packages)
 jii remove <name>   remove using the source that installed it
-jii update [<name>] update one/all with the correct manager
+jii update [<name>] named: update that package; bare: update the whole system
 jii search <query>  show ranked candidates without installing
 jii info <name>     sources, versions, trust, and the recommendation + why
 jii sources         list providers and whether each is usable here

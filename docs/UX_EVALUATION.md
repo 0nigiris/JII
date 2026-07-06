@@ -264,6 +264,19 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
   - 175 tests, clippy clean; verified on Fedora (remedy, doctor checks, recommend list/apply/manual/
     unknown-id). **Debt:** Fedora catalog entries curated by hand, unverified on a clean VM (T7).
     **U6 complete.**
+- **U7 — done (D10, ADR-0034):** bare `jii update` now updates the **whole system**, not just JII's
+  registry slice (#15, "the universal update command"). New optional `Provider::plan_update_all()`
+  (default `None`); the engine aggregates every available provider's bulk-upgrade plan into one
+  previewable, single-confirmation, single-escalation run (`Engine::plan_update_all`/
+  `run_system_update`), never branching on the source. Implemented for **all** bulk managers — dnf
+  `upgrade`, flatpak `update`, apt `upgrade`, pacman `-Syu`, zypper `update`, snap `refresh`, nix
+  `profile upgrade --all`, brew `upgrade`, pipx `upgrade-all`, npm `update -g` (cargo/go/github keep
+  `None`). Non-regression: JII-installed packages from sources without a bulk path still update
+  per-record via a fallback batch appended to the same run (`refresh_for_update` shared with the
+  named path). Named `jii update <pkg>` unchanged. Bulk plans aren't recorded (they upgrade beyond
+  JII's ledger) → `jii list` may show a stale version for a bulk-updated tracked package (debt). 177
+  tests; verified on Fedora (bare `update --dry-run` = dnf + flatpak, friendly one-line preview, `-n`
+  abort, named path intact). Non-Fedora bulk impls unverified on a live host (T7). **U7 complete.**
 
 ---
 

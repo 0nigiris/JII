@@ -329,11 +329,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (D6, ADR-0033: `data/recommend/catalog.toml` embedded, distro-filtered; `jii recommend`
             lists, `jii recommend <id>` applies via the normal install path; `manual` repo-enables
             shown not run). 175 tests. Fedora catalog entries unverified on a clean VM (T7 debt).
-      - [ ] **U7** system-wide `update` (D10 `plan_update_all`). **U8** first-run walkthrough polish.
+      - [x] **U7** system-wide `update` (D10, ADR-0034): optional `Provider::plan_update_all`
+            (default None); bare `jii update` aggregates every manager's bulk upgrade + per-record
+            fallback for sources without one (github/cargo/go). Implemented for all bulk managers
+            (dnf/flatpak/apt/pacman/zypper/snap/nix/brew/pipx/npm). Fedora-verified; non-Fedora
+            impls unverified (T7). 177 tests.
+      - [ ] **U8** first-run walkthrough polish.
             Also on the list: **streaming/progressive search** (UX_EVALUATION §A, own ADR) — the real
             fix for perceived speed; lets the timeout be raised again. Structural cleanup queued:
-            **split `cli/mod.rs`** (~1600 lines) into `cli/commands/*`. Recommend follow-ups:
+            **split `cli/mod.rs`** (~1700 lines) into `cli/commands/*`. Recommend follow-ups:
             interactive multi-pick, skip already-satisfied entries, a real repo-enable capability.
+            Update debt: a bulk-updated tracked package can show a stale version in `jii list`.
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,
