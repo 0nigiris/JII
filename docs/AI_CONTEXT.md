@@ -296,10 +296,22 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 (ADR-0026) — UX-polish pass in progress (2026-07-06).** After dogfooding on a clean
-Fedora VM the user re-prioritised to **UX polish, no new features**; the remaining T5 feature slices
-(GitHub by-name repo chooser, version chooser) are **deferred**. Plan + classification live in
-**[docs/UX_EVALUATION.md](UX_EVALUATION.md)** (U0–U8, its "Progress" section is the live status).
+**BETA-READINESS — FEATURE FREEZE (2026-07-06, owner-set).** The UX-polish pass (U0–U8) is complete
+and the CLI is functionally done. The owner has **frozen new large features** and set the drive to the
+**first public Beta**, priority order: **(1) CI → (2) integration tests → (3) clean-VM verification on
+Arch/Ubuntu/Debian/openSUSE → (4) README/logo/screenshots/asciinema/docs → (5) public release.** The
+plan and the parked backlog (undo, bootstrap, version chooser, doctor --fix, declarative providers,
+etc.) live in **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)** — its "Frozen" section must NOT be started
+without an explicit post-Beta go-ahead. Bug fixes / hardening / tests / docs / packaging stay in
+scope; new user-facing capabilities do not. **#3 (clean-VM) is the one Beta blocker an agent can't
+close alone** — it needs the owner's real non-Fedora hosts (agent can script the smoke test). Next
+recommended action: **#1 CI** (GitHub Actions: build + clippy -D warnings + test + fmt --check).
+
+**Prior phase — Terminal 1.0 (ADR-0026), UX-polish pass (2026-07-06, DONE).** After dogfooding on a
+clean Fedora VM the owner re-prioritised to **UX polish, no new features**; the remaining T5 feature
+slices (GitHub by-name repo chooser, version chooser) are **deferred** (now parked in BETA_ROADMAP).
+Plan + classification live in **[docs/UX_EVALUATION.md](UX_EVALUATION.md)** (U0–U8, "Progress" is the
+live status).
 Doctor scope decided: **Tier 1 + the recommend-catalog, both in 1.0** (own catalog ADR; ROADMAP
 "Analyze→Explain→Ask→Apply" holds). **Landed so far (all [A], no ADR):** U0 measured (startup ~0ms
 fine; cold search was 8s because one straggler — copr, ~9s API — burned the timeout, not a
