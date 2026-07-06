@@ -62,6 +62,69 @@ pub enum QueryKind {
     Description,
 }
 
+/// A parsed **package specification** — the language of JII (ADR-0031): `name[:source][@ref]`.
+///
+/// This is the single place a user package token is parsed. `name` is the only required part;
+/// `:source` pins the owning provider (and, in the install flow, suppresses the source
+/// chooser); `@ref` is a **source-interpreted** version/channel/branch reference the core only
+/// *stores* — it never interprets it (ADR-0004; versions/refs are opaque to the core, ADR-0009).
+/// Kept pure and unit-tested (ADR-0012); the CLI turns `name` into a [`Query`] and interprets
+/// `source`/`reference`. It does **not** validate the source id against the known set — that
+/// (with a did-you-mean) belongs to the CLI, which holds the config.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageSpec {
+    pub name: String,
+    pub source: Option<String>,
+    pub reference: Option<String>,
+}
+
+impl PackageSpec {
+    /// Parse `name[:source][@ref]`, or an error string for a structurally invalid token.
+    ///
+    /// Splitting rules (ADR-0031):
+    /// - `@ref` is the part after the **last, non-leading** `@` — an npm scoped name such as
+    ///   `@angular/cli` starts with `@`, so a leading `@` is part of the name, never a ref;
+    /// - `:source` is the part after the **last** `:` in what remains — source ids never contain
+    ///   `:`, so the final `:`-segment is the source; a package name that itself contains a colon
+    ///   is vanishingly rare and uses the `--source` flag as the escape hatch.
+    pub fn parse(input: &str) -> Result<PackageSpec, String> {
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Err("empty package name".to_string());
+        }
+
+        // 1. Peel off `@ref` on the last non-leading '@' (a leading '@' is an npm scope).
+        let (left, reference) = match trimmed.rfind('@') {
+            Some(at) if at > 0 => {
+                let r = &trimmed[at + 1..];
+                if r.is_empty() {
+                    return Err(format!("'{trimmed}': empty version/channel after '@'"));
+                }
+                (&trimmed[..at], Some(r.to_string()))
+            }
+            _ => (trimmed, None),
+        };
+
+        // 2. Peel off `:source` on the last ':'.
+        let (name, source) = match left.rfind(':') {
+            Some(colon) => {
+                let name = &left[..colon];
+                let source = &left[colon + 1..];
+                if name.is_empty() {
+                    return Err(format!("'{trimmed}': empty package name before ':'"));
+                }
+                if source.is_empty() {
+                    return Err(format!("'{trimmed}': empty source after ':'"));
+                }
+                (name.to_string(), Some(source.to_string()))
+            }
+            None => (left.to_string(), None),
+        };
+
+        Ok(PackageSpec { name, source, reference })
+    }
+}
+
 /// Trust attached to a source or repository. Drives the confirmation barrier and
 /// whether `--auto` may proceed silently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -208,4 +271,98 @@ pub struct InstalledRecord {
     /// Recorded so `jii audit` can report provenance faithfully.
     #[serde(default)]
     pub verification: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PackageSpec;
+
+    fn spec(name: &str, source: Option<&str>, reference: Option<&str>) -> PackageSpec {
+        PackageSpec {
+            name: name.to_string(),
+            source: source.map(str::to_string),
+            reference: reference.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn plain_name() {
+        assert_eq!(PackageSpec::parse("firefox").unwrap(), spec("firefox", None, None));
+    }
+
+    #[test]
+    fn name_with_source() {
+        assert_eq!(
+            PackageSpec::parse("firefox:flatpak").unwrap(),
+            spec("firefox", Some("flatpak"), None)
+        );
+    }
+
+    #[test]
+    fn name_with_ref() {
+        assert_eq!(PackageSpec::parse("firefox@120").unwrap(), spec("firefox", None, Some("120")));
+    }
+
+    #[test]
+    fn name_with_source_and_ref() {
+        assert_eq!(
+            PackageSpec::parse("node:brew@22").unwrap(),
+            spec("node", Some("brew"), Some("22"))
+        );
+        // A ref may be a channel/branch, not a number — the core doesn't care (ADR-0031).
+        assert_eq!(
+            PackageSpec::parse("firefox:flatpak@stable").unwrap(),
+            spec("firefox", Some("flatpak"), Some("stable"))
+        );
+    }
+
+    #[test]
+    fn leading_at_is_an_npm_scope_not_a_ref() {
+        assert_eq!(PackageSpec::parse("@angular/cli").unwrap(), spec("@angular/cli", None, None));
+    }
+
+    #[test]
+    fn npm_scope_with_ref_splits_on_the_last_at() {
+        assert_eq!(
+            PackageSpec::parse("@angular/cli@18").unwrap(),
+            spec("@angular/cli", None, Some("18"))
+        );
+    }
+
+    #[test]
+    fn npm_scope_with_source_and_ref() {
+        assert_eq!(
+            PackageSpec::parse("@vue/cli:npm@5").unwrap(),
+            spec("@vue/cli", Some("npm"), Some("5"))
+        );
+    }
+
+    #[test]
+    fn github_owner_repo_is_untouched() {
+        assert_eq!(PackageSpec::parse("BurntSushi/ripgrep").unwrap(), spec("BurntSushi/ripgrep", None, None));
+        assert_eq!(
+            PackageSpec::parse("BurntSushi/ripgrep:github").unwrap(),
+            spec("BurntSushi/ripgrep", Some("github"), None)
+        );
+    }
+
+    #[test]
+    fn source_splits_on_the_last_colon() {
+        // A (rare) name containing a colon keeps everything before the final colon.
+        assert_eq!(PackageSpec::parse("a:b:dnf").unwrap(), spec("a:b", Some("dnf"), None));
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        assert_eq!(PackageSpec::parse("  firefox:flatpak  ").unwrap(), spec("firefox", Some("flatpak"), None));
+    }
+
+    #[test]
+    fn structural_errors() {
+        assert!(PackageSpec::parse("").is_err());
+        assert!(PackageSpec::parse("   ").is_err());
+        assert!(PackageSpec::parse(":flatpak").is_err()); // empty name before ':'
+        assert!(PackageSpec::parse("firefox:").is_err()); // empty source after ':'
+        assert!(PackageSpec::parse("firefox@").is_err()); // empty ref after '@'
+    }
 }
