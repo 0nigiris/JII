@@ -14,7 +14,7 @@ use crate::ui::prompt::{self, PromptFlags};
 
 /// Just Install It — a smart universal package installer for Linux.
 #[derive(Debug, Parser)]
-#[command(name = "jii", version, about, args_conflicts_with_subcommands = true)]
+#[command(name = "jii", version, about)]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,
