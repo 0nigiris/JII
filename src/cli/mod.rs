@@ -347,8 +347,14 @@ impl Cli {
         // 3. Group + optimize into batched plans (merged per source where it can batch).
         let batch = engine.plan_install_batch(chosen).await?;
 
-        // 4. Preview: grouped summary by source, then the full action preview.
-        self.preview_batch(&batch, renderer);
+        // 4. Preview. Friendly (and not a dry-run) gets one short line per package — name,
+        //    version, source, a one-word "why", and whether it needs sudo. `--dry-run` and
+        //    Advanced still show the full plan (the whole point of a dry-run is the detail).
+        if renderer.is_friendly() && !self.global.dry_run {
+            self.preview_batch_friendly(&batch, &engine, renderer);
+        } else {
+            self.preview_batch(&batch, renderer);
+        }
 
         if self.global.dry_run {
             renderer.info("(dry-run: nothing was installed)");
@@ -421,6 +427,37 @@ impl Cli {
         }
         for bp in batch {
             renderer.plan(&bp.plan);
+        }
+    }
+
+    /// Friendly install preview: one short line per package — `Install <name> (<version>) via
+    /// <source> — <why>  [needs sudo]` — instead of the full Plan block. Keeps a normal install
+    /// quiet and scannable (U5); the full plan is still shown under `--dry-run`/Advanced.
+    fn preview_batch_friendly(
+        &self,
+        batch: &[crate::engine::BatchPlan],
+        engine: &Engine,
+        renderer: &Renderer,
+    ) {
+        for bp in batch {
+            let sudo = if bp.plan.needs_root() { "  [needs sudo]" } else { "" };
+            for candidate in &bp.candidates {
+                let version = candidate
+                    .version
+                    .as_ref()
+                    .map(|v| format!(" ({v})"))
+                    .unwrap_or_default();
+                let why = engine
+                    .candidate_highlights(candidate)
+                    .into_iter()
+                    .next()
+                    .map(|h| format!(" — {h}"))
+                    .unwrap_or_default();
+                renderer.info(&format!(
+                    "Install {}{version} via {}{why}{sudo}",
+                    candidate.name, candidate.source_id
+                ));
+            }
         }
     }
 
