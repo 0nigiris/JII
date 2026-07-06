@@ -28,6 +28,7 @@ pub struct Config {
     pub trust: TrustConfig,
     pub network: NetworkConfig,
     pub ui: UiConfig,
+    pub meta: MetaConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +73,28 @@ pub struct NetworkConfig {
 pub struct UiConfig {
     pub color: ColorChoice,
     pub locale: String,
+    /// How much to say: `friendly` (short, human, the default) or `advanced` (full detail).
+    pub mode: OutputMode,
+}
+
+/// State JII records about itself (not user preferences). Kept in its own section so a
+/// hand-edited config never mixes it with tunables.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MetaConfig {
+    /// Set once the first-run wizard has been offered, so it never auto-runs again.
+    pub first_run_completed: bool,
+}
+
+/// How much output JII produces. Drives the Friendly/Advanced split (UX U5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputMode {
+    /// Short, lively, jargon-free — for someone who just opened a terminal (default).
+    #[default]
+    Friendly,
+    /// Full detail: per-source failures, complete plans, source rationale.
+    Advanced,
 }
 
 /// Ranking presets. See `docs/ARCHITECTURE.md` §6.
@@ -154,6 +177,7 @@ impl Default for UiConfig {
         UiConfig {
             color: ColorChoice::Auto,
             locale: "auto".to_string(),
+            mode: OutputMode::Friendly,
         }
     }
 }
@@ -185,6 +209,29 @@ impl Config {
             Some(p) => Self::load_from(&p),
             None => Ok(Config::default()),
         }
+    }
+
+    /// Write the config back to the default path (creating the directory if needed). Used by
+    /// the first-run wizard / `jii setup` to persist the chosen mode and the first-run flag.
+    // TODO(U5): consumed by the wizard/`setup` commit that follows.
+    #[allow(dead_code)]
+    pub fn save(&self) -> Result<()> {
+        let path = Self::default_path()
+            .ok_or_else(|| JiiError::Config("cannot resolve a config path to save to".into()))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| JiiError::io(&path, e))?;
+        }
+        let text = toml::to_string_pretty(self)
+            .map_err(|e| JiiError::Config(format!("serializing config: {e}")))?;
+        std::fs::write(&path, text).map_err(|e| JiiError::io(&path, e))?;
+        Ok(())
+    }
+
+    /// Whether the first-run wizard has not yet been completed.
+    // TODO(U5): consumed by the wizard/`setup` commit that follows.
+    #[allow(dead_code)]
+    pub fn is_first_run(&self) -> bool {
+        !self.meta.first_run_completed
     }
 
     /// Reject unknown source ids so typos fail loudly.
@@ -244,5 +291,32 @@ mod tests {
         let cfg = Config::default();
         assert!(cfg.source_rank("dnf") < cfg.source_rank("flatpak"));
         assert_eq!(cfg.source_rank("nonexistent"), usize::MAX);
+    }
+
+    #[test]
+    fn mode_defaults_to_friendly_and_first_run_is_true() {
+        let cfg = Config::default();
+        assert_eq!(cfg.ui.mode, OutputMode::Friendly);
+        assert!(cfg.is_first_run());
+    }
+
+    #[test]
+    fn round_trips_through_toml() {
+        let mut cfg = Config::default();
+        cfg.ui.mode = OutputMode::Advanced;
+        cfg.meta.first_run_completed = true;
+        // `save` writes to the real config dir, so exercise the same serialization directly.
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.ui.mode, OutputMode::Advanced);
+        assert!(!back.is_first_run());
+    }
+
+    #[test]
+    fn parses_mode_from_partial_toml() {
+        let cfg: Config = toml::from_str("[ui]\nmode = \"advanced\"\n").unwrap();
+        assert_eq!(cfg.ui.mode, OutputMode::Advanced);
+        // Untouched sections still default.
+        assert!(cfg.is_first_run());
     }
 }
