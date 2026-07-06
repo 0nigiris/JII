@@ -135,7 +135,14 @@ impl Default for TrustConfig {
 impl Default for NetworkConfig {
     fn default() -> Self {
         NetworkConfig {
-            timeout_secs: 8,
+            // Per-source search budget. Local managers answer in <100 ms; the fast network
+            // sources (github/cargo/npm) in 1–3 s. The outlier is COPR's search API (~9 s on
+            // a clean Fedora box), which blew the whole parallel search out to ~8 s while dnf
+            // already had the answer. 5 s keeps the common case snappy; a source slower than
+            // that is skipped (COPR is community-trust, ranked below dnf) — a deliberate
+            // speed/coverage trade. A cached result still serves once obtained. See
+            // docs/UX_EVALUATION.md (U0/U2).
+            timeout_secs: 5,
             cache_ttl_secs: 3600,
             github_token_env: "GITHUB_TOKEN".to_string(),
         }
@@ -229,7 +236,7 @@ mod tests {
         assert!(!cfg.install.default_yes);
         // Untouched fields fall back to defaults.
         assert_eq!(cfg.install.profile, Profile::Stable);
-        assert_eq!(cfg.network.timeout_secs, 8);
+        assert_eq!(cfg.network.timeout_secs, 5);
     }
 
     #[test]
