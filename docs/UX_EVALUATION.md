@@ -394,3 +394,114 @@ small friction + the proposed simplification (no code yet); tags map to the trac
 Most of these converge on **D8 (friendly vs advanced verbosity)** as the single biggest lever, plus
 the progressive-search feel (A). Neither is a redesign; both are contained UI/config work over the
 existing seams.
+
+## E. CLI syntax from first principles (evaluation only)
+
+The user asked to question Unix conventions rather than copy them: which flags deserve short
+aliases, which could be positional, which should be prompts, which can vanish because JII infers
+intent — and to propose a genuinely cleaner package/source syntax (they floated `firefox @flatpak`
+/ `firefox:flatpak`, without insisting on any).
+
+**Guiding principle (first-principles, JII-specific).** JII's dominant interaction, by a wide
+margin, is *"install this software"* — `jii <name>`. So the syntax should make the 90 % case need
+**zero ceremony**, and treat flags as **overrides and scripting knobs**, not the everyday path. The
+cooperation lens (§C) sharpens this: the everyday user should *pick* and *be asked*, not *flag*.
+Crucially, **"question convention" cuts two ways** — a *flag's spelling* (`-y`, `--dry-run`) is where
+convention IS usability (muscle memory, `--help`, shell completion), so reinventing it costs more
+than it saves; but *what is a flag at all* (source, version, profile) is fair game, and that's where
+the real win is.
+
+### Q1 — Which flags are used often enough to deserve a short alias?
+
+| Flag | Real frequency | Verdict |
+|------|----------------|---------|
+| `-y/--yes` | high (scripts, "just do it") | already short — keep |
+| `-n/--no` | low-med (symmetry) | already short — keep |
+| `-v/--verbose` | med | already short — keep |
+| `--auto` | med | **redundant with `-y`** (see Q4) — collapse, don't alias |
+| `--source` | occasional | don't alias — **promote to inline spec** (below); keep `--source` for scripts |
+| `--profile` | rare (a *preference*, not a per-run choice) | **move to config/wizard** (Q3) — no alias |
+| `--dry-run` | occasional, deliberate | keep long; it's typed slowly and self-documents, a short buys little |
+| `--json` | machine only | keep long — clarity beats brevity for a machine flag |
+| `--no-color` | rare | keep long; also honour `NO_COLOR` env so the flag is rarely needed |
+
+**Net:** almost every flag frequent enough to matter is *already* short. The only everyday friction is
+`--source`, and the right fix isn't a shorter flag — it's making source selection **not a flag**.
+
+### Q2 — Which commands could become positional instead of flags?
+
+Commands are already positional **verbs** (`jii remove firefox`), and install is the default
+(`jii firefox`) — the biggest ergonomic win, already in place. The remaining flag-shaped thing that is
+really a *positional qualifier of the package* is **source** (and, later, **version**): "which
+firefox" is part of naming the package, not a separate global switch. That's the strongest candidate
+to move out of flag-land.
+
+### Q3 — Which options should become interactive prompts?
+
+- **`--source` → the chooser.** Already true (U4/T5.1): interactively you *pick* the source from a
+  menu; you should almost never type a source at all. The flag/inline-spec is the power/scripting path.
+- **`--profile` → config + the first-run wizard.** Ranking profile is a standing *preference*, not a
+  per-invocation decision; it belongs in `config.toml`/`jii setup`, not on every command line.
+- **confirmation → the prompt it already is**, with `-y` as the scripting override. Correct as-is.
+
+### Q4 — Which flags can disappear because JII infers intent?
+
+- **`--auto` folds into `-y`.** In the code both merely skip the confirm for trusted candidates and
+  suppress the chooser; the trust barrier (ADR-0006) already forces an explicit answer for untrusted
+  even with `-y`. So `-y` *is* "yes within trust". Two names for ~one behaviour is surface to shed —
+  keep `-y/--yes`, drop `--auto` (or make it a hidden alias) and the `install.auto` config knob stays.
+- **`--profile`** leaves the hot path (Q3) — inferred from config.
+- **`--no-color`** inferred from `NO_COLOR` + tty; flag kept only as an explicit override.
+- **source** is *inferred* by ranking in the common case (you don't specify it); the spec below is the
+  *override*, needed only when you disagree with the recommendation.
+
+### Proposal — an inline **package spec**, flags kept for scripting
+
+Adopt a small, familiar package-spec grammar as the natural way to qualify a package, and demote
+`--source` to its scriptable equivalent:
+
+```
+name[:source]          # firefox            → install, JII picks the source
+                       # firefox:flatpak    → install firefox from flatpak
+                       # (reserve  name@version  for when the version chooser lands, e.g. firefox@120)
+```
+
+- **`:source`** is per-package and unambiguous (`jii firefox:flatpak cava:dnf` — different sources in
+  one command), mirrors `docker image:tag`, is **shell-safe unquoted** (`:` and `@` are not special in
+  bash/zsh), and is shorter *and* more readable than `firefox --source flatpak`.
+- Reserve **`@version`** for the (deferred) version chooser — that matches the near-universal
+  `npm/pip/go pkg@version` muscle memory, so `@`=version and `:`=source never fight each other:
+  `firefox:flatpak@120`.
+- I recommend **`:` over `@` for source** precisely because `@` is so strongly "version" everywhere
+  else; using `@` for source would mis-train users the moment they meet another tool.
+
+**Why this fits the architecture (not a clap fight).** The spec is just a **positional value**; clap
+is untouched (no single-dash-long, no custom parser settings). JII parses `name:source` itself in a
+tiny pure, unit-tested `PackageSpec::parse` (exactly the ADR-0012 "isolate + test parsers" pattern),
+validates the source against `KNOWN_SOURCES` with a did-you-mean suggestion, and a package name that
+literally contains a colon (vanishingly rare) has the `--source` escape hatch. `--source` stays as a
+discoverable, scriptable synonym (and applies to the whole command when given).
+
+### Recommendation
+
+**Keep conventional flags for things that are genuinely flags** (`-y`, `-v`, `--dry-run`, `--json`,
+`--no-color`) — there, convention *is* usability. **But do question "what deserves to be a flag":**
+1. `jii <name>` as default install — **done**.
+2. Promote **source** (and later version) from `--source` to an inline **`name:source`** spec; keep
+   `--source` as the scripting equivalent and the **chooser** as the interactive default. *(the one
+   real new ergonomic win)*
+3. **Collapse `--auto` into `-y`**; move **`--profile`** to config/`jii setup`; infer `--no-color`
+   from `NO_COLOR`. *(shed surface)*
+
+This reduces typing and reads naturally **without** inventing an alien flag grammar or breaking
+completion/help. It is **additive and non-breaking** (flags still work), but it *defines* the 1.0
+surface, so it deserves its own **ADR** and should land before we lock Terminal 1.0 — most naturally
+alongside U4 (chooser) since spec + chooser are the two faces of "choose a source". If, after all
+this, one preferred pure flags, that's defensible — but the inline `name:source` spec is a low-risk,
+familiar, genuinely cleaner win, so I recommend adopting it.
+
+**Honest counter-arguments weighed:** discoverability (a newcomer won't guess `:flatpak`) — mitigated
+by keeping `--source` in `--help`, by the chooser teaching that sources exist, and by an error hint
+("multiple sources offer firefox — try `jii firefox:flatpak`"). Colon collisions with package names —
+real but negligible, with the `--source` escape hatch. Net: the spec earns its place; the flag
+*syntax* does not need reinventing.
