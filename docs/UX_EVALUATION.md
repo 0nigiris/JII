@@ -278,6 +278,20 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
   tests; verified on Fedora (bare `update --dry-run` = dnf + flatpak, friendly one-line preview, `-n`
   abort, named path intact). Non-Fedora bulk impls unverified on a live host (T7). **U7 complete.**
 
+- **U8 — done (walkthrough polish, no ADR): the pass is complete.** Played the whole CLI as a fresh
+  user and fixed the remaining awkward edges (#15). (1) **Ledger tables** — `list`/`history`/`audit`
+  printed ad-hoc `{}  {}  {}` with no header/alignment (`history` also leaked the `Action` enum via
+  `{:?}`); all three now render through one data-driven `table_lines` helper (header + per-column
+  widths computed from the data, so long names don't break alignment the way audit's fixed `{:20}`
+  did), and `Action::label()` gives history human past-tense verbs. (2) **`jii update <not-installed>`**
+  followed the correct `✗ Not installed: X` with a misleading `Nothing installed via jii yet.`; since
+  bare `update` routes to the system update, an empty named-path record set always means the named
+  packages aren't installed (already stated), so the follow-up is dropped (mirrors `remove`).
+  180 tests; Fedora-verified (list/history/audit short+long names, pty first-run wizard replay,
+  friendly vs `-v` install preview). Left as a noted follow-up (low value): friendly single-install
+  prints the "Also available" block just before the recommendation line — mildly backwards, but
+  reordering would restructure the preview flow. **U8 complete → U0–U8 done.**
+
 ---
 
 ## Appendix — NixOS support (architectural opinion only; nothing to build)

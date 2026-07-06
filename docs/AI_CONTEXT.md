@@ -43,6 +43,22 @@ via optional `plan_install_many`, no model change). Next: **Homebrew** provider 
 
 ## Last completed work
 
+**U8 — first-run walkthrough polish (2026-07-06). The UX-polish pass (U0–U8) is now complete.**
+Played the whole CLI as a new user and fixed the awkward edges (#15); no architectural change, no ADR.
+Two small commits: (1) **aligned ledger tables** — `list`/`history`/`audit` printed ad-hoc
+`{}  {}  {}` with no header/alignment (and `history` leaked the `Action` enum via `{:?}`); all three
+now render through one `table_lines` helper (header row + data-driven column widths, so a long name
+like `visual-studio-code` no longer breaks alignment the way audit's fixed `{:20}` did), plus
+`Action::label()` for human past-tense history verbs (installed/removed/updated). (2) **update
+message fix** — `jii update <not-installed>` printed the correct `✗ Not installed: X` then a
+misleading `Nothing installed via jii yet.`; since bare `update` routes to the system update, an
+empty named-path record set always means "the named ones aren't installed" (already stated), so the
+follow-up is dropped (mirrors `remove`). Fedora-verified (list/history/audit short+long names; the
+first-run wizard replayed via pty reads clean; friendly vs `-v` install preview). **180 tests green,
+clippy clean.** Noted follow-up (not done, low value): in friendly single-install the "Also
+available" block prints just before the recommendation line — mildly backwards, but reordering it
+would restructure the preview flow, so left as-is.
+
 **U7 — system-wide update (2026-07-06, D10, ADR-0034).** Bare `jii update` now updates the **whole
 system**, not just JII's registry slice (#15, "the universal update command"). New **optional**
 `Provider::plan_update_all() -> Result<Option<InstallPlan>>` (default `None`): "upgrade everything
@@ -294,7 +310,10 @@ lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-ins
 info; **U5** added Friendly/Advanced modes + the first-run wizard/`jii setup`; **U6** added
 actionable errors (ADR-0032), doctor Tier 1 system checks, and the recommend-catalog (ADR-0033:
 `jii recommend` list + apply); **U7** made bare `jii update` a system-wide upgrade (ADR-0034:
-`plan_update_all` across all bulk managers + per-record fallback). 177 tests green throughout.
+`plan_update_all` across all bulk managers + per-record fallback); **U8** was the final walkthrough
+polish — aligned, headered tables for `list`/`history`/`audit` (one data-driven `table_lines` helper,
+`Action::label()` for human history verbs) and a fix for `jii update <not-installed>` no longer
+claiming the ledger is empty. **The UX-polish pass (U0–U8) is complete.** 180 tests green throughout.
 
 **CLI grammar LOCKED — ADR-0031.** After a first-principles pass (UX_EVALUATION §E/§E.1) the package
 spec **`name[:source][@ref]`** is now the *language of JII*: source/version/channel belong to the

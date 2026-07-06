@@ -303,7 +303,7 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       - [ ] **Version chooser** — `--version`; optional `Provider::available_versions`,
             provider-ordered. Own ADR for the version growth (per ADR-0026). **Paused** (same
             re-prioritisation).
-- [~] **UX-polish pass (highest priority, 2026-07-06):** real-use feedback from a clean Fedora VM →
+- [x] **UX-polish pass (COMPLETE 2026-07-06):** real-use feedback from a clean Fedora VM →
       16 UX problems + a first-run wizard, evaluated in **[UX_EVALUATION.md](UX_EVALUATION.md)**
       (10 pure polish over existing seams, 6 need small optional-capability/UI designs). Delivery
       order U0–U8. Doctor scope decided: **Tier 1 + recommend-catalog, both in 1.0** (own catalog
@@ -334,12 +334,19 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             fallback for sources without one (github/cargo/go). Implemented for all bulk managers
             (dnf/flatpak/apt/pacman/zypper/snap/nix/brew/pipx/npm). Fedora-verified; non-Fedora
             impls unverified (T7). 177 tests.
-      - [ ] **U8** first-run walkthrough polish.
-            Also on the list: **streaming/progressive search** (UX_EVALUATION §A, own ADR) — the real
-            fix for perceived speed; lets the timeout be raised again. Structural cleanup queued:
-            **split `cli/mod.rs`** (~1700 lines) into `cli/commands/*`. Recommend follow-ups:
-            interactive multi-pick, skip already-satisfied entries, a real repo-enable capability.
-            Update debt: a bulk-updated tracked package can show a stale version in `jii list`.
+      - [x] **U8** first-run walkthrough polish (final track). Played the whole CLI as a new user and
+            fixed the awkward edges (#15): aligned, headered ledger tables for `list`/`history`/`audit`
+            (one data-driven `table_lines` helper; `Action::label()` humanises history verbs) and
+            `jii update <not-installed>` no longer follows the `Not installed` error with a misleading
+            `Nothing installed yet` ledger claim. 180 tests, Fedora-verified (incl. pty first-run
+            wizard replay).
+      - **Deferred follow-ups (not blocking 1.0):** **streaming/progressive search** (UX_EVALUATION §A,
+            own ADR) — the real fix for perceived speed; lets the timeout be raised again. Structural
+            cleanup queued: **split `cli/mod.rs`** (~1800 lines) into `cli/commands/*`. Recommend
+            follow-ups: interactive multi-pick, skip already-satisfied entries, a real repo-enable
+            capability. Friendly install: "Also available" prints just before the recommendation line
+            (mildly backwards; reordering would restructure the preview flow). Update debt: a
+            bulk-updated tracked package can show a stale version in `jii list`.
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,
