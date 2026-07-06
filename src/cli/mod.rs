@@ -98,8 +98,9 @@ pub enum Commands {
         /// Package name.
         package: String,
     },
-    /// Explain how and why a package was (or would be) installed.
-    Why {
+    /// Explain how JII would install (or did install) a package.
+    #[command(alias = "why")]
+    How {
         /// Package name.
         package: String,
     },
@@ -167,7 +168,7 @@ impl Cli {
 
             // Implemented in Phase 2.
             Some(Commands::Remove { packages }) => self.remove(packages, config, &renderer).await,
-            Some(Commands::Why { package }) => self.why(package, config, &renderer),
+            Some(Commands::How { package }) => self.how(package, config, &renderer),
             Some(Commands::List) => self.list(config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
 
@@ -261,7 +262,7 @@ impl Cli {
                         .map(|v| format!(" ({v})"))
                         .unwrap_or_default();
                     renderer.success(&format!(
-                        "{name} is already installed via {}{v}. Nothing to do.",
+                        "{name} already installed via {}{v}",
                         record.source_id
                     ));
                     continue;
@@ -1123,8 +1124,7 @@ impl Cli {
         }
 
         renderer.info("");
-        renderer.success("Setup complete — you're ready.");
-        renderer.info("Try:  jii fastfetch   ·   jii search firefox   ·   jii update");
+        renderer.success("Setup complete.");
         Ok(())
     }
 
@@ -1148,8 +1148,8 @@ impl Cli {
         ranked
     }
 
-    /// Explain how and why a package was installed (from the registry).
-    fn why(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+    /// Explain how a package was (or would be) installed (from the registry).
+    fn how(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         match engine.registry().get(package) {
             None => {
