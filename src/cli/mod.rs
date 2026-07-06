@@ -759,7 +759,8 @@ impl Cli {
             resolved
         };
         if records.is_empty() {
-            renderer.info("Nothing installed via jii yet.");
+            // Every named package was unresolved; the `Not installed: …` line above already
+            // said so. Don't follow it with a misleading "nothing installed" ledger claim.
             return Ok(());
         }
 
