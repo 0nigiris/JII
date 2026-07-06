@@ -1,0 +1,62 @@
+name: Release
+
+# Builds the release binary and publishes it to a GitHub Release whenever a
+# version tag is pushed. The owner cuts a release by pushing a tag:
+#
+#     git tag v0.1.0-beta && git push origin v0.1.0-beta
+#
+# Built on a pinned Ubuntu 22.04 (glibc 2.35) so the binary runs on every
+# current distro (Fedora 40+, Ubuntu 22.04+, Debian 12+, current Arch/openSUSE).
+# jii shells out to the system's package managers, so it needs no bundled libs.
+# (A fully static musl build is a post-Beta improvement once it can be verified.)
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # required to create the Release and upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: build · package · publish
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package tarball + checksums
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          dir="jii-${tag}-x86_64-linux"
+          mkdir -p "$dir"
+          cp target/release/jii "$dir/"
+          strip "$dir/jii" || true
+          cp README.md LICENSE "$dir/" 2>/dev/null || true
+          tar -czf "${dir}.tar.gz" "$dir"
+          sha256sum "${dir}.tar.gz" > "${dir}.tar.gz.sha256"
+          # Also expose the bare binary for a one-line download.
+          cp "$dir/jii" "jii-${tag}-x86_64-linux"
+          sha256sum "jii-${tag}-x86_64-linux" > "jii-${tag}-x86_64-linux.sha256"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            jii-*-x86_64-linux.tar.gz
+            jii-*-x86_64-linux.tar.gz.sha256
+            jii-*-x86_64-linux
+            jii-*-x86_64-linux.sha256

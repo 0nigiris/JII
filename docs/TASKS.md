@@ -350,8 +350,9 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:
-      - [ ] **1. CI** — GitHub Actions on push/PR: `build` + `clippy -D warnings` + `test` +
-            `fmt --check`. Mechanises "clippy clean / tests green at every commit". *(agent)*
+      - [x] **1. CI** — already present (`.github/workflows/ci.yml`): `clippy -D warnings` (which
+            also builds) + `test`, both `--locked`, on push/PR. (No `fmt --check` by design — ADR-0013;
+            rustfmt isn't part of the DoD.)
       - [ ] **2. Integration tests** — CLI-level `assert_cmd`/`predicates` over isolated `XDG_*`
             (search/info/list/history/sources/--json/--dry-run/setup + not-installed/empty edges) +
             a registry-partial-failure test. All 180 tests today are unit-level. *(agent)*
@@ -360,8 +361,12 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (needs the owner's real hosts; agent scripts a repeatable smoke test). *(owner + agent)*
       - [ ] **4. Public docs & assets** — README polish, CONTRIBUTING/SECURITY *(agent)*; asciinema
             script *(agent writes, owner records)*; logo + screenshots *(owner/designer)*.
-      - [ ] **5. Public release** — tag `v0.1.0-beta`, GitHub Release + notes, signed binary and/or
-            COPR package; shell completions + man page bundled *(agent drafts, owner publishes)*.
+      - [~] **5. Public release** — release workflow **done** (`.github/workflows/release.yml`: on a
+            `v*` tag, builds on pinned Ubuntu 22.04 and publishes a GitHub Release with the binary +
+            tarball + sha256; `-`-tags marked prerelease). README gained an **Install** section
+            (download-a-binary + build-from-source) and a Beta **Status**. **Owner action to cut the
+            Beta:** `git push` this branch, then `git tag v0.1.0-beta && git push origin v0.1.0-beta`.
+            Still optional/nice-to-have: signed binary, COPR package, bundled completions + man page.
       - **Absorbs the old T6/T7/T8:** T7 (hardening) = items 1–3 above; T8 (public polish) = items
         4–5. **T6 (bootstrap a missing manager) is FROZEN** — parked in BETA_ROADMAP, post-Beta.
       - **Frozen backlog (do NOT start pre-Beta):** doctor --fix, catalog aliases, version chooser,

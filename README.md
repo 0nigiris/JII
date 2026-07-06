@@ -51,6 +51,33 @@ $ jii fastfetch --auto
 - **Remembers** — `jii remove discord` uses whatever installed it; `jii update`
   updates each package with the correct manager.
 
+## Install
+
+**Download a binary (Beta).** Grab the latest from
+[Releases](https://github.com/0nigiris/JII/releases), verify it, and drop it on your `PATH`:
+
+```console
+$ tar -xzf jii-v0.1.0-beta-x86_64-linux.tar.gz
+$ sha256sum -c jii-v0.1.0-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
+$ install -Dm755 jii-v0.1.0-beta-x86_64-linux/jii ~/.local/bin/jii
+$ jii doctor                                                # confirm it sees your sources
+```
+
+The binary is built on Ubuntu 22.04 (glibc 2.35), so it runs on every current distro
+(Fedora 40+, Ubuntu 22.04+, Debian 12+, current Arch/openSUSE). Make sure `~/.local/bin` is on
+your `PATH` (`jii doctor` warns if it isn't).
+
+**Build from source** (needs a recent Rust toolchain):
+
+```console
+$ git clone https://github.com/0nigiris/JII && cd JII
+$ cargo build --release
+$ ./target/release/jii fastfetch
+```
+
+JII drives the package managers you already have — it doesn't bundle any. On a machine with none
+of its supported sources (dnf5, Flatpak, apt, …) it will run but find nothing to install.
+
 ## Commands
 
 ```
@@ -113,11 +140,13 @@ allow_untrusted_auto = false
 
 ## Status
 
-🚧 **Early development.** Best exercised on **Fedora** (dnf5, COPR), but JII now runs
-cross-distro: **apt** (Debian/Ubuntu), **pacman** (Arch), **zypper** (openSUSE) and **Nix**,
-alongside Flatpak, Snap, GitHub Releases and the language managers. Each source self-gates on
-its tool, so JII uses whatever is present on your machine. (AUR and live clean-VM validation of
-every backend are still to come.)
+🧪 **Beta.** The terminal CLI is feature-complete and used daily on **Fedora** (dnf5, COPR).
+It also runs cross-distro — **apt** (Debian/Ubuntu), **pacman** (Arch), **zypper** (openSUSE),
+**Nix** — alongside Flatpak, Snap, GitHub Releases and the language managers; each source
+self-gates on its tool, so JII uses whatever is present on your machine. This is a Beta to
+gather real-world feedback: the **Fedora path is well-exercised**, while the non-Fedora backends
+are implemented but not yet validated on clean VMs of every distro. Bug reports and rough edges
+are exactly what we're looking for — please open an issue.
 
 ## Documentation
 
