@@ -541,6 +541,16 @@ impl Engine {
         self.providers.get(source_id).map(|p| p.trust())
     }
 
+    /// Source-specific recommendation highlights for a candidate (UX D5), asked of its
+    /// owning provider (ADR-0022 optional `highlights`). Empty if the source is no longer
+    /// enabled or offers none; the CLI concatenates these with the model-derived facts.
+    pub fn candidate_highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
+        self.providers
+            .get(&candidate.source_id)
+            .map(|p| p.highlights(candidate))
+            .unwrap_or_default()
+    }
+
     /// List the enabled providers with their trust and live availability (backs
     /// `jii sources`). Availability only — no network health probe (that is `doctor`).
     pub async fn source_catalog(&self) -> Vec<SourceEntry> {

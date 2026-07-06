@@ -61,6 +61,13 @@ impl Provider for Github {
         TrustLevel::Untrusted
     }
 
+    fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
+        vec![
+            "Third-party release binary — verify before trusting".to_string(),
+            "Installs to ~/.local/bin (no root)".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         // GitHub is a remote service with no local binary to probe. Reachability is
         // surfaced per-request as a search error/timeout, which the engine handles

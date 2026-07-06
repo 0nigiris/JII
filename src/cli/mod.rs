@@ -272,8 +272,20 @@ impl Cli {
                 && !self.global.no
                 && self.interactive(renderer);
             let best = if offer_choice {
-                let labels: Vec<String> = ranked.iter().map(candidate_line).collect();
-                let header = format!("Multiple sources offer '{name}':");
+                // The top (index 0) candidate is the recommendation — tag it so the menu says
+                // *which* to pick and why it's first (#4); the rest are honest alternatives.
+                let labels: Vec<String> = ranked
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i == 0 {
+                            format!("{}  ⭐ recommended", candidate_line(c))
+                        } else {
+                            candidate_line(c)
+                        }
+                    })
+                    .collect();
+                let header = format!("'{name}' is available from several sources — you choose:");
                 match prompt::choose(renderer, &header, &labels, 0) {
                     Some(index) => {
                         chose_interactively = true;
@@ -804,7 +816,8 @@ impl Cli {
         }
         let best = &ranked[0];
         renderer.info(&format!("Recommended: {}", best.source_id));
-        for reason in recommendation_reasons(best) {
+        let highlights = engine.candidate_highlights(best);
+        for reason in recommendation_reasons(best, highlights) {
             renderer.info(&format!("  ✓ {reason}"));
         }
         Ok(())
@@ -1105,21 +1118,34 @@ fn one_line(text: &str, max: usize) -> String {
     }
 }
 
-/// Why the recommended candidate was chosen, derived only from **source-agnostic** model
-/// fields (trust, signature, version, arch) — deliberately no branching on the concrete
-/// source id (ADR-0004 holds in the UI too). Richer, plan-level reasons appear at install
-/// time; this is the lightweight read-only rationale for `jii info`.
-fn recommendation_reasons(candidate: &PackageCandidate) -> Vec<String> {
-    let mut reasons = vec![format!("{} source", candidate.trust.label())];
+/// Source-agnostic complementary facts about a candidate (signature, version, arch) — no
+/// trust/source-specific text. Shared by the recommendation rationale.
+fn model_facts(candidate: &PackageCandidate) -> Vec<String> {
+    let mut facts = Vec::new();
     if candidate.signed {
-        reasons.push("signature/checksum verifiable".to_string());
+        facts.push("signature/checksum verifiable".to_string());
     }
     if let Some(version) = &candidate.version {
-        reasons.push(format!("version {version}"));
+        facts.push(format!("version {version}"));
     }
     if !candidate.arch_ok {
-        reasons.push("⚠ may not match this architecture".to_string());
+        facts.push("⚠ may not match this architecture".to_string());
     }
+    facts
+}
+
+/// Why the recommended candidate was chosen. The **source-specific** `highlights` (supplied
+/// by the owning provider — D5) lead; when a source offers none we fall back to the trust
+/// label. The source-agnostic model facts (signature/version/arch) follow. The CLI still
+/// never branches on the source id — the source-specific text comes *from the provider*
+/// (ADR-0004 holds in the UI). This is the lightweight read-only rationale for `jii info`.
+fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>) -> Vec<String> {
+    let mut reasons = if highlights.is_empty() {
+        vec![format!("{} source", candidate.trust.label())]
+    } else {
+        highlights
+    };
+    reasons.extend(model_facts(candidate));
     reasons
 }
 
@@ -1142,16 +1168,31 @@ mod tests {
     }
 
     #[test]
-    fn reasons_lead_with_trust_and_include_signature_and_version() {
-        let reasons = recommendation_reasons(&candidate(TrustLevel::Official, true, Some("1.2")));
+    fn reasons_fall_back_to_trust_without_highlights() {
+        // No provider highlights → the trust label leads (fallback), then the model facts.
+        let reasons =
+            recommendation_reasons(&candidate(TrustLevel::Official, true, Some("1.2")), vec![]);
         assert_eq!(reasons[0], "official source");
         assert!(reasons.iter().any(|s| s.contains("verifiable")));
         assert!(reasons.iter().any(|s| s == "version 1.2"));
     }
 
     #[test]
+    fn highlights_lead_and_replace_the_trust_line() {
+        // Source-specific highlights (D5) lead; the generic trust line is dropped; model
+        // facts still follow.
+        let reasons = recommendation_reasons(
+            &candidate(TrustLevel::Official, true, Some("1.2")),
+            vec!["Official Fedora package".to_string()],
+        );
+        assert_eq!(reasons[0], "Official Fedora package");
+        assert!(!reasons.iter().any(|s| s == "official source"));
+        assert!(reasons.iter().any(|s| s == "version 1.2"));
+    }
+
+    #[test]
     fn unsigned_candidate_omits_signature_reason() {
-        let reasons = recommendation_reasons(&candidate(TrustLevel::Untrusted, false, None));
+        let reasons = recommendation_reasons(&candidate(TrustLevel::Untrusted, false, None), vec![]);
         assert_eq!(reasons, vec!["untrusted source".to_string()]);
     }
 
@@ -1160,7 +1201,7 @@ mod tests {
         let mut c = candidate(TrustLevel::Community, false, None);
         c.arch_ok = false;
         assert!(
-            recommendation_reasons(&c)
+            recommendation_reasons(&c, vec![])
                 .iter()
                 .any(|s| s.contains("architecture"))
         );

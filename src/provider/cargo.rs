@@ -51,6 +51,13 @@ impl Provider for Cargo {
         TrustLevel::Community
     }
 
+    fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
+        vec![
+            "Built from crates.io source".to_string(),
+            "User install (~/.cargo/bin, no root)".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

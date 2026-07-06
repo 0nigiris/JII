@@ -50,6 +50,19 @@ impl Provider for Dnf {
         TrustLevel::Official
     }
 
+    fn highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
+        let mut h = vec![
+            "Official Fedora package".to_string(),
+            "Native — installs and updates with the system".to_string(),
+        ];
+        if let Some(repo) = candidate.raw.get("repoid").and_then(|v| v.as_str())
+            && !repo.is_empty()
+        {
+            h.push(format!("Repository: {repo}"));
+        }
+        h
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

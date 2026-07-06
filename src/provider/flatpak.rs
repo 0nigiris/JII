@@ -46,6 +46,13 @@ impl Provider for Flatpak {
         TrustLevel::Community
     }
 
+    fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
+        vec![
+            "Sandboxed application".to_string(),
+            "Cross-distro (Flatpak/Flathub), no root".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

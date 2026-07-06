@@ -115,6 +115,19 @@ pub trait Provider: Send + Sync {
             detail: None,
         }
     }
+
+    /// Short, honest, **source-specific** reasons this candidate is a good pick — the
+    /// "why" behind a recommendation that the source-agnostic core cannot phrase without
+    /// branching on the source id (ADR-0004). Default: none. A provider — which *is*
+    /// allowed to know it is dnf/flatpak/github — overrides this to add tags like "Official
+    /// Fedora package" or "Sandboxed". The engine concatenates these with the model-derived
+    /// facts (trust, signature, version) for `jii info` and the chooser; it stays optional,
+    /// exactly the ADR-0022 growth shape. Synchronous and pure (no I/O) — it reads only the
+    /// candidate it is given. (UX D5.)
+    fn highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
+        let _ = candidate;
+        Vec::new()
+    }
 }
 
 /// A raw health probe of a source (mapped to a `Health` category by the engine).

@@ -53,6 +53,13 @@ impl Provider for Copr {
         TrustLevel::Community
     }
 
+    fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
+        vec![
+            "Community COPR repo — not official Fedora".to_string(),
+            "Enables a third-party repository".to_string(),
+        ]
+    }
+
     async fn is_available(&self) -> bool {
         // Enabling/installing goes through dnf5; the API is reached at search time.
         which(BIN).await
