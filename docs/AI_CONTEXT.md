@@ -22,11 +22,16 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Terminal 1.0 (ADR-0026) — T4 done; T5 in progress (candidate chooser landed).** T1–T4
-landed; **T5's interactive candidate chooser is done**, its GitHub by-name repo chooser and
-version chooser (`--version`) remain. Cross-distro is real: JII now runs on Debian/Ubuntu
-(apt), Arch (pacman), openSUSE (zypper) and Nix, not just Fedora. Below is the pre-T4 Phase-5
-context (still accurate for the providers it describes).
+**Terminal 1.0 (ADR-0026) — T1–T4 done; T5 candidate chooser landed; now pivoted to a UX-polish
+pass.** After the first real dogfooding on a clean Fedora VM the user re-prioritised (2026-07-06):
+**no new features/providers/GUI — polish the terminal experience.** T5's remaining **GitHub by-name
+repo chooser is deferred** (ADR-0030 Proposed/deferred — a new feature, not a reported UX problem);
+the version chooser is likewise paused. The current deliverable is **[docs/UX_EVALUATION.md](UX_EVALUATION.md)**:
+16 UX problems classified (10 pure polish over existing seams, 6 need small optional-capability/UI
+designs), a delivery order (U0–U8), and a NixOS architectural opinion. **Awaiting the user's one open
+decision: doctor scope for 1.0 (actionable JII-diagnostics only vs the full codec/driver/font
+recommend-catalog).** Cross-distro is real: JII runs on Debian/Ubuntu (apt), Arch (pacman),
+openSUSE (zypper) and Nix, not just Fedora. Below is the pre-T4 Phase-5 context (still accurate).
 
 **Phase 5 — user-space sources & update (done).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
@@ -212,10 +217,14 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 (ADR-0026) — T1–T4 done; T5 in progress.** The interactive **candidate
-chooser** landed (see "Last completed work"); T5's remaining pieces are the **GitHub by-name
-repo chooser** and the **version chooser** (`--version`). The full ordered plan is T1–T8 in
-[ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md).
+**Terminal 1.0 (ADR-0026) — pivoted to a UX-polish pass (2026-07-06).** The interactive
+**candidate chooser** (T5.1) landed. Then the user, after dogfooding on a clean Fedora VM,
+re-prioritised to **UX polish, no new features**. The remaining T5 feature slices (GitHub by-name
+repo chooser, version chooser) are **deferred**. Current deliverable: **[docs/UX_EVALUATION.md](UX_EVALUATION.md)**
+— the architectural evaluation of the 16 reported UX problems + first-run wizard, with a U0–U8
+delivery order. **Blocked on one user decision (doctor scope, see the doc).** Do not start coding a
+[D]-item until its small ADR is written; the [A]-items (U1 output cleanup, U2 speed, U3
+already-installed/multi-owner remove) are pure polish and can start once the order is confirmed.
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 

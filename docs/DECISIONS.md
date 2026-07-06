@@ -1216,3 +1216,92 @@ immutable facts, and policy lives in config.
   distro check. The `id`/`id_like` predicate is deferred to its first real consumer (T6 bootstrap).
 - This ADR gates code: `platform.rs`/`engine`/`cli` change only after acceptance; apt is the
   first provider to follow (Debian/Ubuntu — largest audience).
+
+---
+
+## ADR-0030 — GitHub by-name discovery: search resolves cheaply, releases resolve lazily at plan time
+
+**Status:** Proposed 2026-07-06, **deferred**. Terminal 1.0 (ADR-0026) T5, second slice — the
+"GitHub repository chooser." Builds on the interactive candidate chooser (T5 slice 1, no ADR).
+**Deferred** the same day: after real dogfooding on a clean Fedora VM the user re-prioritised
+Terminal 1.0 to a **UX-polish pass** ("no new features, no new providers") — by-name GitHub
+discovery is a new feature, not one of the reported UX problems, so its implementation waits until
+the UX pass lands. The analysis below stays valid and is the design to build against when it
+resumes. See docs/UX_EVALUATION.md for the re-prioritisation.
+
+**Context:** Today the github provider only answers an explicit `owner/repo` query; a bare
+`jii ncdu` returns nothing from github. To make `jii <name>` reach GitHub-only tools, github
+must map a name to repositories via `/search/repositories`. Two forces constrain the design:
+
+1. **The core never branches on the source (ADR-0004).** The engine calls *every* provider's
+   `search` for *every* install and ranks the union; it cannot tell github "skip, dnf has it."
+   So whatever github does on a bare name, it does on **every** install — including `jii firefox`
+   that dnf satisfies. github candidates are always `Untrusted`, so they already rank **last**
+   (ADR-0006 trust barrier) and never outrank a native package.
+2. **Anonymous GitHub API budget is small:** ~60 core requests/hour. A `latest-release` GET is a
+   core request; `/search/repositories` is on a **separate** search limit (~10/min). Probing the
+   release of every search hit during `search` would mean *K release GETs on every install* —
+   ~10 installs and an unauthenticated user is rate-limited, most of it wasted on queries a
+   trusted source already answered.
+
+Eagerly probing releases in `search` (to filter to repos that actually ship an installable Linux
+asset) is the accurate option but collides with both forces: it is the most expensive path and it
+runs unconditionally. A core-side "only search github if nothing trusted matched" gate would fix
+the cost but **is exactly the forbidden branch-on-source**.
+
+**Decision:** Split github resolution across the two phases so the common case stays cheap and no
+core branch is needed:
+
+- **`search` (bare name) does only the cheap call.** It issues one `/search/repositories?q=<name>
+  in:name fork:false&sort=stars` request (on the search limit, not the core limit), then filters
+  and ranks the hits **without** fetching any release. It returns up to **`K = 5`** lightweight
+  candidates carrying `{ owner, repo, by_name: true, stars, description }` in `raw`, `version:
+  None`, `arch_ok: true` (optimistic), `trust: Untrusted`. Best-effort: any search/network/rate
+  error yields **zero** github candidates (never an error that blocks other sources).
+- **Ranking/filter policy (pure, unit-tested):** drop archived repos; keep hits whose repo name
+  contains the query token; order **exact name match first, then by stars descending**; take the
+  top `K`. Since all share `source_id="github"` and `Untrusted`, Rust's stable `sort_by` in the
+  engine preserves this relevance order within the github group — **no engine change**.
+- **`plan_install` resolves the release lazily.** For a `by_name` candidate it fetches the latest
+  release, runs the existing `select_asset`/checksum logic, and builds the plan. If the repo ships
+  no installable Linux asset for this arch, it errors *at plan time* with a clear message. Thus a
+  release GET (core budget) is spent **only for the one repo the user actually installs / previews**
+  — zero when a trusted source wins and github is never picked.
+
+This deliberately relaxes the module's "all network in `search`, `plan_install` is pure" invariant
+**for by-name candidates only**. The explicit `owner/repo` path is unchanged (still resolves in
+`search`). The plan-*building* stays pure and unit-tested; only the async `plan_install` wrapper
+gains a release fetch. Release resolution is factored into one `resolve_release_candidate(owner,
+repo)` helper shared by both the `owner/repo` search path and the lazy plan path (removes the
+duplication that existed between them).
+
+**Security:** every github candidate stays `Untrusted`, so the ADR-0006 trust barrier always fires
+— a by-name pick is never auto-installed, even under `--auto` (unless `allow_untrusted_auto`). The
+chooser shows `owner/repo ★stars — description` so the user recognises the real project (e.g.
+`BurntSushi/ripgrep`) rather than a typosquat. github ranks last, so by-name suggestions only
+surface when the user opens the chooser or nothing more trusted matched.
+
+**Alternatives considered:**
+- **Eagerly probe the top-K releases in `search` and filter to installable repos.** Rejected: most
+  accurate (never lists a repo with no Linux asset) but K release GETs on *every* install blows the
+  60/hr anonymous budget on queries trusted sources already answer. Accuracy is recovered cheaply
+  at plan time; a rare "no installable asset" repo failing at plan time is an acceptable 1.0
+  trade-off (noted as debt — a token or a `HEAD`/asset-list cache could pre-filter later).
+- **Gate github-by-name in the engine (only when no trusted candidate).** Rejected outright:
+  reintroduces source knowledge into the core — the forbidden branch-on-source (ADR-0004).
+- **A `--github <name>` opt-in flag instead of automatic discovery.** Rejected as the default: it
+  fights "just install it." The lazy design already makes automatic discovery cheap enough that an
+  opt-in is unnecessary; an opt-out / config knob can come later if needed.
+- **Rank by-name repos with a github-specific popularity key in the engine.** Rejected: the engine
+  stays version/popularity-agnostic (ADR-0009). Provider-supplied relevance order + stable sort
+  achieves the same with zero engine coupling.
+
+**Consequences:**
+- `jii <bare-name>` now reaches GitHub-only tools; combined with the T5 chooser, multiple repos are
+  presented (never silently installing the wrong one), the recommended (trusted) source stays the
+  default, and github options follow in stars order.
+- Common-case cost is one search-limit request; a core release GET is spent only on an actual
+  github install/preview — no rate-limit regression for the dnf/apt-satisfied majority.
+- New debt: a picked repo can fail *at plan time* if its latest release has no Linux asset for the
+  arch (the search phase cannot know). Message is explicit; revisit with caching/token in T7.
+- No engine or core change; the growth is entirely inside the github `Provider` (ADR-0004/0022).

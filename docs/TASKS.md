@@ -296,11 +296,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             `Vec`, engine ranks the lot since Phase 3) — the chooser is pure `cli`/`ui` over
             the existing ranked list. Pure `parse_choice` unit-tested; the three live paths
             (Enter→dnf, `2`→cargo, `n`→abort) + `--auto`-bypass verified on a real pty. 150 tests.
-      - [ ] **GitHub repository chooser** — by-name repo discovery (github `/search/repositories`)
-            feeding the candidate chooser, so `jii <name>` can surface repos and never
-            silently install the wrong one. Own ADR (name→repo policy: ranking, release filter).
+      - [~] **GitHub repository chooser** — by-name repo discovery (github `/search/repositories`)
+            feeding the candidate chooser. **Design done, implementation DEFERRED** (ADR-0030
+            Proposed/deferred): after clean-VM dogfooding the user re-prioritised to a UX-polish
+            pass (no new features). Resume after the UX pass.
       - [ ] **Version chooser** — `--version`; optional `Provider::available_versions`,
-            provider-ordered. Own ADR for the version growth (per ADR-0026).
+            provider-ordered. Own ADR for the version growth (per ADR-0026). **Paused** (same
+            re-prioritisation).
+- [~] **UX-polish pass (highest priority, 2026-07-06):** real-use feedback from a clean Fedora VM →
+      16 UX problems + a first-run wizard, evaluated in **[UX_EVALUATION.md](UX_EVALUATION.md)**
+      (10 pure polish over existing seams, 6 need small optional-capability/UI designs). Delivery
+      order U0–U8. Slots ahead of the deferred T5 feature slices; **blocked on one decision**
+      (doctor scope for 1.0). Also folds in much of T7 (error quality) and T8 (first-impression).
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,
