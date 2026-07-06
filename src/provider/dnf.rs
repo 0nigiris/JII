@@ -143,6 +143,12 @@ impl Provider for Dnf {
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `dnf5 upgrade -y` with no names = upgrade every installed package (D10).
+        let reasons = vec!["Upgrade all system packages (via dnf)".to_string()];
+        Ok(Some(root_plan("system", &["upgrade", "-y"], reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let qf = format!("%{{name}}{SEP}%{{evr}}\n");
         let out = run_capture(&[BIN, "repoquery", "-q", "--installed", "--qf", &qf]).await?;
@@ -292,6 +298,22 @@ mod tests {
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, .. } => {
                 assert_eq!(argv, &["dnf5", "upgrade", "-y", "git", "htop"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_all_upgrades_the_whole_system_as_root() {
+        let plan = Dnf::new()
+            .plan_update_all()
+            .await
+            .unwrap()
+            .expect("dnf offers a system update");
+        assert!(plan.needs_root());
+        match &plan.actions[0] {
+            crate::model::Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["dnf5", "upgrade", "-y"]);
             }
             other => panic!("expected run, got {other:?}"),
         }

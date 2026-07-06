@@ -56,6 +56,14 @@ pub struct RecordBatch {
     pub unplannable: Vec<(String, String)>,
 }
 
+/// The result of planning a system-wide update (D10): every willing provider's bulk
+/// "update everything I own" plan, plus the ids of the sources that offered one — so the
+/// caller can fall back to per-record updates for the sources that opted out.
+pub struct SystemUpdate {
+    pub plans: Vec<InstallPlan>,
+    pub sources: Vec<String>,
+}
+
 /// Which record operation a batch planner is building. This selects the provider method
 /// to call — it is the *operation*, never the source; the engine still never branches on
 /// a concrete source id (ADR-0004).
@@ -416,6 +424,68 @@ impl Engine {
 
         let mut outcome = Ok(());
         for bp in batch {
+            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+                outcome = Err(e);
+                break;
+            }
+            let now = Utc::now();
+            let verification = plan_verification(&bp.plan);
+            for record in &bp.records {
+                self.registry.record_update(InstalledRecord {
+                    name: record.name.clone(),
+                    source_id: record.source_id.clone(),
+                    version: record.version.clone(),
+                    installed_at: now,
+                    verification: verification.clone(),
+                });
+            }
+        }
+        self.registry.save()?;
+        outcome
+    }
+
+    /// Gather every available provider's "update everything I own" plan (D10). Each willing
+    /// provider (`plan_update_all` returns `Some`) contributes one plan; the returned
+    /// `sources` names them so the caller can fall back to per-record updates for the sources
+    /// that opted out (github, cargo, go). The engine never branches on the source id — it
+    /// just aggregates whatever plans the providers offer (ADR-0022/0025).
+    pub async fn plan_update_all(&self) -> Result<SystemUpdate> {
+        let mut plans = Vec::new();
+        let mut sources = Vec::new();
+        for provider in self.providers.iter() {
+            if !provider.is_available().await {
+                continue;
+            }
+            if let Some(plan) = provider.plan_update_all().await? {
+                sources.push(provider.id().to_string());
+                plans.push(plan);
+            }
+        }
+        Ok(SystemUpdate { plans, sources })
+    }
+
+    /// Execute a system-wide update: the providers' bulk update-all `system_plans` (which
+    /// upgrade the whole system, not JII-tracked packages, so nothing is recorded), followed
+    /// by the per-record `fallback` batch for sources without a bulk path (recorded as each
+    /// succeeds, exactly like [`update_batch`]). Privilege is primed **once** across
+    /// everything, so a mix of root (dnf) and user (flatpak) steps asks for elevation a single
+    /// time. Stops at the first failure, leaving the registry accurate for what did run.
+    pub async fn run_system_update(
+        &mut self,
+        system_plans: &[InstallPlan],
+        fallback: &[RecordBatchPlan],
+        renderer: &Renderer,
+    ) -> Result<()> {
+        let mut all: Vec<&InstallPlan> = system_plans.iter().collect();
+        all.extend(fallback.iter().map(|b| &b.plan));
+        crate::exec::prime_for(&all, &self.privilege).await?;
+
+        for plan in system_plans {
+            crate::exec::run_actions(plan, &self.privilege, renderer).await?;
+        }
+
+        let mut outcome = Ok(());
+        for bp in fallback {
             if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
                 outcome = Err(e);
                 break;

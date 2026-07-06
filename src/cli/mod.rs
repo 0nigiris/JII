@@ -716,15 +716,18 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
+        // Bare `jii update` = update the whole system (every manager's bulk upgrade, D10).
+        if packages.is_empty() {
+            return self.update_system(config, renderer).await;
+        }
+
         let mut engine = Engine::new(self.apply_profile(config))?;
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
 
-        // The records to consider: named packages (each must be installed), or all.
-        let records = if packages.is_empty() {
-            engine.registry().installed().to_vec()
-        } else {
+        // The records to consider: the named packages (each must be installed).
+        let records = {
             // Parse arguments as package specs (ADR-0031): a `:source` picks which installed
             // copy to update; `@ref` is rejected (targeting a version is the version chooser's
             // job). Without a pinned source we resolve the owning record cheaply (registry hint
@@ -760,43 +763,8 @@ impl Cli {
             return Ok(());
         }
 
-        // Re-search each record's source for the latest version, skip those already newest,
-        // and build the **post-update** records (version set to the refreshed target) plus
-        // human transition lines. The engine stamps installed_at/verification on write.
-        let mut refreshed: Vec<InstalledRecord> = Vec::new();
-        let mut transitions: Vec<String> = Vec::new();
-        let mut up_to_date = 0usize;
-        for record in records {
-            if let Some(source) = &self.global.source
-                && &record.source_id != source
-            {
-                continue;
-            }
-            let target = self.latest_from_source(&engine, &record).await;
-            // Exact version match = already newest. Conservative: differing version
-            // formats never match, so we only ever *skip* a provably-current package —
-            // an up-to-date system reads as a clean no-op, not a surprise reinstall.
-            if let (Some(latest), Some(current)) = (&target, &record.version)
-                && latest.version.as_ref() == Some(current)
-            {
-                up_to_date += 1;
-                continue;
-            }
-            // Post-update version: the refreshed target, falling back to the prior version
-            // when the owning source no longer reports one.
-            let new_version = target
-                .as_ref()
-                .and_then(|c| c.version.clone())
-                .or_else(|| record.version.clone());
-            if let (Some(old), Some(new)) = (&record.version, &new_version)
-                && old != new
-            {
-                transitions.push(format!("{}: {old} → {new}", record.name));
-            }
-            let mut post = record.clone();
-            post.version = new_version;
-            refreshed.push(post);
-        }
+        // Re-search each record's source for the latest version, skipping provably-current ones.
+        let (refreshed, transitions, up_to_date) = self.refresh_for_update(&engine, records).await;
 
         if refreshed.is_empty() {
             if up_to_date > 0 {
@@ -849,6 +817,124 @@ impl Cli {
         engine.update_batch(&batch.plans, renderer).await?;
         renderer.success(&format!("Updated {}.", names.join(", ")));
         Ok(())
+    }
+
+    /// Update the whole system (bare `jii update`, D10): aggregate every manager's bulk
+    /// "update everything I own" plan (`dnf upgrade`, `flatpak update`, …), and — so nothing
+    /// JII installed is missed — fall back to per-record updates for the sources that have no
+    /// bulk path (github, cargo, go). One preview, one confirmation, one privilege escalation,
+    /// one run. The bulk plans upgrade the system beyond JII's registry, so they aren't
+    /// recorded; only the per-record fallbacks refresh the registry.
+    async fn update_system(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let mut engine = Engine::new(self.apply_profile(config))?;
+        if !self.ensure_usable_source(&engine, renderer).await {
+            return Ok(());
+        }
+
+        let system = engine.plan_update_all().await?;
+        let covered: std::collections::HashSet<&str> =
+            system.sources.iter().map(|s| s.as_str()).collect();
+
+        // JII-tracked packages whose source offers no bulk update-all still get updated,
+        // per-record, so a bare `jii update` misses nothing it installed.
+        let fallback_records: Vec<InstalledRecord> = engine
+            .registry()
+            .installed()
+            .iter()
+            .filter(|r| !covered.contains(r.source_id.as_str()))
+            .cloned()
+            .collect();
+        let (refreshed, transitions, up_to_date) =
+            self.refresh_for_update(&engine, fallback_records).await;
+        let fallback = engine
+            .plan_record_batch(refreshed, crate::engine::RecordOp::Update)
+            .await?;
+        for (name, reason) in &fallback.unplannable {
+            renderer.warn(&format!("✗ {name}: cannot plan update ({reason})"));
+        }
+
+        if system.plans.is_empty() && fallback.plans.is_empty() {
+            renderer.info("Nothing to update.");
+            return Ok(());
+        }
+
+        // Preview: the bulk managers, then any per-record fallbacks + version transitions.
+        if !system.plans.is_empty() {
+            renderer.info(&format!("System update via: {}", system.sources.join(", ")));
+        }
+        if renderer.is_friendly() && !self.global.dry_run {
+            for plan in &system.plans {
+                let why = plan.reasons.first().cloned().unwrap_or_default();
+                let sudo = if plan.needs_root() { "  [needs sudo]" } else { "" };
+                renderer.info(&format!("  {why}{sudo}"));
+            }
+        } else {
+            for plan in &system.plans {
+                renderer.plan(plan);
+            }
+        }
+        for line in &transitions {
+            renderer.info(line);
+        }
+        self.preview_record_batch(&fallback.plans, renderer);
+        if up_to_date > 0 {
+            renderer.info(&format!("({up_to_date} tracked package(s) already up to date)"));
+        }
+
+        if self.global.dry_run {
+            renderer.info("(dry-run: nothing was updated)");
+            return Ok(());
+        }
+
+        let flags = self.prompt_flags(engine.config().install.auto);
+        if !prompt::confirm(renderer, "Update your system now?", true, &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+
+        engine
+            .run_system_update(&system.plans, &fallback.plans, renderer)
+            .await?;
+        renderer.success("System update complete.");
+        Ok(())
+    }
+
+    /// Re-search each record's owning source for its latest version, skip the provably-current
+    /// ones (exact version-string match — conservative, so we only ever *skip* what is surely
+    /// current), and return the post-update records (version set to the refreshed target),
+    /// human `old → new` transition lines, and how many were already current. Shared by the
+    /// named-package and system-fallback update paths; the engine stamps installed_at/
+    /// verification on write.
+    async fn refresh_for_update(
+        &self,
+        engine: &Engine,
+        records: Vec<InstalledRecord>,
+    ) -> (Vec<InstalledRecord>, Vec<String>, usize) {
+        let mut refreshed = Vec::new();
+        let mut transitions = Vec::new();
+        let mut up_to_date = 0usize;
+        for record in records {
+            let target = self.latest_from_source(engine, &record).await;
+            if let (Some(latest), Some(current)) = (&target, &record.version)
+                && latest.version.as_ref() == Some(current)
+            {
+                up_to_date += 1;
+                continue;
+            }
+            let new_version = target
+                .as_ref()
+                .and_then(|c| c.version.clone())
+                .or_else(|| record.version.clone());
+            if let (Some(old), Some(new)) = (&record.version, &new_version)
+                && old != new
+            {
+                transitions.push(format!("{}: {old} → {new}", record.name));
+            }
+            let mut post = record.clone();
+            post.version = new_version;
+            refreshed.push(post);
+        }
+        (refreshed, transitions, up_to_date)
     }
 
     /// Re-search an installed record's **owning** source for its latest candidate (the

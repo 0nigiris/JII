@@ -91,6 +91,16 @@ pub trait Provider: Send + Sync {
         Ok(None)
     }
 
+    /// Build one plan that updates **everything this source owns** (`dnf upgrade`,
+    /// `flatpak update`, `pipx upgrade-all`…), independent of JII's registry — the "update
+    /// my whole system" path behind a bare `jii update` (D10). Default `None`: a source with
+    /// no first-class bulk-upgrade (github, cargo, go) opts out, and the engine falls back to
+    /// per-record updates for it. Pure ADR-0022/0025 growth — the engine aggregates the plans
+    /// every willing provider offers and never branches on the source id.
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        Ok(None)
+    }
+
     /// What is installed via this source, to verify the registry.
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>>;
 

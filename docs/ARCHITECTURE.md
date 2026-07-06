@@ -480,7 +480,7 @@ locale = "auto"
 |---------|---------|
 | `jii <name…>` / `jii install <name…>` | one or many: search → rank → plan → group/merge per source → one confirm → one run (ADR-0025) |
 | `jii remove <name>` | resolve source (registry→verify) → plan → remove |
-| `jii update [<name>]` | update one/all via the correct manager |
+| `jii update [<name>]` | named: update that package via its source; bare: update the whole system — aggregate every manager's bulk upgrade + per-record fallback (ADR-0034) |
 | `jii search <query>` | show candidates only, no install |
 | `jii info <name>` | availability, versions, trust, size |
 | `jii why <name>` | explain how/why it was (or would be) installed |

@@ -117,6 +117,12 @@ impl Provider for Flatpak {
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
+    async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
+        // `flatpak update -y` with no refs = update every installed app/runtime (D10).
+        let reasons = vec!["Update all Flatpak apps and runtimes".to_string()];
+        Ok(Some(user_plan("all flatpaks", &["update", "-y"], reasons)))
+    }
+
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         let out = run_capture(&[BIN, "list", "--app", "--columns=application,version"]).await?;
         Ok(parse_installed_records(&out, self.id()))
@@ -300,6 +306,22 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         match &plan.actions[0] {
             Action::RunCommand { argv, .. } => {
                 assert_eq!(argv, &["flatpak", "update", "-y", "org.gimp.GIMP", "org.videolan.VLC"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_all_updates_every_flatpak_unprivileged() {
+        let plan = Flatpak::new()
+            .plan_update_all()
+            .await
+            .unwrap()
+            .expect("flatpak offers a system update");
+        assert!(!plan.needs_root());
+        match &plan.actions[0] {
+            Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["flatpak", "update", "-y"]);
             }
             other => panic!("expected run, got {other:?}"),
         }
