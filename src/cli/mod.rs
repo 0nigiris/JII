@@ -180,8 +180,10 @@ impl Cli {
         //    A single package keeps the "Also available" alternatives view; a real batch
         //    would make that too noisy, so it is shown only when installing one.
         let single = packages.len() == 1;
+        let effective_auto = self.global.auto || engine.config().install.auto;
         let mut chosen: Vec<PackageCandidate> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
+        let mut chose_interactively = false;
         for name in packages {
             let query = Query::name(name);
             renderer.info(&format!("Searching for '{}'...", query.raw));
@@ -197,10 +199,38 @@ impl Cli {
                 not_found.push(name.clone());
                 continue;
             }
-            let best = ranked.remove(0);
-            if single {
-                self.show_alternatives(&ranked, renderer);
-            }
+            // When a single install has genuine choice and the session is interactive,
+            // let the user pick which source rather than silently taking the top rank
+            // (the recommendation is the pre-selected default — Enter installs it). Batch
+            // installs stay auto-picked to avoid a prompt storm, and --source/--auto/
+            // --yes/--no or a non-TTY skip the chooser too (they already express intent).
+            let offer_choice = single
+                && ranked.len() > 1
+                && self.global.source.is_none()
+                && !effective_auto
+                && !self.global.yes
+                && !self.global.no
+                && self.interactive(renderer);
+            let best = if offer_choice {
+                let labels: Vec<String> = ranked.iter().map(candidate_line).collect();
+                let header = format!("Multiple sources offer '{name}':");
+                match prompt::choose(renderer, &header, &labels, 0) {
+                    Some(index) => {
+                        chose_interactively = true;
+                        ranked.remove(index)
+                    }
+                    None => {
+                        renderer.info("Aborted.");
+                        return Ok(());
+                    }
+                }
+            } else {
+                let best = ranked.remove(0);
+                if single {
+                    self.show_alternatives(&ranked, renderer);
+                }
+                best
+            };
             chosen.push(best);
         }
 
@@ -247,13 +277,20 @@ impl Cli {
             .max()
             .unwrap_or(crate::model::TrustLevel::Official);
         let flags = self.prompt_flags(engine.config().install.auto);
-        if !prompt::confirm_install_batch(
-            renderer,
-            least_trusted,
-            installed.len(),
-            engine.config(),
-            &flags,
-        ) {
+        // An interactive chooser pick is itself the consent for a trusted-enough source,
+        // so we don't ask twice; an untrusted pick still hits the trust barrier below
+        // (ADR-0006 — untrusted always needs an explicit answer).
+        let skip_confirm =
+            chose_interactively && least_trusted <= engine.config().install.default_yes_max_trust;
+        if !skip_confirm
+            && !prompt::confirm_install_batch(
+                renderer,
+                least_trusted,
+                installed.len(),
+                engine.config(),
+                &flags,
+            )
+        {
             renderer.info("Aborted.");
             return Ok(());
         }
@@ -309,6 +346,12 @@ impl Cli {
                 candidate.trust.label()
             ));
         }
+    }
+
+    /// Whether we can hold an interactive prompt here: a real terminal and not JSON mode.
+    /// Gates the candidate chooser (and any future interactive selection).
+    fn interactive(&self, renderer: &Renderer) -> bool {
+        !renderer.is_json() && crate::platform::Platform::detect().is_tty
     }
 
     /// Fold the `--profile` flag into the config.

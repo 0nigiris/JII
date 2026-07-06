@@ -22,10 +22,11 @@ Releases, COPR…), ranks them, installs the best, and explains why. Read
 
 ## Current phase
 
-**Terminal 1.0 (ADR-0026) — T4 done.** T1–T4 landed; **T5 (interactive choosers) is next.**
-Cross-distro is real: JII now runs on Debian/Ubuntu (apt), Arch (pacman), openSUSE (zypper)
-and Nix, not just Fedora. Below is the pre-T4 Phase-5 context (still accurate for the
-providers it describes).
+**Terminal 1.0 (ADR-0026) — T4 done; T5 in progress (candidate chooser landed).** T1–T4
+landed; **T5's interactive candidate chooser is done**, its GitHub by-name repo chooser and
+version chooser (`--version`) remain. Cross-distro is real: JII now runs on Debian/Ubuntu
+(apt), Arch (pacman), openSUSE (zypper) and Nix, not just Fedora. Below is the pre-T4 Phase-5
+context (still accurate for the providers it describes).
 
 **Phase 5 — user-space sources & update (done).** Phases 0–4 done and verified.
 The pre-Phase-5 re-evaluation (ADR-0022) confirmed the model needs **no change** for
@@ -36,6 +37,26 @@ change); and **batch install is done** (ADR-0025: `jii install a b c`, same-sour
 via optional `plan_install_many`, no model change). Next: **Homebrew** provider (ADR-0024).
 
 ## Last completed work
+
+**T5 (slice 1) — the interactive candidate chooser (`ui/prompt::choose`).** A single
+interactive install that resolves to **more than one** candidate now shows a numbered source
+menu — the recommendation pre-selected as the default (Enter installs it), each other source
+selectable by number, `n` to cancel — instead of silently taking the top rank. The chooser
+addresses the "never silently install the wrong thing" requirement. **Honest architectural
+finding: no ADR and no engine/model change were needed.** The pre-declared "chooser/selection
+model" growth turned out to already exist: `Provider::search` has returned `Vec<PackageCandidate>`
+and the engine has ranked the whole set together since Phase 3, so the chooser is **pure
+`cli`/`ui`** over the ranked list the install path already had. Design points: (1) picking a
+source is itself the consent, so a **trusted** interactive pick skips the otherwise-redundant
+`[Y/n]` (tracked by `chose_interactively`), while an **untrusted** pick still hits the trust
+barrier (ADR-0006 preserved — `skip_confirm` is gated on `least_trusted <=
+default_yes_max_trust`); (2) the chooser only fires for a **single**-package install with
+`ranked.len() > 1` in an **interactive** session (`!--source && !effective_auto && !--yes &&
+!--no && tty && !json`) — batch installs stay auto-picked to avoid a prompt storm, and every
+non-interactive/intent-expressing path is unchanged. The pure `parse_choice` (empty→default,
+`n`/`q`/`cancel`→cancel, in-range number→pick, else→re-ask) is unit-tested; the three live
+paths (Enter→dnf, `2`→cargo, `n`→abort) plus the `--auto` bypass and the piped non-TTY
+fallback were verified on a real pseudo-terminal. **150 tests.**
 
 **T4 — cross-distro system providers + the platform-seam relaxation (ADR-0029, Accepted).**
 The whole codebase coupled to the distro in exactly one place (`Platform::is_supported` →
@@ -61,7 +82,7 @@ self-gates on its binary, with `_many` batching:
 Shared **`provider::run_capture_lax`** (stdout even on non-zero exit) added beside `run_capture`:
 apt-cache exits 100, `pacman -Si` 1, `zypper` 104 for "unknown package" = "no candidate", not a
 source failure. No core branch on the source. Fedora behaviour verified unchanged (`jii sources`,
-dnf dry-run). **146 tests.** **Debt:** nix `profile` CLI is version-fragile and was **not** verified
+dnf dry-run). **150 tests.** **Debt:** nix `profile` CLI is version-fragile and was **not** verified
 on a live Nix host (none here) — flagged for the T7 clean-VM pass; the `id`/`id_like` distro
 predicate stays deferred to its first consumer (T6), per ADR-0029.
 
@@ -191,8 +212,9 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 (ADR-0026) — T1–T4 done; T5 (interactive choosers) next.** T4 (cross-distro +
-platform seam) is complete — see "Last completed work". The full ordered plan is T1–T8 in
+**Terminal 1.0 (ADR-0026) — T1–T4 done; T5 in progress.** The interactive **candidate
+chooser** landed (see "Last completed work"); T5's remaining pieces are the **GitHub by-name
+repo chooser** and the **version chooser** (`--version`). The full ordered plan is T1–T8 in
 [ROADMAP.md](ROADMAP.md) / [TASKS.md](TASKS.md).
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
@@ -280,14 +302,24 @@ Full list in [TASKS.md](TASKS.md) Phase 5.
 
 ## Next recommended task
 
-**T5 — Interactive choosers.** GitHub repository chooser (paged select in `ui/prompt` — "never
-silently install the wrong repo", the deferred requirement) and, where a source offers real
-version choices, version selection. Needs its **own ADR** for the chooser/selection model (how a
-`Provider` surfaces multiple candidates and how the UI picks — kept out of the engine, which stays
-UI-free per ADR-0022). No core branching on the source. After T5: T6 (bootstrap a missing
-manager — where the `id`/`id_like` distro predicate finally gets built, ADR-0029), T7
-(hardening + **clean-VM testing on Fedora/Arch/Ubuntu/Debian/openSUSE**, incl. verifying the nix
-provider on a live host), T8 (public polish). Then the first Beta.
+**T5 (remaining) — the GitHub by-name repo chooser, then the version chooser.** The generic
+candidate chooser is done (pure `cli`/`ui`, no ADR); what's left needs real new **provider
+capabilities** and so each gets its own ADR:
+- **GitHub by-name repo discovery** — github currently answers only explicit `owner/repo`; add a
+  bare-name path (github `/search/repositories`) that returns the top few repos (with an
+  installable Linux release) as candidates, which then flow into the existing chooser so the user
+  disambiguates ("never silently install the wrong repo"). ADR: name→repo policy — ranking
+  (stars? exact-name?), filtering to repos that actually publish a usable release, and how many to
+  surface. This is the noisier/riskier piece; keep it conservative.
+- **Version chooser** — `--version <v>` + an optional `Provider::available_versions` (provider-
+  ordered, ADR-0022 growth pattern) so a source can offer real version choices. ADR for the
+  version growth (pre-declared in ADR-0026); note the per-source pinning-syntax divergence
+  (dnf `pkg-1.2.3`, cargo `--version`, github a release tag).
+
+After T5: T6 (bootstrap a missing manager — where the `id`/`id_like` distro predicate finally
+gets built, ADR-0029), T7 (hardening + **clean-VM testing on Fedora/Arch/Ubuntu/Debian/openSUSE**,
+incl. verifying the nix provider **and the chooser interactively** on a live host), T8 (public
+polish). Then the first Beta.
 
 ## Current blockers
 
@@ -299,7 +331,9 @@ None.
 
 ## Test status
 
-`cargo test` — **146 passing, 0 failing**. T4 coverage: apt (`parse_show` first-stanza deb822,
+`cargo test` — **150 passing, 0 failing**. T5 coverage: `prompt::parse_choice` (empty→default,
+`n`/`no`/`q`/`quit`/`cancel`→cancel, in-range number→zero-based pick, out-of-range/garbage→invalid).
+T4 coverage: apt (`parse_show` first-stanza deb822,
 Description-md5/folded-body excluded, batch install/remove/update-only-upgrade), pacman (`parse_si`
 first stanza with URL-in-value intact, `parse_query`, `-Rs` remove, batch), zypper (`parse_search_xml`
 skips `<solvable-list>` container, dep-free `attr`, non-interactive root plans), nix (`parse_search`

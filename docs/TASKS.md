@@ -284,9 +284,23 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       pacman=`pacman -Si`, zypper=`--xmlout search` (dep-free attr parse) + `rpm -qa`, nix=modern
       flakes CLI (`nix search --json` / `nix profile`, user-space, no root). **Debt:** nix
       profile CLI is version-fragile and untested on a live Nix host — revisit in T7.
-- [ ] **T5 — Interactive choosers:** GitHub repository chooser (paged select in `ui/prompt`;
-      engine ranks/heuristics) + version chooser (`--version`; optional
-      `Provider::available_versions`, provider-ordered). Own ADR for the version growth.
+- [~] **T5 — Interactive choosers:**
+      - [x] **Candidate chooser** (`ui/prompt::choose`): a single interactive install with
+            more than one candidate now presents a numbered source menu (recommendation
+            pre-selected as the default — Enter installs it) instead of silently taking the
+            top rank; picking a source is itself the consent, so a trusted pick skips the
+            redundant `[Y/n]` (an untrusted pick still hits the trust barrier, ADR-0006).
+            Batch installs, `--source`/`--auto`/`--yes`/`--no`, non-TTY and `--json` all
+            skip the chooser (they already express intent / can't prompt). **No ADR / no
+            engine change:** the multi-candidate model already existed (`search` returns
+            `Vec`, engine ranks the lot since Phase 3) — the chooser is pure `cli`/`ui` over
+            the existing ranked list. Pure `parse_choice` unit-tested; the three live paths
+            (Enter→dnf, `2`→cargo, `n`→abort) + `--auto`-bypass verified on a real pty. 150 tests.
+      - [ ] **GitHub repository chooser** — by-name repo discovery (github `/search/repositories`)
+            feeding the candidate chooser, so `jii <name>` can surface repos and never
+            silently install the wrong one. Own ADR (name→repo policy: ranking, release filter).
+      - [ ] **Version chooser** — `--version`; optional `Provider::available_versions`,
+            provider-ordered. Own ADR for the version growth (per ADR-0026).
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,
