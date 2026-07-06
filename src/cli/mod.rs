@@ -127,7 +127,13 @@ impl Cli {
 
     /// Dispatch the parsed command.
     pub async fn run(self, config: Config) -> crate::error::Result<()> {
-        let renderer = Renderer::new(self.color_choice(&config), self.global.json);
+        // `-v` forces Advanced for this run; otherwise the configured mode (default Friendly).
+        let mode = if self.global.verbose > 0 {
+            crate::config::OutputMode::Advanced
+        } else {
+            config.ui.mode
+        };
+        let renderer = Renderer::new(self.color_choice(&config), self.global.json, mode);
 
         match &self.command {
             // Explicit `jii install <pkg…>` or bare `jii <pkg…>`.
@@ -193,17 +199,21 @@ impl Cli {
         let mut chosen: Vec<PackageCandidate> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         let mut chose_interactively = false;
+        // A single lively "Searching…" in Friendly; Advanced narrates each package below.
+        if renderer.is_friendly() {
+            renderer.info("Searching…");
+        }
         for spec in &specs {
             // A per-package `:source` (ADR-0031) pins the provider and, like `--source`,
             // suppresses the chooser; it takes precedence over the whole-command `--source`.
             let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
             let name = &spec.name;
             let query = Query::name(name);
-            renderer.info(&format!("Searching for '{}'...", query.raw));
-            let result = engine.search(&query).await;
-            for (source, reason) in &result.failed {
-                renderer.warn(&format!("✗ {source}: {reason}"));
+            if !renderer.is_friendly() {
+                renderer.info(&format!("Searching for '{}'...", query.raw));
             }
+            let result = engine.search(&query).await;
+            self.report_source_failures(&result.failed, renderer);
             let mut ranked = engine.rank(result.candidates);
             if let Some(source) = pkg_source {
                 ranked.retain(|c| &c.source_id == source);
@@ -430,6 +440,19 @@ impl Cli {
     /// Gates the candidate chooser (and any future interactive selection).
     fn interactive(&self, renderer: &Renderer) -> bool {
         !renderer.is_json() && crate::platform::Platform::detect().is_tty
+    }
+
+    /// Report sources that errored/timed out during a search. Friendly mode stays quiet — a
+    /// secondary source hiccup (e.g. a slow COPR) that didn't change the result is noise (UX
+    /// #1/#8); Advanced (`-v`) lists each. Also drops the doubled marker — `warn` already
+    /// prefixes `⚠`, so the old `✗ {source}` read as `⚠ ✗ {source}`.
+    fn report_source_failures(&self, failed: &[(String, String)], renderer: &Renderer) {
+        if renderer.is_friendly() {
+            return;
+        }
+        for (source, reason) in failed {
+            renderer.warn(&format!("{source}: {reason}"));
+        }
     }
 
     /// Parse each argument into a [`PackageSpec`] (`name[:source][@ref]`, ADR-0031) — the one
@@ -894,7 +917,6 @@ impl Cli {
                 renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.label()));
             }
         }
-        renderer.info("More sources arrive in upcoming releases — see docs/ROADMAP.md.");
         Ok(())
     }
 
@@ -910,9 +932,7 @@ impl Cli {
     ) -> Vec<PackageCandidate> {
         let query = Query::name(name);
         let result = engine.search(&query).await;
-        for (source, reason) in &result.failed {
-            renderer.warn(&format!("✗ {source}: {reason}"));
-        }
+        self.report_source_failures(&result.failed, renderer);
         let mut ranked = engine.rank(result.candidates);
         if let Some(source) = source {
             ranked.retain(|c| &c.source_id == source);

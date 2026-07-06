@@ -5,30 +5,38 @@ pub mod prompt;
 
 use owo_colors::OwoColorize;
 
-use crate::config::ColorChoice;
+use crate::config::{ColorChoice, OutputMode};
 use crate::model::{Action, InstallPlan};
 
 /// Renders output as either human-friendly text or machine-readable JSON.
 pub struct Renderer {
     color: bool,
     json: bool,
+    mode: OutputMode,
 }
 
 impl Renderer {
-    /// Build a renderer from the resolved color choice and the `--json` flag.
-    pub fn new(color: ColorChoice, json: bool) -> Self {
+    /// Build a renderer from the resolved color choice, the `--json` flag, and the output
+    /// mode (Friendly/Advanced — U5).
+    pub fn new(color: ColorChoice, json: bool, mode: OutputMode) -> Self {
         let color = match color {
             ColorChoice::Always => true,
             ColorChoice::Never => false,
             // In JSON mode never colorize; otherwise only when stdout is a terminal.
             ColorChoice::Auto => !json && crate::platform::Platform::detect().is_tty,
         };
-        Renderer { color, json }
+        Renderer { color, json, mode }
     }
 
     /// Whether JSON output mode is active.
     pub fn is_json(&self) -> bool {
         self.json
+    }
+
+    /// Whether we're in Friendly mode (short, human) — never in JSON mode, where the
+    /// structure is fixed. Advanced mode returns false, showing full detail.
+    pub fn is_friendly(&self) -> bool {
+        !self.json && matches!(self.mode, OutputMode::Friendly)
     }
 
     /// Print a JSON value verbatim (for list/history machine output).
