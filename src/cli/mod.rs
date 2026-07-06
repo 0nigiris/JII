@@ -106,7 +106,13 @@ pub enum Commands {
     /// Report source availability, latency and health.
     Doctor,
     /// Suggest curated, distro-aware software to round out a fresh system.
-    Recommend,
+    ///
+    /// With no argument, lists the recommendations. Given a recommendation id
+    /// (`jii recommend steam`), installs that entry's packages through the normal path.
+    Recommend {
+        /// A recommendation id to apply; empty lists all recommendations.
+        id: Option<String>,
+    },
     /// Audit installed software: source, trust, verification and concerns.
     Audit,
     /// List software installed via JII.
@@ -166,7 +172,9 @@ impl Cli {
             Some(Commands::History) => self.history(config, &renderer),
 
             Some(Commands::Doctor) => self.doctor(config, &renderer).await,
-            Some(Commands::Recommend) => self.recommend(&renderer),
+            Some(Commands::Recommend { id }) => {
+                self.recommend(id.as_deref(), config, &renderer).await
+            }
             Some(Commands::Audit) => self.audit(config, &renderer),
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
@@ -1181,14 +1189,26 @@ impl Cli {
     }
 
     /// Suggest curated, distro-aware software for a fresh system (the recommend-catalog,
-    /// U6/D6 Tier 2). Read-only: it reports what's worth adding and the exact way to add it
-    /// (a `jii …` install, or — for a third-party repo a package install can't express — the
-    /// documented command to run). It never modifies the system (Analyze → Explain; applying
-    /// stays an explicit, separate user action).
-    fn recommend(&self, renderer: &Renderer) -> crate::error::Result<()> {
+    /// U6/D6 Tier 2). With no `id`, it reports what's worth adding and the exact way to add
+    /// it (a `jii …` install, or — for a third-party repo a package install can't express —
+    /// the documented command to run). Given an `id`, it *applies* that entry by routing its
+    /// packages through the normal install path (preview → confirm → execute); a repo-enable
+    /// (`manual`) entry is never run by JII — it just shows the command (Analyze → Ask →
+    /// Apply; the trust decision stays the user's).
+    async fn recommend(
+        &self,
+        id: Option<&str>,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
         let catalog = crate::recommend::Catalog::load()
             .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("catalog: {e}")))?;
         let distro_id = crate::platform::Platform::detect().distro.id();
+
+        if let Some(id) = id {
+            return self.apply_recommendation(&catalog, id, config, renderer).await;
+        }
+
         let entries = catalog.for_distro(distro_id);
 
         if renderer.is_json() {
@@ -1240,8 +1260,64 @@ impl Cli {
             }
             renderer.info("");
         }
-        renderer.info("These are suggestions — nothing was changed. Install any with the command shown.");
+        renderer.info(
+            "These are suggestions — nothing was changed. Apply one with `jii recommend <id>` \
+             (e.g. `jii recommend vlc`) or the command shown.",
+        );
         Ok(())
+    }
+
+    /// Apply one catalog entry by id: install its packages through the normal path, or — for a
+    /// `manual` (repo-enable) entry — show the documented command without running it. The id is
+    /// matched across the whole catalog; an entry that doesn't apply to this distro is refused
+    /// honestly rather than silently installing something meant for another system.
+    async fn apply_recommendation(
+        &self,
+        catalog: &crate::recommend::Catalog,
+        id: &str,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let distro_id = crate::platform::Platform::detect().distro.id();
+        let entry = match catalog.recommendation.iter().find(|r| r.id == id) {
+            Some(e) => e,
+            None => {
+                renderer.error(&format!(
+                    "No recommendation called '{id}'. Run `jii recommend` to see the list."
+                ));
+                return Ok(());
+            }
+        };
+
+        if !entry.distros.is_empty() && !entry.distros.iter().any(|d| d == distro_id) {
+            renderer.warn(&format!(
+                "'{id}' ({}) is meant for {} — not this system. Skipping.",
+                entry.title,
+                entry.distros.join("/")
+            ));
+            return Ok(());
+        }
+
+        // A repo-enable / manual step: JII shows it, never runs it (the trust decision is yours).
+        if entry.packages.is_empty() {
+            if let Some(manual) = &entry.manual {
+                renderer.info(&format!("{} — run this yourself:", entry.title));
+                renderer.info(&format!("  {manual}"));
+                if let Some(note) = &entry.note {
+                    renderer.info(&format!("  Note: {note}"));
+                }
+            } else {
+                renderer.warn(&format!("'{id}' has nothing to install."));
+            }
+            return Ok(());
+        }
+
+        if let Some(note) = &entry.note {
+            renderer.info(&format!("Note: {note}"));
+        }
+        // Route the entry's specs through the normal install path (preview → confirm → execute).
+        let packages = entry.packages.clone();
+        self.install(&packages, config, renderer).await
     }
 
     /// Show installation history, newest first.
