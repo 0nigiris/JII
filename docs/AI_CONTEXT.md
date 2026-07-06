@@ -245,9 +245,11 @@ compatible. **D5**: optional `Provider::highlights` (dnf/copr/flatpak/github/car
 like the README; UI still never branches on source id. **Chooser (#4):** clearer header + "⭐
 recommended" tag. **162 tests green, clippy clean**, verified on Fedora (pty chooser, info, spec paths).
 
-**Remaining U4 TODO (do before/with U5):** the spec is universal in ADR-0031 but wired only into
-`install` — extend parsing to `remove`/`update`/`info` (`jii remove firefox:flatpak` = the
-non-interactive answer to the multi-owner remove chooser). Small isolated follow-up.
+**ADR-0031 tail done:** the spec is now universal — `remove`/`update`/`info` parse it too (same
+`parse_specs`). `jii remove firefox:flatpak` pins the copy (the non-interactive answer to the
+multi-owner chooser); `update node:brew` picks the copy to update; `info firefox:flatpak` narrows
+(`ranked_for` gained a `source` override). `@ref` rejected everywhere; `search` stays free-text.
+**U4 complete** — 162 tests green, clippy clean.
 
 **Next: U5** — Friendly/Advanced verbosity (D8) + first-run wizard/`jii setup` (DW, needs
 `Config::save`). Then U6 (errors D7 + doctor Tier1/Tier2 recommend-catalog), U7 (system-wide update

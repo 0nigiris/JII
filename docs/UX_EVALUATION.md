@@ -221,10 +221,13 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
     exposes them; `jii info` now reads like the README ("✓ Official Fedora package · Native · …"),
     the UI still never branching on the source id.
   - **chooser presentation (#4):** clearer header + a "⭐ recommended" tag on the top option.
-  - 162 tests, clippy clean; verified on Fedora (info highlights, pty chooser, spec behaviours).
-  - **Remaining U4 TODO (before U5):** the spec is universal in ADR-0031 but wired only into `install`
-    so far — extend parsing to `remove`/`update`/`info` (`jii remove firefox:flatpak` is the
-    non-interactive answer to the multi-owner remove chooser). Small, isolated follow-up.
+  - **spec universal across all verbs (ADR-0031 tail done):** `remove`/`update`/`info` now parse the
+    spec too (via the same `parse_specs`). `jii remove firefox:flatpak` pins the copy and *is* the
+    non-interactive answer to the multi-owner chooser; `update node:brew` selects the copy to update;
+    `info firefox:flatpak` narrows the report (`ranked_for` gained an explicit `source` override).
+    `@ref` rejected everywhere; `search` stays free-text (a query, not a spec). Backwards compatible.
+  - 162 tests, clippy clean; verified on Fedora (info highlights + narrowing, pty chooser, remove/
+    update/info spec paths, @ref rejection, did-you-mean). **U4 complete.**
 
 ---
 
