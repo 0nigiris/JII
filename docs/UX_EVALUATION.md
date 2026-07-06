@@ -505,3 +505,80 @@ by keeping `--source` in `--help`, by the chooser teaching that sources exist, a
 ("multiple sources offer firefox — try `jii firefox:flatpak`"). Colon collisions with package names —
 real but negligible, with the `--source` escape hatch. Net: the spec earns its place; the flag
 *syntax* does not need reinventing.
+
+### E.1 — Locking the grammar: "should this even be a flag?" (critical pass)
+
+The user pushed the philosophy further: anything that *belongs to the package* (source, version,
+channel) should live in the **package spec**, not be a flag; the remaining flags should be *truly
+global*; and an **explicit spec must suppress the matching question** (a pinned source skips the
+chooser). Critical evaluation, still no code.
+
+**Refined grammar — `name[:source][@ref]`, where `@ref` is source-interpreted.** The user's own
+examples show `@` meaning different things per source (`node:brew@22` = a version; `firefox:flatpak@stable`
+= a flatpak *branch/channel*; snap has channels stable/candidate/beta/edge). So `@ref` is **one
+"which version/channel/branch" slot that the owning provider resolves** — the core never interprets
+it (ADR-0004 holds; ADR-0009's "versions are opaque to the core" extends naturally to refs). This
+folds *channel* into `@ref` too, so we don't need a third separator. `:` = source, `@` = source-ref,
+and — as agreed — `@` is left to mean version/ref because every other ecosystem trained that.
+
+**Bigger realization: the spec is universal across *all* commands, not just install.** `name:source`
+is the one "which one" disambiguator everywhere a package is named:
+- `jii firefox:flatpak` — install from flatpak (skip the source chooser);
+- `jii remove firefox:flatpak` — **this is the non-interactive answer to the multi-owner remove
+  chooser (#11)**: pick the copy directly instead of being asked;
+- `jii info node:brew`, `jii update node:brew@22` — same grammar.
+So the spec *unifies* source disambiguation that today is scattered across `--source` and two
+different interactive choosers. That consistency is the real prize — one grammar to learn, it works
+identically in every verb.
+
+**Explicit intent suppresses the question (the requested rule), with nuance:**
+- `:source` present → **skip the source chooser** (install) and the owning-source chooser (remove).
+  Code-wise this is one added clause on the existing `offer_choice` gate (`spec.source.is_none()`),
+  which confirms it fits — no new machinery.
+- `@ref` present → **skip any version prompt** and pin the ref.
+- **Partial spec `firefox@120` (ref, no source):** a ref is inherently source-specific, so this means
+  "version 120 from the *recommended* source" — resolve there, don't pop a generic source chooser
+  after the user has already narrowed intent. Only if the recommended source lacks that ref do we
+  fall back to "sources that have 120". So a ref *also* damps the source question.
+- **Explicit source with no match** (`firefox:flatpak` but flatpak has no firefox) → an honest error
+  ("firefox is not available from flatpak"), **never a silent substitution** to another source. That
+  is the cooperation lens (§C): respect intent, don't override it. (We may still print a one-line
+  "also available via dnf, cargo" — inform, don't nag.)
+
+**Resulting flag taxonomy (the "truly global" set shrinks hard):**
+
+| Destination | Flags / concepts |
+|-------------|------------------|
+| **Truly global flags** (kept, conventional — convention *is* usability here) | `-y/--yes`, `-n/--no`, `--dry-run`, `-v/--verbose`, `--json` |
+| **Into the package spec** | source (`:source`), version/channel (`@ref`) |
+| **Into the chooser** (interactive) | source selection when unspecified |
+| **Into config / `jii setup`** | `--profile` (a standing preference, not a per-run choice) |
+| **Eliminated / inferred** | `--auto` → folds into `-y`; `--no-color` → inferred from `NO_COLOR`+tty (kept only as an override) |
+| **Demoted but kept** | `--source` as the *whole-command* sweep (`jii a b c --source flatpak`, where repeating `:flatpak` per package would be tedious) and the scriptable/discoverable synonym |
+
+So the everyday surface a user must remember becomes: **`jii name[:source][@ref]`** plus a handful of
+global switches (`-y`, `--dry-run`, `-v`, `--json`). That is dramatically easier to hold in the head
+than a dozen flags.
+
+**Critical edge cases (why the pure, tested parser matters — ADR-0012):**
+- **npm scoped names start with `@`** (`@angular/cli`, `@vue/cli`) — a *leading* `@` is part of the
+  name, not a ref. Rule: split a ref only on a **non-leading** `@`, and only the **last** one, so
+  `@angular/cli@18` → name `@angular/cli`, ref `18`. This must be an explicit, unit-tested parser
+  rule, not an afterthought.
+- **`:` inside a name** is vanishingly rare on Linux; the `--source` flag is the escape hatch.
+- **github `owner/repo`** uses `/` (untouched by the spec); `owner/repo:github` would be redundant but
+  harmless.
+- **Parse the full grammar *now*, but reject an unimplemented `@ref` clearly.** The version chooser is
+  deferred, yet we are locking the 1.0 *surface*. Silently ignoring a version pin is dangerous (the
+  user asks for 120, gets latest). So parse `name[:source][@ref]`, and if `@ref` is used before
+  version selection exists, **error explicitly** ("pinning a version/channel is coming in a later
+  release") rather than dropping it. This locks a forward-compatible grammar without half-building it.
+
+**Recommendation — lock this as the Terminal 1.0 grammar.** It reads like a package specification
+designed *for* JII, it is additive/non-breaking (every flag still works), it *unifies* source
+selection across all verbs, and it fits the architecture with zero core changes (a pure `PackageSpec`
+parser; clap untouched; provider resolves `@ref`). It deserves its **own ADR** and should land with
+U4 (spec + chooser are the two faces of choosing a source; the "skip chooser when `:source` given"
+rule is literally one clause). After a genuinely critical pass I do **not** find a reason to prefer
+flags for package-belonging attributes — the spec wins. The only things that stay flags are the
+truly global ones, exactly as the user framed it.
