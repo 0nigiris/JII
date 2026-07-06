@@ -43,6 +43,31 @@ via optional `plan_install_many`, no model change). Next: **Homebrew** provider 
 
 ## Last completed work
 
+**U6 — helpful failure & doctor (2026-07-06).** All small commits, no architectural change to the
+core; two ADRs (0032, 0033):
+- **Actionable errors (D7, ADR-0032).** A pure, unit-tested `JiiError::remedy() -> Option<String>`
+  maps a *typed* failure to a next step, rendered under the error (`  → …`) by `main.rs::report`
+  (so a bad-config failure, before any `Renderer` exists, still gets its remedy). `UnknownSource`
+  lists `KNOWN_SOURCES` + points at the config/`jii setup`; `Config`/`Io` (by `ErrorKind`) get
+  specific advice; `Other(anyhow)` returns `None` on purpose — no string-sniffing opaque text into
+  a misleading remedy.
+- **doctor Tier 1 (D6).** `jii doctor` now prints, under the per-source health table, a "System
+  checks:" section about JII itself working — is `~/.local/bin` on `PATH` (where cargo/npm/pipx/go/
+  GitHub installs land), is `GITHUB_TOKEN` set. Read-only (reports + advises, no auto-apply). Pure
+  `system_checks` decides; JSON stays the stable per-source array. Consumed the previously
+  dead-coded `Platform::is_on_path`/`path_dirs`.
+- **recommend-catalog Tier 2 (D6, ADR-0033).** A **data subsystem**, not code, not a `Provider`:
+  `data/recommend/catalog.toml` embedded via `include_str!`, typed + loaded in `src/recommend.rs`,
+  filtered by host distro via the new `Distro::id()` (the first real consumer of distro-awareness
+  ADR-0029 deferred — entries *declare* their distros, no `if fedora` branch). `jii recommend`
+  lists curated Fedora suggestions (RPM Fusion, codecs, VLC, fonts, Steam, Wine, tuned-ppd) grouped
+  by category — each with why + the exact way to get it. `jii recommend <id>` **applies** one by
+  routing its `packages` through the normal install path (preview → confirm → execute, so the U3
+  pre-check + U5 preview come free); a `manual` repo-enable (RPM Fusion) is **shown, never run**
+  (the trust boundary is called out). Analyze → Explain → Ask → Apply throughout. **175 tests
+  green, clippy clean**; verified on Fedora (remedy, doctor checks, recommend list/apply/manual/
+  unknown-id). **Debt:** Fedora catalog entries are hand-curated, unverified on a clean VM (T7).
+
 **U5 — the Friendly/Advanced UX pass (2026-07-06).** A big verbosity + onboarding pass, all
 landed as small commits, no architectural change:
 - **Friendly/Advanced output modes (D8).** `config::OutputMode { Friendly (default), Advanced }`
@@ -249,8 +274,9 @@ parallelism problem); U1 killed unavailable-provider spam + de-duped the single-
 lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-installed pre-check
 (targeted `installed_lookup`, in-place update offer) and multi-owner `remove` (`resolve_all_installed`
 + chooser with "all"). U4 landed the `PackageSpec` grammar (ADR-0031) across install/remove/update/
-info; **U5** added Friendly/Advanced modes + the first-run wizard/`jii setup`. 165 tests green
-throughout.
+info; **U5** added Friendly/Advanced modes + the first-run wizard/`jii setup`; **U6** added
+actionable errors (ADR-0032), doctor Tier 1 system checks, and the recommend-catalog (ADR-0033:
+`jii recommend` list + apply). 175 tests green throughout.
 
 **CLI grammar LOCKED — ADR-0031.** After a first-principles pass (UX_EVALUATION §E/§E.1) the package
 spec **`name[:source][@ref]`** is now the *language of JII*: source/version/channel belong to the
@@ -274,17 +300,19 @@ multi-owner chooser); `update node:brew` picks the copy to update; `info firefox
 (`ranked_for` gained a `source` override). `@ref` rejected everywhere; `search` stays free-text.
 **U4 complete** — 162 tests green, clippy clean.
 
-**U5 landed (D8 + DW, all [A], no ADR).** Friendly/Advanced output modes (`config::OutputMode`,
-`Renderer::is_friendly`, `-v` forces Advanced), Friendly hides secondary-source noise + collapses
-the install preview to one line/package (full plan still under `--dry-run`/Advanced), first-run
-wizard + `jii setup` (`Config::save`, `MetaConfig::first_run_completed`, `is_first_run`), plus a
-clap fix (a global flag before a subcommand no longer misparses as install). **165 tests green.**
+**U5 landed (D8 + DW).** Friendly/Advanced output modes + first-run wizard/`jii setup` + a clap fix.
+**U6 landed (D7 + D6, ADR-0032/0033).** Actionable errors (`JiiError::remedy`), doctor Tier 1
+system checks, and the recommend-catalog (`jii recommend` list + `jii recommend <id>` apply). Both
+detailed under "Last completed work". **175 tests green.**
 
-**Next: U6** — actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog (codecs/GPU drivers/
-fonts/RPM Fusion/Steam-Wine/battery — the decided 1.0 scope, own catalog ADR). Then U7 (system-wide
-update D10 `plan_update_all`). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real
-speed fix and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the
-flag-shed follow-ups from ADR-0031.
+**Next: U7** — system-wide `update` (D10: an optional `Provider::plan_update_all() -> Option<InstallPlan>`,
+default `None`; bare `jii update` aggregates every provider that offers one into the usual batched,
+previewable, single-confirmation run; named `jii update <pkg>` keeps today's registry path). Then
+**U8** (first-run walkthrough polish). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the
+real speed fix and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the
+flag-shed follow-ups from ADR-0031. Structural cleanup queued: **split `cli/mod.rs`** (~1600 lines)
+into `cli/commands/*`. Recommend follow-ups: interactive multi-pick, skip already-satisfied entries,
+a real repo-enable capability (so RPM Fusion becomes a previewable plan, not a shown command).
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 
@@ -400,7 +428,10 @@ None.
 
 ## Test status
 
-`cargo test` — **165 passing, 0 failing**. U5 coverage: `config` mode/first-run
+`cargo test` — **175 passing, 0 failing**. U6 coverage: `error::remedy` (unknown-source lists the
+known ones, Io branches on `ErrorKind`, opaque errors invent nothing), `cli::system_checks` (PATH +
+token pass/fail + advice + env-name), `recommend` (embedded catalog parses, ids unique, empty-distros
+applies everywhere, distro filter selects matching). U5 coverage: `config` mode/first-run
 (`mode_defaults_to_friendly_and_first_run_is_true`, TOML round-trip, partial-TOML mode parse). U4
 coverage: `PackageSpec::parse` (11 cases — plain/source/ref combos, npm scope safety, last-colon/
 last-at split, trimming, structural errors). T5 coverage: `prompt::parse_choice` (empty→default,
@@ -478,11 +509,16 @@ Full rationale in [DECISIONS.md](DECISIONS.md). The load-bearing ones:
   — they need comparable versions / dependency-footprint data not yet collected.
 - **GPG / sigstore verification** are stubbed to fail closed in `exec.rs::verify_bytes`
   — implement when a source needs them (GitHub).
-- **`cli/mod.rs`** (~1400 lines after U4/U5 — spec parsing, the wizard, Friendly preview)
-  holds every command handler inline. It has now crossed the "unwieldy" line flagged in
-  ADR-0024; splitting into `cli/commands/*` (one module per subcommand + a shared helpers
-  module) is the next structural cleanup, best done between UX slices so it doesn't collide
-  with in-flight feature work.
+- **`cli/mod.rs`** (~1600 lines after U4/U5/U6 — spec parsing, the wizard, Friendly preview,
+  doctor Tier 1, `recommend`) holds every command handler inline. It has now well crossed the
+  "unwieldy" line flagged in ADR-0024; splitting into `cli/commands/*` (one module per subcommand
+  + a shared helpers module) is the next structural cleanup, best done between UX slices so it
+  doesn't collide with in-flight feature work.
+- **recommend-catalog is hand-curated + Fedora-only (ADR-0033).** The `data/recommend/catalog.toml`
+  entries (package names, the RPM Fusion command) are authored by hand and **not verified on a
+  clean VM**; verify in the T7 clean-VM pass. Non-Fedora entries are deliberately empty until
+  verified on a real host. `manual` (repo-enable) entries are shown, never run — a real repo-enable
+  capability (previewable plan) is a follow-up.
 - **pipx/go offer libraries (ADR-0023, by design):** PyPI/Go expose no reliable
   program-vs-library signal, so `pipx`/`go` don't pre-filter (cargo/npm do). They offer
   the package; the tool rejects a non-app at install. Accepted — a visible false positive
@@ -517,7 +553,9 @@ src/
   privilege.rs   sudo/pkexec elevation (prime + run)
   cache.rs       on-disk TTL search cache (stale-on-error)
   registry.rs    JSON install registry
+  recommend.rs   recommend-catalog: typed model + embedded-TOML loader + distro filter
   cli/, ui/, config.rs, platform.rs, error.rs
+data/            recommend/catalog.toml — the curated recommend-catalog (embedded at build)
 docs/            ARCHITECTURE (canonical) · ROADMAP · TASKS · DECISIONS · this file
 AGENTS.md        tool-neutral onboarding entry (read first); CLAUDE.md = Claude's copy
 LICENSE          MIT

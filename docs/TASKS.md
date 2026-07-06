@@ -324,12 +324,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             secondary-source noise + collapses the install preview) + first-run wizard/`jii setup`
             (DW: `Config::save`, `first_run_completed`) + a clap fix (global flag before a subcommand
             no longer misparses as install). 165 tests green.
-      - [ ] **U6** actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog (codecs/GPU drivers/
-            fonts/RPM Fusion/Steam-Wine/battery — own catalog ADR).
-            **U7** system-wide `update` (D10 `plan_update_all`). **U8** first-run walkthrough polish.
+      - [x] **U6** actionable errors (D7, ADR-0032: pure `JiiError::remedy()`) + doctor Tier 1
+            (system checks: `~/.local/bin` on PATH, `GITHUB_TOKEN`) + Tier 2 recommend-catalog
+            (D6, ADR-0033: `data/recommend/catalog.toml` embedded, distro-filtered; `jii recommend`
+            lists, `jii recommend <id>` applies via the normal install path; `manual` repo-enables
+            shown not run). 175 tests. Fedora catalog entries unverified on a clean VM (T7 debt).
+      - [ ] **U7** system-wide `update` (D10 `plan_update_all`). **U8** first-run walkthrough polish.
             Also on the list: **streaming/progressive search** (UX_EVALUATION §A, own ADR) — the real
             fix for perceived speed; lets the timeout be raised again. Structural cleanup queued:
-            **split `cli/mod.rs`** (~1400 lines) into `cli/commands/*`.
+            **split `cli/mod.rs`** (~1600 lines) into `cli/commands/*`. Recommend follow-ups:
+            interactive multi-pick, skip already-satisfied entries, a real repo-enable capability.
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,

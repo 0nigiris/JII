@@ -244,6 +244,26 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
     full parse matrix re-verified.
   - 165 tests, clippy clean; wizard + Friendly paths pty-verified in an isolated `XDG_CONFIG_HOME`.
     **U5 complete.**
+- **U6 — done (D7 + D6):**
+  - **Actionable errors (D7, ADR-0032):** a pure, unit-tested `JiiError::remedy()` maps a typed
+    failure to a next step, rendered under the error (`  → …`). `UnknownSource` lists the known
+    sources + points at the config/`jii setup`; `Config`/`Io` (by `ErrorKind`) get specific advice;
+    `Other(anyhow)` returns `None` (no string-sniffing opaque text). Rendered in `main.rs::report`
+    so a bad-config failure (before any `Renderer`) still gets its remedy.
+  - **doctor Tier 1 (D6):** under the per-source table, a "System checks:" section about JII itself
+    working — is `~/.local/bin` on `PATH` (user-space installs land there), is `GITHUB_TOKEN` set.
+    Read-only (reports + advises); pure `system_checks` decides pass/fail; JSON stays the stable
+    per-source array.
+  - **recommend-catalog Tier 2 (D6, ADR-0033):** a data subsystem — `data/recommend/catalog.toml`
+    embedded via `include_str!`, typed in `src/recommend.rs`, filtered by `Distro::id()` (no
+    `if fedora`). `jii recommend` reports curated Fedora suggestions (codecs, RPM Fusion, VLC,
+    fonts, Steam, Wine, power) grouped by category, each with why + the exact way to get it;
+    `jii recommend <id>` applies one through the normal install path (a `manual` repo-enable is
+    shown, never run). Analyze → Explain → Ask → Apply; the trust boundary (third-party repos) is
+    called out and never crossed silently.
+  - 175 tests, clippy clean; verified on Fedora (remedy, doctor checks, recommend list/apply/manual/
+    unknown-id). **Debt:** Fedora catalog entries curated by hand, unverified on a clean VM (T7).
+    **U6 complete.**
 
 ---
 
