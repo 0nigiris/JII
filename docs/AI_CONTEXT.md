@@ -237,12 +237,23 @@ Durable binding principle: *"does this belong to the package or the command?"* �
 extend `PackageSpec`, never a new flag. `--auto`→`-y`, `--profile`→config/wizard, `--source` demoted
 to whole-command synonym. **Syntax is settled — do not re-open it.**
 
-**Next: U4** — implement the `PackageSpec` grammar (pure `PackageSpec::parse`, clap untouched; parse
-full grammar but explicitly reject `@ref` until the version chooser lands) + chooser presentation (#4)
-+ **D5** source-supplied recommendation highlights (ADR, ADR-0022 optional-method shape). Then U5
-(Friendly/Advanced verbosity D8 + first-run wizard DW), U6 (errors D7 + doctor recommend-catalog), U7
-(system-wide update D10). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real speed
-fix and is on the list.
+**U4 landed (ADR-0031 + #4 + D5).** `PackageSpec::parse` (pure, `model.rs`, 11 tests) for
+`name[:source][@ref]`; wired into **install** — `:source` pins the provider and suppresses the chooser,
+`@ref` parsed but explicitly rejected until the version chooser lands, unknown source → did-you-mean,
+explicit source with no match → honest miss (no silent substitution); clap untouched, backwards
+compatible. **D5**: optional `Provider::highlights` (dnf/copr/flatpak/github/cargo) → `jii info` reads
+like the README; UI still never branches on source id. **Chooser (#4):** clearer header + "⭐
+recommended" tag. **162 tests green, clippy clean**, verified on Fedora (pty chooser, info, spec paths).
+
+**Remaining U4 TODO (do before/with U5):** the spec is universal in ADR-0031 but wired only into
+`install` — extend parsing to `remove`/`update`/`info` (`jii remove firefox:flatpak` = the
+non-interactive answer to the multi-owner remove chooser). Small isolated follow-up.
+
+**Next: U5** — Friendly/Advanced verbosity (D8) + first-run wizard/`jii setup` (DW, needs
+`Config::save`). Then U6 (errors D7 + doctor Tier1/Tier2 recommend-catalog), U7 (system-wide update
+D10 `plan_update_all`). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real speed fix
+and is on the list. `--auto`→`-y`, `--profile`→config, `--no-color`→NO_COLOR are the flag-shed
+follow-ups from ADR-0031.
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 

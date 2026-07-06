@@ -209,6 +209,22 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
     to one; non-interactive takes every owner (the removal preview + confirm still gate it). Since the
     resolver sees the whole system now (not just jii's registry), the miss message is the accurate
     "Not installed:" (was "Not installed via jii"). **U3 complete.**
+- **U4 — in progress (ADR-0031 + #4 + D5):**
+  - **`PackageSpec::parse`** (pure, isolated in `model.rs`, 11 tests): `name[:source][@ref]`, split on
+    the last non-leading `@` (npm scope-safe) and the last `:`.
+  - **install wiring:** `:source` pins the provider per-package and suppresses the chooser (one clause
+    on `offer_choice`); `@ref` is parsed but explicitly rejected ("coming with the version chooser");
+    an unknown pinned source fails fast with the known list (did-you-mean); an explicit source with no
+    match errors honestly (no silent substitution). clap untouched; backwards compatible.
+  - **D5 source highlights** (ADR-0022 optional `Provider::highlights`, default empty): dnf/copr/
+    flatpak/github/cargo return short honest source-specific reasons; `Engine::candidate_highlights`
+    exposes them; `jii info` now reads like the README ("✓ Official Fedora package · Native · …"),
+    the UI still never branching on the source id.
+  - **chooser presentation (#4):** clearer header + a "⭐ recommended" tag on the top option.
+  - 162 tests, clippy clean; verified on Fedora (info highlights, pty chooser, spec behaviours).
+  - **Remaining U4 TODO (before U5):** the spec is universal in ADR-0031 but wired only into `install`
+    so far — extend parsing to `remove`/`update`/`info` (`jii remove firefox:flatpak` is the
+    non-interactive answer to the multi-owner remove chooser). Small, isolated follow-up.
 
 ---
 
