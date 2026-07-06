@@ -199,6 +199,53 @@ impl Cli {
                 not_found.push(name.clone());
                 continue;
             }
+
+            // Cooperate with the system, don't clobber it (UX #3): if the package is
+            // already installed, say so instead of planning a pointless reinstall. We can
+            // only compare versions *within the same owning source* — versions are opaque
+            // across sources (ADR-0009), so a package present via another source reads as
+            // "already installed", not "outdated". `resolve_installed` uses the registry
+            // hint first, then a provider scan, so it also spots installs done outside jii.
+            let recommended_source = ranked[0].source_id.clone();
+            let available = ranked[0].version.clone();
+            if let Some(record) = engine.installed_lookup(name, &recommended_source).await {
+                let same_source = record.source_id == recommended_source;
+                let outdated = same_source && available.is_some() && available != record.version;
+                if !outdated {
+                    let v = record
+                        .version
+                        .as_ref()
+                        .map(|v| format!(" ({v})"))
+                        .unwrap_or_default();
+                    renderer.success(&format!(
+                        "{name} is already installed via {}{v}. Nothing to do.",
+                        record.source_id
+                    ));
+                    continue;
+                }
+                // Same source, a newer version is available → offer an in-place update
+                // (which is exactly what re-installing via this source does). A real batch
+                // includes it without prompting; a single install asks once.
+                renderer.info(&format!(
+                    "{name} is already installed via {} ({}). Available: {}.",
+                    record.source_id,
+                    version_or_unknown(record.version.as_ref()),
+                    version_or_unknown(available.as_ref()),
+                ));
+                if single && !self.global.dry_run {
+                    let flags = self.prompt_flags(engine.config().install.auto);
+                    if !prompt::confirm(renderer, "Update now?", true, &flags) {
+                        renderer.info("Keeping the installed version.");
+                        continue;
+                    }
+                }
+                // Confirming the update is itself the consent, so a trusted-enough in-place
+                // update skips the redundant batch confirm below (same rule as a chooser pick).
+                chose_interactively = true;
+                chosen.push(ranked.remove(0));
+                continue;
+            }
+
             // When a single install has genuine choice and the session is interactive,
             // let the user pick which source rather than silently taking the top rank
             // (the recommendation is the pre-selected default — Enter installs it). Batch
@@ -936,6 +983,11 @@ fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
         .iter()
         .flat_map(|bp| bp.records.iter().map(|r| r.name.clone()))
         .collect()
+}
+
+/// Render an optional version, or `unknown` when a source doesn't report one.
+fn version_or_unknown(version: Option<&crate::model::PkgVersion>) -> String {
+    version.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string())
 }
 
 /// A compact one-line description of a candidate for `search`/`info`:

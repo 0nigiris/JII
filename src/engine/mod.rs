@@ -464,6 +464,33 @@ impl Engine {
         )))
     }
 
+    /// The cheap "is this already here?" for the **install pre-check** (UX #3): the registry
+    /// hint (covers jii's own installs) verified against its owning provider, else a single
+    /// lookup in just the **recommended** source's installed set. Deliberately *not* a full
+    /// provider fan-out like [`resolve_installed`] — the install path is hot and a package a
+    /// source offers is, if installed at all, most likely installed via that source. Returns
+    /// the owning record (with its version) if present. The cross-source scan stays in
+    /// `resolve_installed`, used by remove/update where correctness beats latency.
+    pub async fn installed_lookup(
+        &self,
+        name: &str,
+        recommended_source: &str,
+    ) -> Option<InstalledRecord> {
+        // 1. Registry hint (jii installed it), verified still-present.
+        if let Some(record) = self.registry.get(name)
+            && self.is_installed_via(record).await
+        {
+            return Some(record.clone());
+        }
+        // 2. Otherwise check only the recommended source (one provider, not a fan-out).
+        let provider = self.providers.get(recommended_source)?;
+        if !provider.is_available().await {
+            return None;
+        }
+        let installed = provider.list_installed().await.ok()?;
+        installed.into_iter().find(|r| r.name == name)
+    }
+
     /// Whether the recorded install is still present, asked of its owning provider
     /// (which decides how to verify — list lookup or file existence).
     async fn is_installed_via(&self, record: &InstalledRecord) -> bool {

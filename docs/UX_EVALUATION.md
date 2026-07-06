@@ -193,6 +193,16 @@ doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog
   no loss of candidates (only copr, which was already lost, is skipped sooner). Availability
   memoisation and background-straggler caching (to recover slow copr without the wait) remain as
   follow-ups. clippy clean, 150 tests green throughout.
+- **U3 — in progress:** install now checks *before planning* whether the package is already present
+  (#3). `jii git` → "✓ git is already installed via dnf (2.55.0-1.fc44). Nothing to do." When the same
+  owning source offers a newer version it offers an in-place update ("… Available: X. Update now?");
+  confirming is the consent, so a trusted update skips the redundant batch confirm. Cross-source
+  presence reads as "already installed" (versions are opaque across sources, ADR-0009). To keep the
+  hot install path fast, the check is a new **targeted** `Engine::installed_lookup` (registry hint,
+  else *one* lookup in the recommended source only) — not the full multi-provider `resolve_installed`
+  fan-out (which measured ~1 s extra per fresh install and stays reserved for remove/update). Still
+  to do in U3: multi-owner `remove` via the chooser (#11). *Follow-up: a cheap single-package
+  `Provider::installed_version` would remove even the one `list_installed` the check still costs.*
 
 ---
 
