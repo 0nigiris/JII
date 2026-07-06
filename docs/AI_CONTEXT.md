@@ -217,14 +217,18 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**Terminal 1.0 (ADR-0026) — pivoted to a UX-polish pass (2026-07-06).** The interactive
-**candidate chooser** (T5.1) landed. Then the user, after dogfooding on a clean Fedora VM,
-re-prioritised to **UX polish, no new features**. The remaining T5 feature slices (GitHub by-name
-repo chooser, version chooser) are **deferred**. Current deliverable: **[docs/UX_EVALUATION.md](UX_EVALUATION.md)**
-— the architectural evaluation of the 16 reported UX problems + first-run wizard, with a U0–U8
-delivery order. **Blocked on one user decision (doctor scope, see the doc).** Do not start coding a
-[D]-item until its small ADR is written; the [A]-items (U1 output cleanup, U2 speed, U3
-already-installed/multi-owner remove) are pure polish and can start once the order is confirmed.
+**Terminal 1.0 (ADR-0026) — UX-polish pass in progress (2026-07-06).** After dogfooding on a clean
+Fedora VM the user re-prioritised to **UX polish, no new features**; the remaining T5 feature slices
+(GitHub by-name repo chooser, version chooser) are **deferred**. Plan + classification live in
+**[docs/UX_EVALUATION.md](UX_EVALUATION.md)** (U0–U8, its "Progress" section is the live status).
+Doctor scope decided: **Tier 1 + the recommend-catalog, both in 1.0** (own catalog ADR; ROADMAP
+"Analyze→Explain→Ask→Apply" holds). **Landed so far (all [A], no ADR):** U0 measured (startup ~0ms
+fine; cold search was 8s because one straggler — copr, ~9s API — burned the timeout, not a
+parallelism problem); U1 killed unavailable-provider spam + de-duped the single-package preview; U2
+lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-installed pre-check
+(targeted `installed_lookup`, in-place update offer) and multi-owner `remove` (`resolve_all_installed`
++ chooser with "all"). 150 tests green throughout. **Next: U4** — chooser presentation (#4) + **D5
+source-supplied recommendation highlights** (first ADR of the pass, ADR-0022 optional-method shape).
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 
