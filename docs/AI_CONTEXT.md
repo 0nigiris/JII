@@ -296,7 +296,28 @@ execution model (`Action` enum + `exec.rs`, ADR-0007).
 
 ## Current task
 
-**BETA-READINESS — FEATURE FREEZE (2026-07-06, owner-set).** The UX-polish pass (U0–U8) is complete
+**UX-WAVE 2 — real-use feedback from a clean Fedora VM (2026-07-06, owner-set).** The owner ran the
+pushed build on a VM and filed 15 UX points; priority is now **product/UX polish, not architecture**.
+Agreed decisions: **command order 1→2→3→4** = ① arrow-key TUI choosers → ② doctor becomes a real
+*system helper* (PATH, ~/.cargo/bin, internet, missing managers, flathub, permissions, broken repos,
+updates — Analyze→Explain→Ask→Apply, previewable fix plans) → ③ providers/marketplace (manage the
+ecosystems themselves: install/remove/update npm/cargo/brew/snap/nix + bootstrap a missing manager)
+→ ④ `info` becomes an app *card* (description/GitHub/site/license/author). Also decided: **recommend
+folds into the new doctor and the standalone `jii recommend` command is removed** (owner disliked it);
+**`list` and `audit` merge** into one (`jii list`, security via `jii list --audit`).
+**Done this session (pushed):** #3 setup stops advertising next commands; #10 crisp "already
+installed" (no "Nothing to do"); #12 `jii why`→`jii how` (`why` hidden alias); #13 crisp
+Installed/Removed/Updated confirmed; **#1 arrow-key TUI choosers via `dialoguer` Select** (↑↓/Enter/
+Esc, upgrades setup + source chooser + multi-owner remove at once; pty-verified); #6 `-d` alias for
+`--dry-run`. **Diagnosed #9** (npm `lodash` finds nothing) = **by design**, not a bug (npm/cargo only
+offer packages with a CLI `bin`; libraries aren't "programs"); a helpful "it's a library" message
+needs a small provider signal — noted follow-up. **#11 already done in U7** (bare `jii update` =
+whole system). **Next: ② doctor-as-system-helper** (the big one). 176 tests, clippy clean.
+
+**Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
+(CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
+The VM run reprioritised to UX-wave 2 *before* cutting Beta; the Beta plan still stands and resumes
+after this polish wave. Release infra is ready (owner cuts it by pushing a `v*` tag). The UX-polish pass (U0–U8) is complete
 and the CLI is functionally done. The owner has **frozen new large features** and set the drive to the
 **first public Beta**, priority order: **(1) CI → (2) integration tests → (3) clean-VM verification on
 Arch/Ubuntu/Debian/openSUSE → (4) README/logo/screenshots/asciinema/docs → (5) public release.** The
