@@ -306,8 +306,24 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
 - [~] **UX-polish pass (highest priority, 2026-07-06):** real-use feedback from a clean Fedora VM →
       16 UX problems + a first-run wizard, evaluated in **[UX_EVALUATION.md](UX_EVALUATION.md)**
       (10 pure polish over existing seams, 6 need small optional-capability/UI designs). Delivery
-      order U0–U8. Slots ahead of the deferred T5 feature slices; **blocked on one decision**
-      (doctor scope for 1.0). Also folds in much of T7 (error quality) and T8 (first-impression).
+      order U0–U8. Doctor scope decided: **Tier 1 + recommend-catalog, both in 1.0** (own catalog
+      ADR). Folds in much of T7 (error quality) and T8 (first-impression).
+      - [x] **U0** measured; **U1** unavailable-spam killed + single-pkg preview de-duped; **U2**
+            search timeout 8→5s (streaming search is the better long-term fix, UX_EVALUATION §A);
+            **U3** already-installed pre-check + multi-owner remove.
+      - [ ] **CLI grammar LOCKED (ADR-0031):** the package spec **`name[:source][@ref]`** is the
+            language of JII — source/version/channel belong to the *spec*, not flags; `@ref` is
+            source-interpreted (ADR-0004/0009). Durable principle: *"package or command?"* — package
+            attributes extend `PackageSpec`, never a new flag. Implement in **U4** (pure
+            `PackageSpec::parse`, clap untouched; `:source` suppresses the chooser — one clause;
+            `@ref` parsed but explicitly rejected until the version chooser lands). `--auto`→`-y`,
+            `--profile`→config, `--source` demoted to whole-command synonym.
+      - [ ] **U4** chooser presentation (#4) + **D5** source-supplied recommendation highlights (ADR)
+            + the `PackageSpec` grammar (ADR-0031). **U5** Friendly/Advanced verbosity (D8) + first-run
+            wizard/`jii setup` (DW). **U6** actionable errors (D7) + doctor Tier1/Tier2 recommend-catalog.
+            **U7** system-wide `update` (D10 `plan_update_all`). **U8** first-run walkthrough polish.
+            Also on the list: **streaming/progressive search** (UX_EVALUATION §A, own ADR) — the real
+            fix for perceived speed; lets the timeout be raised again.
 - [ ] **T6 — Bootstrap a missing manager:** optional `Provider::bootstrap_plan`; engine offers
       it when a chosen source is unavailable. Strongest consent, never auto. Own ADR.
 - [ ] **T7 — Hardening:** CLI integration tests (`assert_cmd`), registry-partial-failure test,

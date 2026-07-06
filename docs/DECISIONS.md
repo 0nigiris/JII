@@ -1305,3 +1305,56 @@ surface when the user opens the chooser or nothing more trusted matched.
 - New debt: a picked repo can fail *at plan time* if its latest release has no Linux asset for the
   arch (the search phase cannot know). Message is explicit; revisit with caching/token in T7.
 - No engine or core change; the growth is entirely inside the github `Provider` (ADR-0004/0022).
+
+---
+
+## ADR-0031 — The JII package spec `name[:source][@ref]` is the language of JII; package-belonging attributes extend the spec, not the flags
+
+**Status:** Accepted 2026-07-06. Locks the Terminal 1.0 CLI *surface*. Lands with Terminal 1.0 (ADR-0026) T5/U4 (UX pass). Full first-principles evaluation and critical pass in [UX_EVALUATION.md](UX_EVALUATION.md) §E/§E.1.
+
+**Context:** Dogfooding raised a first-principles question about the CLI: rather than "which flag deserves a shorter alias?", ask "**should this even be a flag?**". JII's dominant interaction is *"install this software"* (`jii <name>`); flags are overrides and scripting knobs, not the everyday path. Several current globals describe **the package**, not **the command**: `--source` (which provider), and — deferred — version/channel selection. Traditional package managers scatter these across flags and per-command choosers; copying that convention is not a goal (ADR-0020: JII is a universal layer, and its ergonomics should feel designed for it, not inherited).
+
+Two separate questions were deliberately kept apart. A **flag's spelling** (`-y`, `--dry-run`) is where convention *is* usability (muscle memory, `--help`, shell completion), so reinventing it (e.g. single-dash long flags) costs more than it saves and clap v4 fights it anyway (rejected in §B). But **what deserves to be a flag at all** is fair game — and that is where the real win is.
+
+**Decision:** Introduce a universal **package specification** and treat it as the language of JII:
+
+```
+name[:source][@ref]
+```
+
+- **`name`** — the package (the only required part).
+- **`:source`** — the owning provider (an id in `KNOWN_SOURCES`), e.g. `firefox:flatpak`. Per-package and unambiguous (`jii firefox:flatpak cava:dnf`).
+- **`@ref`** — a **source-interpreted** version/channel/branch reference: `node:brew@22` (a version), `firefox:flatpak@stable` (a flatpak branch), snap channels, etc. The **core never interprets `@ref`** — the owning provider resolves it (ADR-0004; ADR-0009's "versions are opaque to the core" extends to refs). This folds *channel* into `@ref`, so no third separator is needed. `@` is reserved for the ref because every other ecosystem (npm/pip/go/cargo) has trained users that `@` means version; using it for source would mis-train them.
+
+The spec is **universal across every verb** that names a package — install, `remove firefox:flatpak` (which is the non-interactive answer to the multi-owner remove chooser, ADR-scoped as UX #11), `info`, `update node:brew@22`. One grammar unifies the source disambiguation that today is split between `--source` and two different interactive choosers.
+
+**Explicit intent suppresses the matching question:**
+- `:source` present → **skip the source chooser** (install) and the owning-source chooser (remove) — implemented as one added clause on the existing `offer_choice` gate.
+- `@ref` present → skip any version prompt and pin the ref.
+- `firefox@120` (ref, no source) → resolve in the *recommended* source; only if it lacks the ref fall back to sources that have it.
+- an explicit source with **no match** (`firefox:flatpak` where flatpak has no firefox) → an honest error, **never a silent substitution** to another source (the cooperation principle).
+
+**Flag taxonomy after the spec** (the "truly global" set shrinks hard):
+- **Kept, conventional (truly global):** `-y/--yes`, `-n/--no`, `--dry-run`, `-v/--verbose`, `--json`.
+- **Into the spec:** source (`:source`), version/channel (`@ref`).
+- **Into the chooser:** source selection when unspecified.
+- **Into config / `jii setup`:** `--profile` (a standing preference, not a per-run choice).
+- **Eliminated / inferred:** `--auto` folds into `-y` (both merely skip the trusted-confirm; the trust barrier still governs untrusted, ADR-0006); `--no-color` inferred from `NO_COLOR`+tty, kept only as an explicit override.
+- **Demoted but kept:** `--source` as the *whole-command* sweep (`jii a b c --source flatpak`) and a scriptable/discoverable synonym.
+
+**The durable principle (this is the point of the ADR).** Before adding any future flag, ask: **"Does this belong to the package itself, or to the command?"** If it belongs to the package (source, version, channel, …), it **extends `PackageSpec`**, not the flag set. If it modifies the command/output/consent (`--dry-run`, `--json`, `-y`), it may be a flag. This one rule keeps the CLI small and memorable for years and is binding on every future feature.
+
+**Implementation shape (fits with zero core changes):** a pure, unit-tested `PackageSpec::parse` (the ADR-0012 "isolate + test parsers" pattern); **clap is untouched** — the spec is an ordinary positional value JII parses itself. Parse rules of note: an npm **scoped name starts with `@`** (`@angular/cli`), so a ref is split only on a **non-leading, last** `@` (`@angular/cli@18` → name `@angular/cli`, ref `18`); a source is validated against `KNOWN_SOURCES` with a did-you-mean suggestion; a literal `:` in a name (vanishingly rare) uses `--source` as the escape hatch. **Parse the full grammar now, but reject an unimplemented `@ref` explicitly** ("pinning a version/channel is coming in a later release") rather than silently dropping a version pin — this locks a forward-compatible surface without half-building version selection.
+
+**Alternatives considered:**
+- **Single-dash long flags (`-source`).** Rejected (§B): clap v4 has no single-dash-long; only an argv-normalising shim could fake it, leaving help/errors/completions inconsistent — reinventing flag *spelling* for no real gain.
+- **Keep `--source`/`--version` as flags, just add short aliases.** Rejected as the primary path: these describe the *package*, so a flag is the wrong home; the spec is more consistent and readable, and unifies disambiguation across all verbs. `--source` survives only as the whole-command sweep/synonym.
+- **A third separator for channel** (e.g. `name:source/channel@version`). Rejected: `@ref` is already source-interpreted, so channel and version share the one slot — simpler, and the provider (which knows whether it has channels) decides.
+- **Do nothing / pure traditional flags.** Considered and rejected on the merits (not merely tradition): the spec measurably reduces typing *and* reads better *and* removes two redundant choosers' worth of inconsistency, at additive/non-breaking cost.
+
+**Consequences:**
+- The everyday surface becomes **`jii name[:source][@ref]`** plus a handful of global switches — dramatically easier to hold in the head than a dozen flags.
+- **Additive and non-breaking:** every existing flag still works; the spec is the new *preferred* and *taught* form, `--source` the synonym.
+- No core/engine change and no clap change; a new pure parser is the only addition, and the "skip chooser when `:source` given" rule is one clause on existing gating.
+- Binds future work via the "package or command?" principle — new package attributes extend `PackageSpec`, keeping the CLI clean.
+- Locks the Terminal 1.0 CLI surface, so `@ref` is parsed (and cleanly rejected until version selection lands) rather than deferred, avoiding a later breaking grammar change.

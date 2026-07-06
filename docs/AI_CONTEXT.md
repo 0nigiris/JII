@@ -227,8 +227,22 @@ fine; cold search was 8s because one straggler — copr, ~9s API — burned the 
 parallelism problem); U1 killed unavailable-provider spam + de-duped the single-package preview; U2
 lowered the search timeout 8→5s (search 8.05→5.08s); U3 added an already-installed pre-check
 (targeted `installed_lookup`, in-place update offer) and multi-owner `remove` (`resolve_all_installed`
-+ chooser with "all"). 150 tests green throughout. **Next: U4** — chooser presentation (#4) + **D5
-source-supplied recommendation highlights** (first ADR of the pass, ADR-0022 optional-method shape).
++ chooser with "all"). 150 tests green throughout.
+
+**CLI grammar LOCKED — ADR-0031.** After a first-principles pass (UX_EVALUATION §E/§E.1) the package
+spec **`name[:source][@ref]`** is now the *language of JII*: source/version/channel belong to the
+**spec**, not flags; `@ref` is **source-interpreted** (core never parses it, ADR-0004/0009); the spec
+is universal across install/remove/update/info and an explicit `:source` suppresses the chooser.
+Durable binding principle: *"does this belong to the package or the command?"* — package attributes
+extend `PackageSpec`, never a new flag. `--auto`→`-y`, `--profile`→config/wizard, `--source` demoted
+to whole-command synonym. **Syntax is settled — do not re-open it.**
+
+**Next: U4** — implement the `PackageSpec` grammar (pure `PackageSpec::parse`, clap untouched; parse
+full grammar but explicitly reject `@ref` until the version chooser lands) + chooser presentation (#4)
++ **D5** source-supplied recommendation highlights (ADR, ADR-0022 optional-method shape). Then U5
+(Friendly/Advanced verbosity D8 + first-run wizard DW), U6 (errors D7 + doctor recommend-catalog), U7
+(system-wide update D10). Streaming/progressive search (UX_EVALUATION §A, own ADR) is the real speed
+fix and is on the list.
 
 <details><summary>Earlier T1–T3 detail (all landed)</summary>
 
