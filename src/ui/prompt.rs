@@ -97,7 +97,7 @@ pub fn choose(renderer: &Renderer, header: &str, options: &[String], default: us
         renderer.info(&format!("{mark} {}) {}", i + 1, opt));
     }
     loop {
-        print!("Install which? [{}] (or 'n' to cancel): ", default + 1);
+        print!("Your choice [{}] (or 'n' to cancel): ", default + 1);
         let _ = io::stdout().flush();
 
         let mut line = String::new();

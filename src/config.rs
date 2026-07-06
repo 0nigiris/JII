@@ -213,8 +213,6 @@ impl Config {
 
     /// Write the config back to the default path (creating the directory if needed). Used by
     /// the first-run wizard / `jii setup` to persist the chosen mode and the first-run flag.
-    // TODO(U5): consumed by the wizard/`setup` commit that follows.
-    #[allow(dead_code)]
     pub fn save(&self) -> Result<()> {
         let path = Self::default_path()
             .ok_or_else(|| JiiError::Config("cannot resolve a config path to save to".into()))?;
@@ -228,8 +226,6 @@ impl Config {
     }
 
     /// Whether the first-run wizard has not yet been completed.
-    // TODO(U5): consumed by the wizard/`setup` commit that follows.
-    #[allow(dead_code)]
     pub fn is_first_run(&self) -> bool {
         !self.meta.first_run_completed
     }

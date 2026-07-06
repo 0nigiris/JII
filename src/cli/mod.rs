@@ -113,6 +113,8 @@ pub enum Commands {
     History,
     /// List installation sources (providers) and whether each is usable here.
     Sources,
+    /// Run the first-run setup wizard again (choose mode, optional system check).
+    Setup,
 }
 
 impl Cli {
@@ -142,8 +144,14 @@ impl Cli {
             }
             None => {
                 if self.packages.is_empty() {
-                    renderer.info("Usage: jii <package…>  (try `jii --help`)");
-                    Ok(())
+                    // Very first bare `jii` on an interactive terminal → a warm welcome + the
+                    // 30-second setup wizard (once). Otherwise the usual usage hint.
+                    if config.is_first_run() && self.interactive(&renderer) {
+                        self.setup(config, &renderer, true).await
+                    } else {
+                        renderer.info("Usage: jii <package…>  (try `jii --help`)");
+                        Ok(())
+                    }
                 } else {
                     self.install(&self.packages, config, &renderer).await
                 }
@@ -163,6 +171,7 @@ impl Cli {
             Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
             Some(Commands::Sources) => self.sources(config, &renderer).await,
+            Some(Commands::Setup) => self.setup(config, &renderer, false).await,
         }
     }
 
@@ -917,6 +926,70 @@ impl Cli {
                 renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.label()));
             }
         }
+        Ok(())
+    }
+
+    /// The first-run wizard (and `jii setup`). Warm, short, jargon-free — written for someone
+    /// who just opened a terminal. `first_run` is true when it fires automatically on the very
+    /// first bare `jii`; then a decline is honored *and* still marks first-run done so it never
+    /// nags again. It only asks and only changes the config it saves — it never touches the
+    /// system without consent (the optional `doctor` it offers is read-only today; the
+    /// system-helping doctor lands in U6).
+    async fn setup(
+        &self,
+        mut config: Config,
+        renderer: &Renderer,
+        first_run: bool,
+    ) -> crate::error::Result<()> {
+        let flags = self.prompt_flags(false);
+
+        if first_run {
+            renderer.info("Welcome to JII 👋");
+            renderer.info("");
+            renderer.info("JII installs Linux software for you: it searches the sources you already");
+            renderer.info("have (dnf, Flatpak, …), picks the best one, and tells you why.");
+            renderer.info("");
+            if !prompt::confirm(renderer, "Spend 30 seconds setting it up?", true, &flags) {
+                config.meta.first_run_completed = true;
+                if let Err(e) = config.save() {
+                    renderer.warn(&format!("Could not save settings: {e}"));
+                }
+                renderer.info("No problem — try `jii firefox` to install something, or `jii setup` anytime.");
+                return Ok(());
+            }
+        }
+
+        // Step 1 — how much detail (Friendly vs Advanced).
+        renderer.info("");
+        let mode = match prompt::choose(
+            renderer,
+            "How much should JII tell you?",
+            &[
+                "Friendly — short, clear output (recommended)".to_string(),
+                "Advanced — full detail, source rationale, diagnostics".to_string(),
+            ],
+            0,
+        ) {
+            Some(1) => crate::config::OutputMode::Advanced,
+            _ => crate::config::OutputMode::Friendly,
+        };
+        config.ui.mode = mode;
+
+        // Step 2 — optional system check (read-only today).
+        if prompt::confirm(renderer, "Run a quick system check (jii doctor) now?", true, &flags) {
+            renderer.info("");
+            self.doctor(config.clone(), renderer).await?;
+        }
+
+        // Persist the choices and mark the wizard done.
+        config.meta.first_run_completed = true;
+        if let Err(e) = config.save() {
+            renderer.warn(&format!("Could not save settings: {e}"));
+        }
+
+        renderer.info("");
+        renderer.success("Setup complete — you're ready.");
+        renderer.info("Try:  jii fastfetch   ·   jii search firefox   ·   jii update");
         Ok(())
     }
 
