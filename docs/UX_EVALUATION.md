@@ -81,10 +81,18 @@ read-only surfaces only report, `--fix`/`setup` propose a previewable `InstallPl
   GPU drivers, fonts, RPM Fusion, Steam/Wine, battery. This is a **data-driven, distro-aware,
   auditable catalog** — a real content subsystem, not polish, and explicitly deferred in ROADMAP.
 
-**Recommendation:** ship Tier 1 in Terminal 1.0 (turns `doctor` from a status printer into a
-helper using machinery we already have); keep Tier 2 as the ROADMAP `jii recommend` surface *unless
-you want the catalog inside 1.0* — that materially enlarges 1.0 and reopens the "no new features"
-line. **This is the one genuine fork that needs your call.**
+**Decision (user, 2026-07-06): Tier 1 + Tier 2 catalog, both in Terminal 1.0.** So `doctor`
+becomes a real system helper, and the curated **recommend-catalog** ships in 1.0. Consequences to
+honour:
+- The catalog is its own **data-driven, distro-aware, auditable subsystem** (own ADR) — a TOML/data
+  catalog routed through the `platform` seam, **not** hardcoded `if fedora`/`if nvidia` branching.
+  It stays out of the core and off the `Provider` trait's mandatory surface.
+- **Analyze → Explain → Ask → Apply is non-negotiable** (ROADMAP): `doctor`/`recommend` only report;
+  every fix is a previewable `InstallPlan`/`Action` (`--dry-run`-able, privileged steps batched and
+  shown), applied **only** after explicit confirmation. No `curl|sh`, no silent repo edits. Enabling
+  a third-party repo (RPM Fusion) crosses a trust boundary and must surface the same trust story.
+- This is the **largest** track in the pass (a content subsystem, not polish); it is sequenced last
+  (part of U6) so the cheap, universally-wanted polish (U1–U3) lands first.
 
 ### D7 — Actionable errors (own ADR, small)
 
@@ -141,7 +149,37 @@ Ordered by impact-per-risk; each keeps build/clippy/tests green and is independe
   awkward edge (#15).
 
 New ADRs expected: D5, D6, D7, D8, D10, DW (six) — each a small, pre-authorised optional-capability
-or UI/config decision, written when its track lands (per ADR-0026's "own ADR when it lands").
+or UI/config decision, written when its track lands (per ADR-0026's "own ADR when it lands"). The
+doctor **recommend-catalog** (D6 Tier 2, now in scope) also gets its own catalog ADR.
+
+---
+
+## U0 measurements (release build, clean Fedora VM, 2026-07-06)
+
+- **Startup** (`jii --help`): **~0.00 s**. Not a problem — no optimisation warranted.
+- **`jii sources`** (14 sequential `is_available` probes): **0.21 s**. Acceptable; availability
+  memoisation (U2) trims it and, more importantly, avoids re-probing within a single command.
+- **Cold `jii search git`**: **8.05 s** — the real latency problem, and the diagnosis overturns a
+  guess: search is **already parallel** (`join_all`); the wall-clock is the **8 s network timeout**
+  one straggler (`copr`) burns while dnf/flatpak answered in milliseconds. `join_all` waits for the
+  slowest. **Levers (U2):** lower the default `network.timeout_secs` (8 → ~4); surface partial
+  results as fast providers finish (or a shorter per-source budget for network sources); availability
+  caching is a minor gain here, the timeout is dominant. This is evidence-led per ADR-0010.
+
+**Two real (non-UX) findings surfaced by the noise-removal, logged as debt:**
+- `copr: timeout` on a common query — copr's search/probe is slow enough to hit the timeout; needs a
+  faster probe or a tighter per-source budget (feeds U2).
+- `cargo: malformed json: error decoding response body` — the cargo provider fails to decode the
+  crates.io response for `git`. A likely **provider correctness bug** (API shape/rate-limit/HTML
+  error body), not mere UX; investigate separately during U2/U6.
+
+## Progress
+
+- **U0 — measured** (above).
+- **U1 — done (first slice):** killed the unavailable-provider spam. `engine::search_one` now treats
+  "tool not installed" as the normal, silent state (a stale cache entry still counts); only genuine
+  errors/timeouts land in `SearchResult.failed`. `jii sources`/`doctor` still report availability.
+  Verified: `jii search git` went from 7 noise lines to 0. clippy clean, 150 tests green.
 
 ---
 

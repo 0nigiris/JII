@@ -231,7 +231,12 @@ impl Engine {
 
         match tokio::time::timeout(timeout, provider.is_available()).await {
             Ok(true) => {}
-            Ok(false) => return or_stale(fail("unavailable")),
+            // Tool not installed here — the normal state for most sources on any given distro
+            // (apt/pacman/zypper on Fedora, dnf on Arch, …). This is not a failure worth
+            // reporting: surfacing it once per source per search is pure noise (UX #1), so we
+            // contribute nothing silently (a stale cache entry still counts if we have one).
+            // `jii sources`/`jii doctor` remain the place to see what's unavailable.
+            Ok(false) => return Ok(self.cache.get_stale(&id, &query.raw).unwrap_or_default()),
             Err(_) => return or_stale(fail("timeout")),
         }
         match tokio::time::timeout(timeout, provider.search(query)).await {
