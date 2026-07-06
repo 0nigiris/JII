@@ -13,6 +13,7 @@ mod model;
 mod platform;
 mod privilege;
 mod provider;
+mod recommend;
 mod registry;
 mod ui;
 

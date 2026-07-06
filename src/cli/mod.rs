@@ -105,6 +105,8 @@ pub enum Commands {
     },
     /// Report source availability, latency and health.
     Doctor,
+    /// Suggest curated, distro-aware software to round out a fresh system.
+    Recommend,
     /// Audit installed software: source, trust, verification and concerns.
     Audit,
     /// List software installed via JII.
@@ -164,6 +166,7 @@ impl Cli {
             Some(Commands::History) => self.history(config, &renderer),
 
             Some(Commands::Doctor) => self.doctor(config, &renderer).await,
+            Some(Commands::Recommend) => self.recommend(&renderer),
             Some(Commands::Audit) => self.audit(config, &renderer),
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
@@ -1174,6 +1177,70 @@ impl Cli {
                 renderer.info(&format!("    → {advice}"));
             }
         }
+        Ok(())
+    }
+
+    /// Suggest curated, distro-aware software for a fresh system (the recommend-catalog,
+    /// U6/D6 Tier 2). Read-only: it reports what's worth adding and the exact way to add it
+    /// (a `jii …` install, or — for a third-party repo a package install can't express — the
+    /// documented command to run). It never modifies the system (Analyze → Explain; applying
+    /// stays an explicit, separate user action).
+    fn recommend(&self, renderer: &Renderer) -> crate::error::Result<()> {
+        let catalog = crate::recommend::Catalog::load()
+            .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("catalog: {e}")))?;
+        let distro_id = crate::platform::Platform::detect().distro.id();
+        let entries = catalog.for_distro(distro_id);
+
+        if renderer.is_json() {
+            let rows: Vec<_> = entries
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "id": r.id,
+                        "title": r.title,
+                        "why": r.why,
+                        "category": r.category,
+                        "packages": r.packages,
+                        "manual": r.manual,
+                        "note": r.note,
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        if entries.is_empty() {
+            let host = if distro_id.is_empty() { "this system" } else { distro_id };
+            renderer.info(&format!(
+                "No recommendations for {host} yet. The catalog is Fedora-first for now."
+            ));
+            return Ok(());
+        }
+
+        renderer.info("Recommended for your system:");
+        renderer.info("");
+
+        let mut last_category: Option<&str> = None;
+        for r in &entries {
+            if last_category != Some(r.category.as_str()) {
+                renderer.info(&format!("[{}]", r.category));
+                last_category = Some(r.category.as_str());
+            }
+            renderer.info(&format!("  {}", r.title));
+            renderer.info(&format!("    {}", r.why));
+            if !r.packages.is_empty() {
+                renderer.info(&format!("    Install:  jii {}", r.packages.join(" ")));
+            }
+            if let Some(manual) = &r.manual {
+                renderer.info(&format!("    Run:      {manual}"));
+            }
+            if let Some(note) = &r.note {
+                renderer.info(&format!("    Note:     {note}"));
+            }
+            renderer.info("");
+        }
+        renderer.info("These are suggestions — nothing was changed. Install any with the command shown.");
         Ok(())
     }
 

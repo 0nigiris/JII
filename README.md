@@ -61,7 +61,8 @@ jii search <query>  show ranked candidates without installing
 jii info <name>     sources, versions, trust, and the recommendation + why
 jii sources         list providers and whether each is usable here
 jii why <name>      explain the how & why
-jii doctor          source health, latency, rate limits
+jii doctor          source health, latency, rate limits + system checks
+jii recommend       curated, distro-aware suggestions for a fresh system
 jii audit           verify signatures & trust
 jii history         installation history
 jii list            what JII installed

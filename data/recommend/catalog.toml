@@ -1,0 +1,80 @@
+# JII recommend-catalog — curated system-onboarding suggestions.
+#
+# This is DATA, not code: `jii recommend` filters these by the host distro and
+# reports them (Analyze → Explain). It NEVER auto-applies. Entries either install
+# through the normal JII path (`packages`) or, when they cross a trust boundary a
+# package install can't express (enabling a third-party repo), show the exact
+# documented command for the user to run themselves (`manual`).
+#
+# Fields:
+#   id       stable slug (unique)
+#   title    one-line human name
+#   why      what the user gains
+#   category media | repos | drivers | fonts | gaming | power
+#   distros  distro ids this applies to (empty = all); matched against Platform.distro
+#   packages JII specs to install to satisfy it (optional)
+#   manual   an exact command the user runs, for repo-enabling etc. (optional)
+#   note     a caveat worth surfacing (optional) — e.g. a trust boundary
+#
+# Keep entries conservative and honest. Fedora-first (the MVP target); other
+# distros get entries as they are verified on a real host.
+
+[[recommendation]]
+id = "rpmfusion"
+title = "RPM Fusion repositories (free + nonfree)"
+why = "Unlocks codecs, some drivers, and apps Fedora can't ship for legal reasons. Many other recommendations below need it first."
+category = "repos"
+distros = ["fedora"]
+manual = "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+note = "Third-party repositories — you are extending who you trust for packages. Official RPM Fusion instructions: https://rpmfusion.org/Configuration"
+
+[[recommendation]]
+id = "multimedia-codecs"
+title = "Multimedia codecs (H.264/H.265, AAC, …)"
+why = "Play the video and audio formats Fedora omits by default, in browsers and media players alike."
+category = "media"
+distros = ["fedora"]
+packages = ["gstreamer1-plugins-bad-free", "gstreamer1-plugins-ugly", "gstreamer1-plugin-openh264"]
+note = "Needs RPM Fusion enabled first (see the rpmfusion entry)."
+
+[[recommendation]]
+id = "vlc"
+title = "VLC media player"
+why = "Plays practically any media file without hunting for codecs."
+category = "media"
+distros = ["fedora"]
+packages = ["vlc"]
+
+[[recommendation]]
+id = "fonts-core"
+title = "Common fonts (emoji + broad Unicode coverage)"
+why = "Emoji and non-Latin text render instead of showing empty boxes."
+category = "fonts"
+distros = ["fedora"]
+packages = ["google-noto-emoji-fonts", "google-noto-sans-cjk-fonts"]
+
+[[recommendation]]
+id = "steam"
+title = "Steam"
+why = "The main PC games store; pairs with Proton to run many Windows titles."
+category = "gaming"
+distros = ["fedora"]
+packages = ["steam:flatpak"]
+note = "The Flatpak build is sandboxed and the least fuss on Fedora."
+
+[[recommendation]]
+id = "wine"
+title = "Wine"
+why = "Run many Windows applications and games directly on Linux."
+category = "gaming"
+distros = ["fedora"]
+packages = ["wine"]
+
+[[recommendation]]
+id = "power-tuned"
+title = "Laptop power tuning (tuned-ppd)"
+why = "Better battery life and a power-profile switch on laptops."
+category = "power"
+distros = ["fedora"]
+packages = ["tuned-ppd"]
+note = "Mainly useful on laptops; harmless on a desktop but unnecessary."

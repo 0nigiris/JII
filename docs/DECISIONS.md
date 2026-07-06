@@ -1382,3 +1382,28 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - Errors now teach: a typo in a config source, a missing config path, a permission problem each print an exact next step.
 - Adding a remedy for a new failure is a one-arm `match` + a unit test; the discipline ("no invented remedies for opaque errors") keeps it honest.
 - Forward hook: as high-value `Other` cases (GitHub rate limit, a source's tool missing → bootstrap offer) become typed or move to `doctor`, they slot into `remedy()`/Tier 1 without a redesign.
+
+## ADR-0033 — The recommend-catalog is a data subsystem, distro-filtered, read-only (Analyze → Explain)
+
+**Status:** Accepted 2026-07-06. Lands with Terminal 1.0 (ADR-0026) U6 (UX pass, problem D6 Tier 2 — pulled into 1.0 by the user's 2026-07-06 scope decision). Slice 1 (this ADR): the catalog + `jii recommend` reporting. Applying entries through the engine is a planned follow-up slice.
+
+**Context:** D6 split `doctor`/onboarding into two tiers. Tier 1 (system checks about JII working) shipped as part of `doctor` (ADR-0033-adjacent, in that commit). Tier 2 is the *curated recommendations* — codecs, RPM Fusion, GPU drivers, fonts, Steam/Wine, battery — which the UX evaluation flagged as "a real content subsystem, not polish," deferred in the ROADMAP but pulled into 1.0 by the user. Two hard constraints frame it: (1) **the core never branches on distro** (ADR-0029) — yet these recommendations are inherently distro-specific; (2) **Analyze → Explain → Ask → Apply, never auto-modify** (ROADMAP) — yet several entries (RPM Fusion) cross a trust boundary a plain package install can't express.
+
+**Decision:** Model the catalog as a **data subsystem**, not code and not a `Provider`:
+- The catalog is **authored as TOML** (`data/recommend/catalog.toml`), **embedded** via `include_str!` so the binary is self-contained (establishing the `data/` pattern CLAUDE.md reserves for declarative providers). Parsing lives in `src/recommend.rs` behind a small typed model (`Catalog`/`Recommendation`), unit-tested against the shipped file (valid TOML, unique ids, every entry actually does something).
+- **Distro-awareness is data, not branching.** Each entry *declares* the distro ids it applies to (empty = all); `Catalog::for_distro(id)` filters on that. The one new host fact is `Distro::id()` (a plain string accessor — the recommend-catalog is the first real consumer of distro-awareness that ADR-0029 deferred to "its first consumer"). No `if fedora` anywhere; adding a distro is adding data.
+- **`jii recommend` is read-only** (Analyze → Explain): it groups the applicable entries by category and shows, per entry, *what it is*, *why you'd want it*, and *the exact way to get it* — a `jii <specs>` install for anything installable through JII, or, for a step a package install can't express (enabling a third-party repo), the **documented command shown for the user to run themselves** (`manual`). JII never runs `manual`, never edits repos, never `curl|sh`. Notes surface trust boundaries explicitly (RPM Fusion = "you are extending who you trust").
+- Entries resolve to **normal JII specs** (`steam:flatpak`, `vlc`), so *applying* a recommendation is just the existing install path — the catalog adds no new install machinery and the engine still never learns about "recommendations".
+
+**Alternatives considered:**
+- **Hardcode recommendations in Rust with `if distro == Fedora` / hardware probes.** Rejected head-on: it violates ADR-0029, buries auditable content in code, and makes community contribution a code change. Data + a declared-distro filter is the whole point.
+- **Make `recommend` auto-apply (install the whole set).** Rejected for slice 1: apply must be per-entry, previewable, and explicitly confirmed (Analyze → **Ask** → Apply), and repo-enabling crosses a trust boundary that deserves its own careful plan. Reporting first is the honest, shippable floor; guided per-entry apply is the next slice.
+- **Model repo-enabling (RPM Fusion) as a fake package.** Rejected: JII's dnf provider installs by *name*, not a remote `.rpm` URL, and pretending otherwise would either fail or hide a trust decision. Showing the official documented command is honest and keeps the user in control.
+- **A `recommend` `Provider`.** Rejected: recommendations aren't a search source; they're curated content that *points at* real sources. Forcing them onto the `Provider` trait would distort it.
+
+**Consequences:**
+- Fedora users get a genuinely useful "round out my fresh install" surface; the catalog grows by editing TOML, reviewable in isolation.
+- Distro coverage expands by adding entries with the right `distros` — no code change, no core/distro branching.
+- The trust story stays visible: third-party repos are labelled, and JII never enables them silently.
+- **Follow-up (own slice):** guided per-entry **apply** — `jii recommend <id>` (or an interactive pick) routes the entry's `packages` through the normal install path (preview → confirm → execute); `manual`-only entries stay "run this yourself" until/unless a repo-enable capability is designed. Detecting already-satisfied entries (skip what's installed) is a further refinement.
+- **Debt noted:** the shipped Fedora entries (package names, the RPM Fusion command) are curated by hand and unverified on a clean VM here; verify in the T7 clean-VM pass. Non-Fedora entries are deliberately empty until verified on a real host.

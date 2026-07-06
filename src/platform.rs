@@ -22,6 +22,19 @@ pub enum Distro {
     Unknown,
 }
 
+impl Distro {
+    /// The `/etc/os-release` `ID` string ("fedora", "ubuntu", …), or `""` when unknown.
+    /// This is a plain fact, not a support gate (ADR-0029); its first consumer is the
+    /// recommend-catalog, which filters entries by distro id.
+    pub fn id(&self) -> &str {
+        match self {
+            Distro::Fedora => "fedora",
+            Distro::Other(id) => id,
+            Distro::Unknown => "",
+        }
+    }
+}
+
 /// How privilege elevation should be requested, based on the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElevationKind {
@@ -34,9 +47,9 @@ pub enum ElevationKind {
 /// Detected properties of the host, computed once and cached.
 #[derive(Debug, Clone)]
 pub struct Platform {
-    /// Detected distro family. A host fact only — the core never branches on it; it is
-    /// there for config-seeding / bootstrap (T6), which are its first real consumers.
-    #[allow(dead_code)]
+    /// Detected distro family. A host fact only — the core never branches on it. Read by
+    /// the recommend-catalog (to filter entries by distro) and, later, config-seeding /
+    /// bootstrap (T6).
     pub distro: Distro,
     /// Target arch as reported by the compiler (e.g. "x86_64", "aarch64").
     /// Consumed by GitHub release-asset filtering.
