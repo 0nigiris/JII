@@ -71,8 +71,7 @@ your `PATH` (`jii doctor` warns if it isn't).
 
 ```console
 $ git clone https://github.com/0nigiris/JII && cd JII
-$ cargo build --release
-$ ./target/release/jii fastfetch
+$ cargo install --path . # and add /home/USER/.cargo/bin to your path via .bashrc or whatever you have
 ```
 
 JII drives the package managers you already have — it doesn't bundle any. On a machine with none
