@@ -347,6 +347,28 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             capability. Friendly install: "Also available" prints just before the recommendation line
             (mildly backwards; reordering would restructure the preview flow). Update debt: a
             bulk-updated tracked package can show a stale version in `jii list`.
+- [~] **UX-WAVE 2 — clean-VM feedback (ACTIVE, owner-set 2026-07-06).** Precedes cutting Beta by
+      owner decision; product/UX polish over architecture. Agreed order **①→②→③→④** with
+      `recommend` folding into doctor and `list`+`audit` merging. See AI_CONTEXT "Current task".
+      - [x] **① arrow-key TUI choosers** (`dialoguer` Select — setup + source chooser + multi-owner
+            remove; ↑↓/Enter/Esc; pty-verified). Plus #3/#10/#12/#13 crisp-output polish, #6 `-d`
+            alias. #9 diagnosed as by-design; #11 already shipped in U7.
+      - [~] **② doctor-as-system-helper.**
+            - [x] *Slice 1 — read-only diagnostics.* Added checks: internet reachability (critical),
+                  git/curl presence (advice → `jii git`/`jii curl`), `~/.cargo/bin` on PATH
+                  (conditional on cargo), Flathub remote (conditional on Flatpak). Concurrent
+                  `gather_system_facts`; pure unit-tested `system_checks(&SystemFacts)`; summary line.
+                  180 tests, clippy clean, live-verified.
+            - [ ] *Slice 2 — `--fix`.* Turn warnings into previewable fix plans (install git/curl, add
+                  Flathub remote) via Analyze→Explain→Ask→Apply. Never auto-modify.
+            - [ ] *Slice 3 — fold recommend into doctor*, remove standalone `jii recommend`.
+      - [ ] **③ providers/marketplace** — manage ecosystems (install/remove/update npm/cargo/brew/
+            snap/nix) + bootstrap a missing manager (#7 + #8).
+      - [ ] **④ info app-card** — split search/info; info shows description/GitHub/site/license/author
+            (#4; needs provider-supplied metadata).
+      - [ ] **list + audit merge** — `jii list`, security via `jii list --audit` (#5).
+      - **Note:** this unfreezes `doctor --fix` (was in the frozen backlog) by explicit owner
+        reprioritisation; the rest of the freeze list stays frozen.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

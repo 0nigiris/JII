@@ -1252,27 +1252,34 @@ impl Cli {
             ));
         }
 
-        // Tier-1 system checks.
-        let local_bin = directories::BaseDirs::new().map(|b| b.home_dir().join(".local/bin"));
-        let on_path = local_bin
-            .as_deref()
-            .map(|p| crate::platform::Platform::detect().is_on_path(p))
-            .unwrap_or(true); // can't resolve HOME → don't cry wolf
-        let token_set = std::env::var(&token_env).map(|v| !v.is_empty()).unwrap_or(false);
-        let local_bin = local_bin.unwrap_or_else(|| std::path::PathBuf::from("~/.local/bin"));
-
-        let checks = system_checks(&local_bin, on_path, &token_env, token_set);
+        // System checks: probe the host environment (network, common tools, PATH, Flathub).
+        let facts = gather_system_facts(&token_env).await;
+        let checks = system_checks(&facts);
         renderer.info("");
         renderer.info("System checks:");
+        let mut warnings = 0usize;
         for c in &checks {
             if c.ok {
                 renderer.success(&c.label);
             } else {
-                renderer.warn(&c.label);
+                warnings += 1;
+                // A blocker (no network) reads as an error; a papercut stays a warning.
+                if c.critical {
+                    renderer.error(&c.label);
+                } else {
+                    renderer.warn(&c.label);
+                }
             }
             if let Some(advice) = &c.advice {
                 renderer.info(&format!("    → {advice}"));
             }
+        }
+        renderer.info("");
+        if warnings == 0 {
+            renderer.success("Everything looks good.");
+        } else {
+            let plural = if warnings == 1 { "" } else { "s" };
+            renderer.info(&format!("{warnings} thing{plural} to look at above."));
         }
         Ok(())
     }
@@ -1625,58 +1632,222 @@ fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>)
     reasons
 }
 
-/// One Tier-1 `doctor` check about JII itself working (not a source's live health).
+/// One `doctor` system check about the host environment (not a source's live health).
 /// `ok` renders a green ✓; otherwise a yellow ⚠ with the optional `advice` beneath it.
+/// `critical` marks a check whose failure blocks real work (no internet) versus a mere
+/// papercut (an optional token) — it only tunes wording today, not behavior.
 struct SystemCheck {
     ok: bool,
+    critical: bool,
     label: String,
     advice: Option<String>,
 }
 
-/// Compute the Tier-1 environment checks from already-gathered facts. Pure (no I/O — the
-/// caller resolves PATH/HOME/token) so the wording and pass/fail logic are unit-tested.
-fn system_checks(
-    local_bin: &std::path::Path,
+impl SystemCheck {
+    fn pass(label: impl Into<String>) -> Self {
+        SystemCheck { ok: true, critical: false, label: label.into(), advice: None }
+    }
+    fn warn(label: impl Into<String>, advice: impl Into<String>) -> Self {
+        SystemCheck {
+            ok: false,
+            critical: false,
+            label: label.into(),
+            advice: Some(advice.into()),
+        }
+    }
+    fn critical(mut self) -> Self {
+        self.critical = true;
+        self
+    }
+}
+
+/// Host facts gathered once (with I/O) in `doctor`, then handed to the pure
+/// [`system_checks`] builder so the verdicts and wording stay unit-testable. The core
+/// never branches on a source here — these are environment facts (network, common
+/// tools, well-known directories), not per-provider logic.
+struct SystemFacts {
+    /// `~/.local/bin` — where user-space installs (cargo/npm/pipx/go/GitHub) land.
+    local_bin: std::path::PathBuf,
     local_bin_on_path: bool,
-    token_env: &str,
+    /// `~/.cargo/bin` — only worth flagging when cargo is present or the dir exists.
+    cargo_bin: std::path::PathBuf,
+    cargo_bin_relevant: bool,
+    cargo_bin_on_path: bool,
+    /// Can we reach the network at all? Almost every non-distro source needs it.
+    internet: bool,
+    /// Common CLI tools other flows lean on (git for cargo-git deps, curl for scripts).
+    git: bool,
+    curl: bool,
+    /// Whether Flatpak is installed and, if so, whether the Flathub remote is wired up.
+    flatpak: bool,
+    flathub: bool,
+    /// The env var that holds a GitHub token, and whether it is set.
+    token_env: String,
     token_set: bool,
-) -> Vec<SystemCheck> {
-    let bin = local_bin.display();
-    vec![
-        if local_bin_on_path {
-            SystemCheck {
-                ok: true,
-                label: format!("{bin} is on your PATH"),
-                advice: None,
-            }
+}
+
+/// Compute the environment checks from already-gathered [`SystemFacts`]. Pure (no I/O —
+/// the caller does the probing) so the wording and pass/fail logic are unit-tested.
+fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
+    let mut checks = Vec::new();
+
+    // Network: the one failure that silently breaks most sources, so it leads.
+    checks.push(if f.internet {
+        SystemCheck::pass("Internet is reachable")
+    } else {
+        SystemCheck::warn(
+            "No internet connection",
+            "Most sources (GitHub, Flatpak, cargo, npm…) need the network. Check your \
+             connection or proxy settings.",
+        )
+        .critical()
+    });
+
+    // Common tools JII and its sources lean on — and which JII can itself install.
+    checks.push(if f.git {
+        SystemCheck::pass("git is installed")
+    } else {
+        SystemCheck::warn(
+            "git is not installed",
+            "Some installs (cargo git dependencies, source builds) need it. Add it with:  jii git",
+        )
+    });
+    checks.push(if f.curl {
+        SystemCheck::pass("curl is installed")
+    } else {
+        SystemCheck::warn(
+            "curl is not installed",
+            "Handy for scripts and manual downloads. Add it with:  jii curl",
+        )
+    });
+
+    // ~/.local/bin on PATH — user-space installs land there.
+    let local = f.local_bin.display();
+    checks.push(if f.local_bin_on_path {
+        SystemCheck::pass(format!("{local} is on your PATH"))
+    } else {
+        SystemCheck::warn(
+            format!("{local} is not on your PATH"),
+            "User-space installs (cargo, npm, pipx, go, GitHub binaries) land there, so their \
+             commands won't be found. Add it, e.g.:  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' \
+             >> ~/.bashrc && exec $SHELL",
+        )
+    });
+
+    // ~/.cargo/bin on PATH — only when cargo is actually in play.
+    if f.cargo_bin_relevant {
+        let cargo = f.cargo_bin.display();
+        checks.push(if f.cargo_bin_on_path {
+            SystemCheck::pass(format!("{cargo} is on your PATH"))
         } else {
-            SystemCheck {
-                ok: false,
-                label: format!("{bin} is not on your PATH"),
-                advice: Some(
-                    "User-space installs (cargo, npm, pipx, go, GitHub binaries) land there, so \
-                     their commands won't be found. Add it, e.g.:  echo 'export \
-                     PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && exec $SHELL"
-                        .to_string(),
-                ),
-            }
-        },
-        if token_set {
-            SystemCheck {
-                ok: true,
-                label: format!("{token_env} is set — GitHub requests aren't rate-limited"),
-                advice: None,
-            }
+            SystemCheck::warn(
+                format!("{cargo} is not on your PATH"),
+                "Cargo installs binaries there. Add it, e.g.:  echo 'export \
+                 PATH=\"$HOME/.cargo/bin:$PATH\"' >> ~/.bashrc && exec $SHELL",
+            )
+        });
+    }
+
+    // Flathub — only meaningful when Flatpak is installed.
+    if f.flatpak {
+        checks.push(if f.flathub {
+            SystemCheck::pass("Flathub remote is configured")
         } else {
-            SystemCheck {
-                ok: false,
-                label: format!("{token_env} is not set — GitHub is limited to ~60 requests/hour"),
-                advice: Some(format!(
-                    "Optional: export {token_env}=<a GitHub token> to lift the anonymous rate limit."
-                )),
-            }
-        },
-    ]
+            SystemCheck::warn(
+                "Flatpak is installed but the Flathub remote is missing",
+                "Most Flatpak apps live on Flathub. Add it with:  flatpak remote-add \
+                 --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
+            )
+        });
+    }
+
+    // GitHub token — a rate-limit papercut, never a blocker.
+    checks.push(if f.token_set {
+        SystemCheck::pass(format!("{} is set — GitHub requests aren't rate-limited", f.token_env))
+    } else {
+        SystemCheck::warn(
+            format!("{} is not set — GitHub is limited to ~60 requests/hour", f.token_env),
+            format!(
+                "Optional: export {}=<a GitHub token> to lift the anonymous rate limit.",
+                f.token_env
+            ),
+        )
+    });
+
+    checks
+}
+
+/// Probe host facts for `doctor` (the one place these environment I/O calls live). Runs
+/// the independent tool/network probes concurrently so `doctor` stays snappy.
+async fn gather_system_facts(token_env: &str) -> SystemFacts {
+    let base = directories::BaseDirs::new();
+    let home = base.as_ref().map(|b| b.home_dir().to_path_buf());
+    let local_bin = home
+        .as_ref()
+        .map(|h| h.join(".local/bin"))
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/bin"));
+    let cargo_bin = home
+        .as_ref()
+        .map(|h| h.join(".cargo/bin"))
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.cargo/bin"));
+
+    let platform = crate::platform::Platform::detect();
+    let local_bin_on_path = home
+        .as_ref()
+        .map(|_| platform.is_on_path(&local_bin))
+        .unwrap_or(true); // can't resolve HOME → don't cry wolf
+    let cargo_bin_on_path = platform.is_on_path(&cargo_bin);
+
+    // Independent probes run concurrently.
+    let (internet, git, curl, cargo, flatpak) = tokio::join!(
+        check_internet(),
+        crate::provider::which("git"),
+        crate::provider::which("curl"),
+        crate::provider::which("cargo"),
+        crate::provider::which("flatpak"),
+    );
+    let flathub = if flatpak { flathub_configured().await } else { false };
+    let cargo_bin_relevant = cargo || cargo_bin.exists();
+    let token_set = std::env::var(token_env).map(|v| !v.is_empty()).unwrap_or(false);
+
+    SystemFacts {
+        local_bin,
+        local_bin_on_path,
+        cargo_bin,
+        cargo_bin_relevant,
+        cargo_bin_on_path,
+        internet,
+        git,
+        curl,
+        flatpak,
+        flathub,
+        token_env: token_env.to_string(),
+        token_set,
+    }
+}
+
+/// A fast connectivity probe: any HTTP response (even a rate-limit 403) proves the
+/// network is up. A short timeout keeps `doctor` from hanging on a dead link.
+async fn check_internet() -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(4))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    client.head("https://api.github.com").send().await.is_ok()
+}
+
+/// Whether the Flathub remote is registered (system or user). Best-effort: any error
+/// reading remotes reports "not configured" rather than a false positive.
+async fn flathub_configured() -> bool {
+    tokio::process::Command::new("flatpak")
+        .args(["remotes", "--columns=name"])
+        .output()
+        .await
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "flathub"))
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -1790,31 +1961,87 @@ mod tests {
         assert!(line.contains("official"));
     }
 
+    fn facts_all_good() -> SystemFacts {
+        SystemFacts {
+            local_bin: std::path::PathBuf::from("/home/x/.local/bin"),
+            local_bin_on_path: true,
+            cargo_bin: std::path::PathBuf::from("/home/x/.cargo/bin"),
+            cargo_bin_relevant: true,
+            cargo_bin_on_path: true,
+            internet: true,
+            git: true,
+            curl: true,
+            flatpak: true,
+            flathub: true,
+            token_env: "GITHUB_TOKEN".to_string(),
+            token_set: true,
+        }
+    }
+
     #[test]
-    fn system_checks_pass_when_path_and_token_are_set() {
-        let bin = std::path::Path::new("/home/x/.local/bin");
-        let checks = system_checks(bin, true, "GITHUB_TOKEN", true);
+    fn system_checks_all_pass_when_environment_is_healthy() {
+        let checks = system_checks(&facts_all_good());
         assert!(checks.iter().all(|c| c.ok));
         assert!(checks.iter().all(|c| c.advice.is_none()));
     }
 
     #[test]
     fn system_checks_flag_missing_path_with_advice() {
-        let bin = std::path::Path::new("/home/x/.local/bin");
-        let checks = system_checks(bin, false, "GITHUB_TOKEN", true);
-        let path_check = &checks[0];
+        let mut f = facts_all_good();
+        f.local_bin_on_path = false;
+        let checks = system_checks(&f);
+        let path_check = checks.iter().find(|c| c.label.contains(".local/bin")).unwrap();
         assert!(!path_check.ok);
-        assert!(path_check.label.contains("/home/x/.local/bin"));
         assert!(path_check.advice.as_deref().unwrap().contains("PATH"));
     }
 
     #[test]
     fn system_checks_flag_missing_token_with_its_env_name() {
-        let bin = std::path::Path::new("/home/x/.local/bin");
-        let checks = system_checks(bin, true, "GH_PAT", false);
-        let token_check = &checks[1];
+        let mut f = facts_all_good();
+        f.token_env = "GH_PAT".to_string();
+        f.token_set = false;
+        let checks = system_checks(&f);
+        let token_check = checks.iter().find(|c| c.label.contains("GH_PAT")).unwrap();
         assert!(!token_check.ok);
-        assert!(token_check.label.contains("GH_PAT"));
         assert!(token_check.advice.as_deref().unwrap().contains("GH_PAT"));
+    }
+
+    #[test]
+    fn no_internet_is_critical() {
+        let mut f = facts_all_good();
+        f.internet = false;
+        let checks = system_checks(&f);
+        let net = checks.iter().find(|c| c.label.contains("internet") || c.label.contains("Internet")).unwrap();
+        assert!(!net.ok);
+        assert!(net.critical);
+    }
+
+    #[test]
+    fn cargo_bin_check_is_skipped_when_irrelevant() {
+        let mut f = facts_all_good();
+        f.cargo_bin_relevant = false;
+        let checks = system_checks(&f);
+        assert!(!checks.iter().any(|c| c.label.contains(".cargo/bin")));
+    }
+
+    #[test]
+    fn flathub_check_is_skipped_without_flatpak() {
+        let mut f = facts_all_good();
+        f.flatpak = false;
+        let checks = system_checks(&f);
+        assert!(!checks.iter().any(|c| c.label.contains("Flathub")));
+    }
+
+    #[test]
+    fn missing_git_and_curl_are_flagged_with_jii_install_advice() {
+        let mut f = facts_all_good();
+        f.git = false;
+        f.curl = false;
+        let checks = system_checks(&f);
+        let git = checks.iter().find(|c| c.label.starts_with("git")).unwrap();
+        assert!(!git.ok);
+        assert!(git.advice.as_deref().unwrap().contains("jii git"));
+        let curl = checks.iter().find(|c| c.label.starts_with("curl")).unwrap();
+        assert!(curl.advice.as_deref().unwrap().contains("jii curl"));
     }
 }

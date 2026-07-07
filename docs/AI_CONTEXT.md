@@ -312,7 +312,20 @@ Esc, upgrades setup + source chooser + multi-owner remove at once; pty-verified)
 `--dry-run`. **Diagnosed #9** (npm `lodash` finds nothing) = **by design**, not a bug (npm/cargo only
 offer packages with a CLI `bin`; libraries aren't "programs"); a helpful "it's a library" message
 needs a small provider signal — noted follow-up. **#11 already done in U7** (bare `jii update` =
-whole system). **Next: ② doctor-as-system-helper** (the big one). 176 tests, clippy clean.
+whole system).
+
+**② doctor-as-system-helper — slice 1 (read-only diagnostics) landed.** `jii doctor` now probes the
+host environment beyond the two Tier-1 checks: **internet reachability** (a fast HTTPS HEAD; a
+failure reads red/critical), **git** and **curl** presence (advice points at `jii git`/`jii curl`),
+**~/.cargo/bin on PATH** (only when cargo is present or the dir exists), and **Flathub remote**
+configured (only when Flatpak is installed). Facts are gathered concurrently (`tokio::join!`) in
+`gather_system_facts`; the verdict/wording logic stays a pure, unit-tested `system_checks(&SystemFacts)`.
+A closing summary line reports how many things need attention. 180 tests, clippy clean; verified live
+(caught `~/.cargo/bin` missing from PATH on the dev host).
+**Next slices:** ② `--fix` — turn the warnings into previewable fix plans (install git/curl, add the
+Flathub remote, PATH advice) via Analyze→Explain→Ask→Apply; then **fold the recommend-catalog into
+doctor and remove the standalone `jii recommend`**. Then ③ providers/marketplace, ④ info app-card,
+and the list+audit merge.
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
