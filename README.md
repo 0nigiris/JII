@@ -88,6 +88,7 @@ jii info <name>     sources, versions, trust, and the recommendation + why
 jii sources         list providers and whether each is usable here
 jii how <name>      explain how JII would install (or did install) it
 jii doctor          source health, latency, rate limits + system checks
+jii doctor --fix    offer to fix what it can (install git/curl, add Flathub)
 jii recommend       curated, distro-aware suggestions for a fresh system
 jii audit           verify signatures & trust
 jii history         installation history

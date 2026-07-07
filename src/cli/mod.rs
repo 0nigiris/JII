@@ -104,8 +104,13 @@ pub enum Commands {
         /// Package name.
         package: String,
     },
-    /// Report source availability, latency and health.
-    Doctor,
+    /// Report source availability, latency and health, plus host system checks.
+    Doctor {
+        /// Offer to fix what can be fixed (install git/curl, add the Flathub remote).
+        /// Each fix is previewed and confirmed; nothing is changed silently.
+        #[arg(long)]
+        fix: bool,
+    },
     /// Suggest curated, distro-aware software to round out a fresh system.
     ///
     /// With no argument, lists the recommendations. Given a recommendation id
@@ -172,7 +177,7 @@ impl Cli {
             Some(Commands::List) => self.list(config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
 
-            Some(Commands::Doctor) => self.doctor(config, &renderer).await,
+            Some(Commands::Doctor { fix }) => self.doctor(*fix, config, &renderer).await,
             Some(Commands::Recommend { id }) => {
                 self.recommend(id.as_deref(), config, &renderer).await
             }
@@ -1111,10 +1116,10 @@ impl Cli {
         };
         config.ui.mode = mode;
 
-        // Step 2 — optional system check (read-only today).
+        // Step 2 — optional system check (read-only here; the wizard never auto-fixes).
         if prompt::confirm(renderer, "Run a quick system check (jii doctor) now?", true, &flags) {
             renderer.info("");
-            self.doctor(config.clone(), renderer).await?;
+            self.doctor(false, config.clone(), renderer).await?;
         }
 
         // Persist the choices and mark the wizard done.
@@ -1212,9 +1217,11 @@ impl Cli {
     /// **Tier-1 system checks** about JII itself working — is `~/.local/bin` on `PATH` (where
     /// user-space installs land), is a GitHub token set (rate limit). Read-only: each check
     /// reports and advises; nothing is changed (Analyze → Explain, no auto-apply — U6/D6).
-    async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
-        // Capture what the system checks need before `config` moves into the engine.
+    async fn doctor(&self, fix: bool, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        // Capture what the system checks (and any `--fix`) need before `config` moves
+        // into the engine.
         let token_env = config.network.github_token_env.clone();
+        let config_for_fix = config.clone();
         let engine = Engine::new(config)?;
         let diagnostics = engine.diagnose().await;
 
@@ -1280,6 +1287,60 @@ impl Cli {
         } else {
             let plural = if warnings == 1 { "" } else { "s" };
             renderer.info(&format!("{warnings} thing{plural} to look at above."));
+        }
+
+        if fix {
+            self.doctor_fix(&checks, config_for_fix, renderer).await?;
+        } else if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
+            renderer.info("Run `jii doctor --fix` to fix the fixable ones.");
+        }
+        Ok(())
+    }
+
+    /// Apply the fixable checks (`doctor --fix`). Analyze → Explain → Ask → Apply: package
+    /// fixes route through the normal install path (which previews and confirms itself);
+    /// the Flathub remote is a plain command shown before it runs (Flatpak elevates via its
+    /// own polkit). `--dry-run` previews every fix without asking or changing anything.
+    async fn doctor_fix(
+        &self,
+        checks: &[SystemCheck],
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let fixes: Vec<(&SystemCheck, &Fix)> = checks
+            .iter()
+            .filter_map(|c| c.fix.as_ref().filter(|_| !c.ok).map(|f| (c, f)))
+            .collect();
+
+        renderer.info("");
+        if fixes.is_empty() {
+            renderer.info("Nothing here can be fixed automatically — the items above need a manual step.");
+            return Ok(());
+        }
+
+        let flags = self.prompt_flags(config.install.auto);
+        for (check, fix) in fixes {
+            renderer.info(&format!("→ {}", check.label));
+            match fix {
+                Fix::Install(pkg) => {
+                    // install() previews, confirms, and honors --dry-run itself.
+                    self.install(&[pkg.to_string()], config.clone(), renderer).await?;
+                }
+                Fix::Command { argv, show } => {
+                    if self.global.dry_run {
+                        renderer.info(&format!("  would run:  {show}"));
+                        continue;
+                    }
+                    renderer.info(&format!("  runs:  {show}"));
+                    if !prompt::confirm(renderer, "  Run it?", true, &flags) {
+                        continue;
+                    }
+                    match run_plain_command(argv).await {
+                        Ok(()) => renderer.success("  Done."),
+                        Err(e) => renderer.error(&format!("  Failed: {e}")),
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1632,20 +1693,37 @@ fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>)
     reasons
 }
 
+/// How `doctor --fix` can remedy a failing check. A check with no `Fix` is manual-only
+/// (JII won't edit your shell rc or invent a GitHub token for you).
+#[derive(Debug)]
+enum Fix {
+    /// Install a package through JII's normal path — which previews and confirms itself.
+    Install(&'static str),
+    /// Run a plain command JII shows first. Used for the Flathub remote, which Flatpak
+    /// elevates via its own polkit (like its installs), so JII wraps no sudo/pkexec.
+    Command {
+        argv: Vec<String>,
+        /// Human-readable rendering of `argv`, shown before running.
+        show: String,
+    },
+}
+
 /// One `doctor` system check about the host environment (not a source's live health).
 /// `ok` renders a green ✓; otherwise a yellow ⚠ with the optional `advice` beneath it.
 /// `critical` marks a check whose failure blocks real work (no internet) versus a mere
-/// papercut (an optional token) — it only tunes wording today, not behavior.
+/// papercut (an optional token) — it only tunes wording today, not behavior. `fix`, when
+/// present, is what `doctor --fix` offers to do about a failing check.
 struct SystemCheck {
     ok: bool,
     critical: bool,
     label: String,
     advice: Option<String>,
+    fix: Option<Fix>,
 }
 
 impl SystemCheck {
     fn pass(label: impl Into<String>) -> Self {
-        SystemCheck { ok: true, critical: false, label: label.into(), advice: None }
+        SystemCheck { ok: true, critical: false, label: label.into(), advice: None, fix: None }
     }
     fn warn(label: impl Into<String>, advice: impl Into<String>) -> Self {
         SystemCheck {
@@ -1653,10 +1731,15 @@ impl SystemCheck {
             critical: false,
             label: label.into(),
             advice: Some(advice.into()),
+            fix: None,
         }
     }
     fn critical(mut self) -> Self {
         self.critical = true;
+        self
+    }
+    fn fixable(mut self, fix: Fix) -> Self {
+        self.fix = Some(fix);
         self
     }
 }
@@ -1711,6 +1794,7 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
             "git is not installed",
             "Some installs (cargo git dependencies, source builds) need it. Add it with:  jii git",
         )
+        .fixable(Fix::Install("git"))
     });
     checks.push(if f.curl {
         SystemCheck::pass("curl is installed")
@@ -1719,6 +1803,7 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
             "curl is not installed",
             "Handy for scripts and manual downloads. Add it with:  jii curl",
         )
+        .fixable(Fix::Install("curl"))
     });
 
     // ~/.local/bin on PATH — user-space installs land there.
@@ -1758,6 +1843,18 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
                 "Most Flatpak apps live on Flathub. Add it with:  flatpak remote-add \
                  --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
             )
+            .fixable(Fix::Command {
+                argv: vec![
+                    "flatpak".into(),
+                    "remote-add".into(),
+                    "--if-not-exists".into(),
+                    "flathub".into(),
+                    "https://flathub.org/repo/flathub.flatpakrepo".into(),
+                ],
+                show: "flatpak remote-add --if-not-exists flathub \
+                       https://flathub.org/repo/flathub.flatpakrepo"
+                    .into(),
+            })
         });
     }
 
@@ -1837,6 +1934,25 @@ async fn check_internet() -> bool {
         Err(_) => return false,
     };
     client.head("https://api.github.com").send().await.is_ok()
+}
+
+/// Run a plain, non-JII-elevated command for `doctor --fix`, letting it inherit the
+/// terminal so a tool's own polkit prompt (Flatpak) is visible. Errors on spawn failure
+/// or a non-zero exit so the caller can report it.
+async fn run_plain_command(argv: &[String]) -> crate::error::Result<()> {
+    let status = tokio::process::Command::new(&argv[0])
+        .args(&argv[1..])
+        .status()
+        .await
+        .map_err(|e| crate::error::JiiError::spawn(&argv[0], e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(crate::error::JiiError::Other(anyhow::anyhow!(
+            "`{}` exited with {status}",
+            argv.join(" ")
+        )))
+    }
 }
 
 /// Whether the Flathub remote is registered (system or user). Best-effort: any error
@@ -2043,5 +2159,45 @@ mod tests {
         assert!(git.advice.as_deref().unwrap().contains("jii git"));
         let curl = checks.iter().find(|c| c.label.starts_with("curl")).unwrap();
         assert!(curl.advice.as_deref().unwrap().contains("jii curl"));
+    }
+
+    #[test]
+    fn missing_git_and_curl_carry_an_install_fix() {
+        let mut f = facts_all_good();
+        f.git = false;
+        f.curl = false;
+        let checks = system_checks(&f);
+        let git = checks.iter().find(|c| c.label.starts_with("git")).unwrap();
+        assert!(matches!(git.fix, Some(Fix::Install("git"))));
+        let curl = checks.iter().find(|c| c.label.starts_with("curl")).unwrap();
+        assert!(matches!(curl.fix, Some(Fix::Install("curl"))));
+    }
+
+    #[test]
+    fn missing_flathub_carries_a_command_fix_with_the_repo_url() {
+        let mut f = facts_all_good();
+        f.flathub = false;
+        let checks = system_checks(&f);
+        let flathub = checks.iter().find(|c| c.label.contains("Flathub")).unwrap();
+        match &flathub.fix {
+            Some(Fix::Command { argv, show }) => {
+                assert_eq!(argv[0], "flatpak");
+                assert!(argv.iter().any(|a| a.contains("flathub.flatpakrepo")));
+                assert!(show.contains("remote-add"));
+            }
+            other => panic!("expected a Command fix, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn passing_checks_and_manual_ones_carry_no_fix() {
+        // A healthy env: no fixes anywhere.
+        assert!(system_checks(&facts_all_good()).iter().all(|c| c.fix.is_none()));
+        // The PATH papercut is real but manual-only (JII won't edit your shell rc).
+        let mut f = facts_all_good();
+        f.local_bin_on_path = false;
+        let checks = system_checks(&f);
+        let path = checks.iter().find(|c| c.label.contains(".local/bin")).unwrap();
+        assert!(!path.ok && path.fix.is_none());
     }
 }

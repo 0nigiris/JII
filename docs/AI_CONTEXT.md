@@ -322,10 +322,16 @@ configured (only when Flatpak is installed). Facts are gathered concurrently (`t
 `gather_system_facts`; the verdict/wording logic stays a pure, unit-tested `system_checks(&SystemFacts)`.
 A closing summary line reports how many things need attention. 180 tests, clippy clean; verified live
 (caught `~/.cargo/bin` missing from PATH on the dev host).
-**Next slices:** ② `--fix` — turn the warnings into previewable fix plans (install git/curl, add the
-Flathub remote, PATH advice) via Analyze→Explain→Ask→Apply; then **fold the recommend-catalog into
-doctor and remove the standalone `jii recommend`**. Then ③ providers/marketplace, ④ info app-card,
-and the list+audit merge.
+**② doctor-as-system-helper — slice 2 (`--fix`) landed.** `jii doctor --fix` offers the fixable
+checks: git/curl route through the normal install path (which previews + confirms itself); the
+Flathub remote is a plain command shown before it runs (`run_plain_command`; Flatpak elevates via
+its own polkit, so JII wraps no sudo/pkexec). Each `Fix` is data on the `SystemCheck`
+(`Fix::Install(pkg)` / `Fix::Command{argv,show}`), kept pure and unit-tested. `--dry-run` previews
+every fix without asking or changing anything; a plain `jii doctor` nudges "run --fix" only when
+something is fixable. PATH/token/internet stay manual-only (JII won't edit your shell rc or invent a
+token). 183 tests, clippy clean; live-verified (nothing-fixable path on the dev host).
+**Next slice:** ② slice 3 — **fold the recommend-catalog into doctor and remove the standalone
+`jii recommend`**. Then ③ providers/marketplace, ④ info app-card, and the list+audit merge.
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).

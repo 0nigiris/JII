@@ -359,8 +359,11 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (conditional on cargo), Flathub remote (conditional on Flatpak). Concurrent
                   `gather_system_facts`; pure unit-tested `system_checks(&SystemFacts)`; summary line.
                   180 tests, clippy clean, live-verified.
-            - [ ] *Slice 2 — `--fix`.* Turn warnings into previewable fix plans (install git/curl, add
-                  Flathub remote) via Analyze→Explain→Ask→Apply. Never auto-modify.
+            - [x] *Slice 2 — `--fix`.* `jii doctor --fix` offers the fixable checks: git/curl route
+                  through the normal install path (previews + confirms itself); the Flathub remote is
+                  a plain command shown before it runs (Flatpak elevates via its own polkit — no JII
+                  root). `--dry-run` previews every fix without asking or changing anything; plain
+                  `jii doctor` nudges "run --fix" only when something is fixable. 183 tests.
             - [ ] *Slice 3 — fold recommend into doctor*, remove standalone `jii recommend`.
       - [ ] **③ providers/marketplace** — manage ecosystems (install/remove/update npm/cargo/brew/
             snap/nix) + bootstrap a missing manager (#7 + #8).
