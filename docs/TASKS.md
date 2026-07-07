@@ -353,7 +353,7 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       - [x] **① arrow-key TUI choosers** (`dialoguer` Select — setup + source chooser + multi-owner
             remove; ↑↓/Enter/Esc; pty-verified). Plus #3/#10/#12/#13 crisp-output polish, #6 `-d`
             alias. #9 diagnosed as by-design; #11 already shipped in U7.
-      - [~] **② doctor-as-system-helper.**
+      - [x] **② doctor-as-system-helper.** (all three slices landed — ADR-0035)
             - [x] *Slice 1 — read-only diagnostics.* Added checks: internet reachability (critical),
                   git/curl presence (advice → `jii git`/`jii curl`), `~/.cargo/bin` on PATH
                   (conditional on cargo), Flathub remote (conditional on Flatpak). Concurrent
@@ -364,7 +364,11 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   a plain command shown before it runs (Flatpak elevates via its own polkit — no JII
                   root). `--dry-run` previews every fix without asking or changing anything; plain
                   `jii doctor` nudges "run --fix" only when something is fixable. 183 tests.
-            - [ ] *Slice 3 — fold recommend into doctor*, remove standalone `jii recommend`.
+            - [x] *Slice 3 — fold recommend into doctor* (ADR-0035). Catalog now shows at `doctor`'s
+                  tail as a compact "Suggestions for your system" section (title — why · command);
+                  standalone `jii recommend` + apply-by-id **removed** — apply by running the shown
+                  command. `Recommendation.id` dropped from runtime (uniqueness moved to `title`).
+                  **② doctor complete.** 183 tests.
       - [ ] **③ providers/marketplace** — manage ecosystems (install/remove/update npm/cargo/brew/
             snap/nix) + bootstrap a missing manager (#7 + #8).
       - [ ] **④ info app-card** — split search/info; info shows description/GitHub/site/license/author

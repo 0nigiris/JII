@@ -111,14 +111,6 @@ pub enum Commands {
         #[arg(long)]
         fix: bool,
     },
-    /// Suggest curated, distro-aware software to round out a fresh system.
-    ///
-    /// With no argument, lists the recommendations. Given a recommendation id
-    /// (`jii recommend steam`), installs that entry's packages through the normal path.
-    Recommend {
-        /// A recommendation id to apply; empty lists all recommendations.
-        id: Option<String>,
-    },
     /// Audit installed software: source, trust, verification and concerns.
     Audit,
     /// List software installed via JII.
@@ -178,9 +170,6 @@ impl Cli {
             Some(Commands::History) => self.history(config, &renderer),
 
             Some(Commands::Doctor { fix }) => self.doctor(*fix, config, &renderer).await,
-            Some(Commands::Recommend { id }) => {
-                self.recommend(id.as_deref(), config, &renderer).await
-            }
             Some(Commands::Audit) => self.audit(config, &renderer),
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
@@ -1289,9 +1278,14 @@ impl Cli {
             renderer.info(&format!("{warnings} thing{plural} to look at above."));
         }
 
+        // Curated suggestions (the folded-in recommend catalog) — informational, before any
+        // interactive fixing so the fix prompts stay last.
+        self.suggestions(renderer);
+
         if fix {
             self.doctor_fix(&checks, config_for_fix, renderer).await?;
         } else if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
+            renderer.info("");
             renderer.info("Run `jii doctor --fix` to fix the fixable ones.");
         }
         Ok(())
@@ -1345,136 +1339,44 @@ impl Cli {
         Ok(())
     }
 
-    /// Suggest curated, distro-aware software for a fresh system (the recommend-catalog,
-    /// U6/D6 Tier 2). With no `id`, it reports what's worth adding and the exact way to add
-    /// it (a `jii …` install, or — for a third-party repo a package install can't express —
-    /// the documented command to run). Given an `id`, it *applies* that entry by routing its
-    /// packages through the normal install path (preview → confirm → execute); a repo-enable
-    /// (`manual`) entry is never run by JII — it just shows the command (Analyze → Ask →
-    /// Apply; the trust decision stays the user's).
-    async fn recommend(
-        &self,
-        id: Option<&str>,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
-        let catalog = crate::recommend::Catalog::load()
-            .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("catalog: {e}")))?;
+    /// Print curated, distro-aware suggestions at the tail of `doctor` (the old
+    /// `jii recommend`, now folded in — a fresh system's "worth adding" list). Compact:
+    /// one line per entry — title, why, and the exact way to add it (`jii …` for
+    /// installable entries; the documented command for a third-party repo an install
+    /// can't express). Purely informational: nothing is changed, the user runs what they
+    /// like. Silent when the catalog has nothing for this distro, so it never nags.
+    fn suggestions(&self, renderer: &Renderer) {
+        let catalog = match crate::recommend::Catalog::load() {
+            Ok(c) => c,
+            Err(_) => return, // a broken catalog must never break `doctor`
+        };
         let distro_id = crate::platform::Platform::detect().distro.id();
-
-        if let Some(id) = id {
-            return self.apply_recommendation(&catalog, id, config, renderer).await;
-        }
-
         let entries = catalog.for_distro(distro_id);
-
-        if renderer.is_json() {
-            let rows: Vec<_> = entries
-                .iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "id": r.id,
-                        "title": r.title,
-                        "why": r.why,
-                        "category": r.category,
-                        "packages": r.packages,
-                        "manual": r.manual,
-                        "note": r.note,
-                    })
-                })
-                .collect();
-            renderer.json_value(&serde_json::json!(rows));
-            return Ok(());
-        }
-
         if entries.is_empty() {
-            let host = if distro_id.is_empty() { "this system" } else { distro_id };
-            renderer.info(&format!(
-                "No recommendations for {host} yet. The catalog is Fedora-first for now."
-            ));
-            return Ok(());
+            return;
         }
 
-        renderer.info("Recommended for your system:");
         renderer.info("");
-
+        renderer.info("Suggestions for your system:");
         let mut last_category: Option<&str> = None;
         for r in &entries {
             if last_category != Some(r.category.as_str()) {
-                renderer.info(&format!("[{}]", r.category));
+                renderer.info(&format!("  [{}]", r.category));
                 last_category = Some(r.category.as_str());
             }
-            renderer.info(&format!("  {}", r.title));
-            renderer.info(&format!("    {}", r.why));
-            if !r.packages.is_empty() {
-                renderer.info(&format!("    Install:  jii {}", r.packages.join(" ")));
-            }
-            if let Some(manual) = &r.manual {
-                renderer.info(&format!("    Run:      {manual}"));
-            }
-            if let Some(note) = &r.note {
-                renderer.info(&format!("    Note:     {note}"));
-            }
-            renderer.info("");
-        }
-        renderer.info(
-            "These are suggestions — nothing was changed. Apply one with `jii recommend <id>` \
-             (e.g. `jii recommend vlc`) or the command shown.",
-        );
-        Ok(())
-    }
-
-    /// Apply one catalog entry by id: install its packages through the normal path, or — for a
-    /// `manual` (repo-enable) entry — show the documented command without running it. The id is
-    /// matched across the whole catalog; an entry that doesn't apply to this distro is refused
-    /// honestly rather than silently installing something meant for another system.
-    async fn apply_recommendation(
-        &self,
-        catalog: &crate::recommend::Catalog,
-        id: &str,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
-        let distro_id = crate::platform::Platform::detect().distro.id();
-        let entry = match catalog.recommendation.iter().find(|r| r.id == id) {
-            Some(e) => e,
-            None => {
-                renderer.error(&format!(
-                    "No recommendation called '{id}'. Run `jii recommend` to see the list."
-                ));
-                return Ok(());
-            }
-        };
-
-        if !entry.distros.is_empty() && !entry.distros.iter().any(|d| d == distro_id) {
-            renderer.warn(&format!(
-                "'{id}' ({}) is meant for {} — not this system. Skipping.",
-                entry.title,
-                entry.distros.join("/")
-            ));
-            return Ok(());
-        }
-
-        // A repo-enable / manual step: JII shows it, never runs it (the trust decision is yours).
-        if entry.packages.is_empty() {
-            if let Some(manual) = &entry.manual {
-                renderer.info(&format!("{} — run this yourself:", entry.title));
-                renderer.info(&format!("  {manual}"));
-                if let Some(note) = &entry.note {
-                    renderer.info(&format!("  Note: {note}"));
-                }
+            let how = if !r.packages.is_empty() {
+                format!("jii {}", r.packages.join(" "))
+            } else if let Some(manual) = &r.manual {
+                format!("run: {manual}")
             } else {
-                renderer.warn(&format!("'{id}' has nothing to install."));
+                String::new()
+            };
+            renderer.info(&format!("    {} — {}  ·  {}", r.title, r.why, how));
+            if let Some(note) = &r.note {
+                renderer.info(&format!("        note: {note}"));
             }
-            return Ok(());
         }
-
-        if let Some(note) = &entry.note {
-            renderer.info(&format!("Note: {note}"));
-        }
-        // Route the entry's specs through the normal install path (preview → confirm → execute).
-        let packages = entry.packages.clone();
-        self.install(&packages, config, renderer).await
+        renderer.info("Informational — nothing was changed. Add one by running the command shown.");
     }
 
     /// Show installation history, newest first.

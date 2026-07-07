@@ -483,9 +483,8 @@ locale = "auto"
 | `jii update [<name>]` | named: update that package via its source; bare: update the whole system — aggregate every manager's bulk upgrade + per-record fallback (ADR-0034) |
 | `jii search <query>` | show candidates only, no install |
 | `jii info <name>` | availability, versions, trust, size |
-| `jii why <name>` | explain how/why it was (or would be) installed |
-| `jii doctor` | source availability, latency, rate limits + Tier-1 system checks (PATH, token) |
-| `jii recommend [<id>]` | curated, distro-aware suggestions (list); apply one via the normal install path (ADR-0033) |
+| `jii how <name>` (alias `why`) | explain how/why it was (or would be) installed |
+| `jii doctor [--fix]` | source availability, latency, rate limits + host system checks (internet, git/curl, PATH, ~/.cargo/bin, Flathub, token) + curated distro-aware suggestions (the folded-in catalog, ADR-0033/0035); `--fix` offers previewable fixes |
 | `jii setup` | first-run wizard: output mode + optional system check |
 | `jii history` | installation history |
 | `jii undo` | undo last install / remove / update |

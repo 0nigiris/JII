@@ -1385,7 +1385,7 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 
 ## ADR-0033 — The recommend-catalog is a data subsystem, distro-filtered, read-only (Analyze → Explain)
 
-**Status:** Accepted 2026-07-06. Lands with Terminal 1.0 (ADR-0026) U6 (UX pass, problem D6 Tier 2 — pulled into 1.0 by the user's 2026-07-06 scope decision). Two slices, both landed: (1) the catalog + `jii recommend` reporting; (2) guided per-entry apply (`jii recommend <id>`).
+**Status:** Accepted 2026-07-06. Lands with Terminal 1.0 (ADR-0026) U6 (UX pass, problem D6 Tier 2 — pulled into 1.0 by the user's 2026-07-06 scope decision). Two slices, both landed: (1) the catalog + `jii recommend` reporting; (2) guided per-entry apply (`jii recommend <id>`). **Amended by ADR-0035 (2026-07-07):** the catalog data subsystem is unchanged, but its presentation folded into `jii doctor`'s tail and the standalone `jii recommend` command (incl. apply-by-id) was removed — suggestions are now applied by running the shown command.
 
 **Context:** D6 split `doctor`/onboarding into two tiers. Tier 1 (system checks about JII working) shipped as part of `doctor` (ADR-0033-adjacent, in that commit). Tier 2 is the *curated recommendations* — codecs, RPM Fusion, GPU drivers, fonts, Steam/Wine, battery — which the UX evaluation flagged as "a real content subsystem, not polish," deferred in the ROADMAP but pulled into 1.0 by the user. Two hard constraints frame it: (1) **the core never branches on distro** (ADR-0029) — yet these recommendations are inherently distro-specific; (2) **Analyze → Explain → Ask → Apply, never auto-modify** (ROADMAP) — yet several entries (RPM Fusion) cross a trust boundary a plain package install can't express.
 
@@ -1430,3 +1430,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - `jii update` now means "update my whole system", the intuitive behavior — Fedora gets `dnf upgrade` + `flatpak update` in one previewable, single-confirmation run.
 - Coverage grows by adding `plan_update_all` to more providers (pipx `upgrade-all`, apt/pacman/zypper/snap/brew/nix) — one method each, no core change.
 - **Debt:** bulk-updated tracked packages can show a stale version in `jii list` (not re-queried); the non-Fedora `plan_update_all` impls are unverified until a clean-VM host (T7).
+
+## ADR-0035 — `doctor` becomes the system helper; the `recommend` catalog folds into it and the standalone command is removed
+
+**Status:** Accepted 2026-07-07. Lands in UX-wave 2 (owner-set, clean-VM feedback) as item ② of the agreed order ①→④. Supersedes the surface of ADR-0033 (the catalog *data subsystem* is unchanged; only its entry point moves). Unfreezes `doctor --fix`, which BETA_ROADMAP had parked — by explicit owner reprioritisation to polish before cutting Beta.
+
+**Context:** Two VM-feedback points converged. (#2) `doctor` reported per-source health but wasn't the *"doctor of my system"* the user wanted — it never checked the environment (network, common tools, PATH, Flathub) nor offered to fix anything. (#14) `jii recommend` was disliked: a long, rarely-typed command for a catalog the user would more naturally meet while checking system health. The owner's decision (AskUserQuestion): **fold recommend into doctor, remove the standalone command.**
+
+**Decision:**
+- **`doctor` gains real host system checks** beyond the two Tier-1 ones: internet reachability (a fast HTTPS HEAD; failure reads critical), `git`/`curl` presence, `~/.cargo/bin` on PATH (only when cargo is present or the dir exists), and the Flathub remote configured (only when Flatpak is installed). Facts are gathered concurrently (`tokio::join!`) in `gather_system_facts`; the verdict/wording logic stays a **pure, unit-tested** `system_checks(&SystemFacts)`. This keeps the ADR-0004/0029 invariants: these are *environment facts*, not per-provider branching, and the core still never branches on a source.
+- **`doctor --fix`** turns the fixable checks into actions, Analyze → Explain → Ask → Apply: `git`/`curl` route through the normal install path (`self.install`, which previews and confirms itself — JII installing its own prerequisites); the Flathub remote is a plain `flatpak remote-add` **shown before it runs** (Flatpak elevates via its own polkit, so JII wraps no sudo/pkexec — consistent with how the flatpak provider treats installs). `--dry-run` previews every fix without asking or changing anything. Manual-only checks (PATH, token, internet) carry no fix — JII will not edit your shell rc or invent a token. Each fix is data on the check (`Fix::Install` / `Fix::Command`), kept pure and unit-tested.
+- **The recommend catalog folds into `doctor`'s tail** as a compact, informational "Suggestions for your system" section (title — why · the exact command to run). The **standalone `jii recommend` command and its apply-by-id path are removed.** Applying a suggestion is now simply *running the shown command* (`jii vlc`, or the documented `manual` command) — more transparent than the `recommend <id>` indirection. The `Recommendation.id` slug is no longer read at runtime (the uniqueness invariant moved to `title`); it remains in the TOML as an authoring anchor.
+
+**Alternatives considered:**
+- **Keep `jii recommend` as a thin alias / subcommand.** Rejected: the owner explicitly disliked the separate command; a fold, not a rename, was the ask.
+- **Gate suggestions behind a `--suggest` flag.** Rejected: they enrich exactly the moments `doctor` is run (health check, first-run setup); showing them compactly is the value, and they stay silent when the catalog has nothing for the distro, so they never nag.
+- **Keep apply-by-id inside `doctor`.** Rejected as needless indirection now that every entry shows the exact `jii …` command; `doctor --fix` already owns the *health* fixes, and suggestions stay purely informational (never auto-installed).
+- **Auto-edit `~/.bashrc` for the PATH checks.** Rejected: editing a user's shell rc is exactly the kind of silent, hard-to-undo change JII avoids; PATH stays advice-only.
+
+**Consequences:**
+- `doctor` is now the single "is my system healthy, and what's worth adding?" surface: sources → system checks → suggestions, with `--fix` for the actionable ones.
+- The command surface shrinks by one (`recommend` gone); help and docs updated (README, ARCHITECTURE command table).
+- The catalog subsystem (ADR-0033) is untouched as *data*; only its presentation moved. `manual` entries are still shown, never run.
+- **Follow-ups (unchanged from ADR-0033):** interactive multi-pick, skipping already-satisfied entries, a real repo-enable capability. **Debt:** the Fedora catalog entries are still unverified on a clean VM (T7).

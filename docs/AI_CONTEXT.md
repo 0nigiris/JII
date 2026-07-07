@@ -330,8 +330,17 @@ its own polkit, so JII wraps no sudo/pkexec). Each `Fix` is data on the `SystemC
 every fix without asking or changing anything; a plain `jii doctor` nudges "run --fix" only when
 something is fixable. PATH/token/internet stay manual-only (JII won't edit your shell rc or invent a
 token). 183 tests, clippy clean; live-verified (nothing-fixable path on the dev host).
-**Next slice:** ② slice 3 — **fold the recommend-catalog into doctor and remove the standalone
-`jii recommend`**. Then ③ providers/marketplace, ④ info app-card, and the list+audit merge.
+**② doctor-as-system-helper — slice 3 (fold recommend) landed (ADR-0035).** The recommend catalog
+now surfaces at `doctor`'s tail as a compact "Suggestions for your system" section (title — why · the
+exact command to run; `note:` caveats shown). The **standalone `jii recommend` command and its
+apply-by-id path are removed** — applying is now just running the shown command (`jii vlc` / the
+`manual` command), more transparent than `recommend <id>`. `Recommendation.id` is no longer read at
+runtime (uniqueness invariant moved to `title`; slug kept in the TOML as an authoring anchor).
+Catalog data subsystem (ADR-0033) untouched; only its presentation moved. 183 tests, clippy clean,
+live-verified. **② doctor is now complete.**
+**Next: ③ providers/marketplace** — manage the ecosystems themselves (install/remove/update
+npm/cargo/brew/snap/nix + bootstrap a missing manager, #7 + #8). Then ④ info app-card, and the
+list+audit merge.
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).

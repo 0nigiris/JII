@@ -2,7 +2,7 @@
 //!
 //! This is a **data subsystem**, not core logic and not a `Provider`. The catalog is
 //! authored as TOML in `data/recommend/catalog.toml`, embedded at build time so the binary
-//! stays self-contained, and filtered by the host distro. `jii recommend` reports it
+//! stays self-contained, and filtered by the host distro. `jii doctor` reports it at its tail
 //! (Analyze → Explain); nothing here ever modifies the system. The core never branches on
 //! the distro — entries *declare* which distros they apply to and this module filters on
 //! that data (ADR-0033), so distro-awareness lives in the catalog, not in `if fedora`
@@ -20,9 +20,8 @@ pub struct Catalog {
 /// One curated suggestion.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Recommendation {
-    /// Stable unique slug.
-    pub id: String,
-    /// One-line human name.
+    /// One-line human name. (Entries still carry a `id` slug in the TOML for authoring, but
+    /// nothing reads it now that suggestions are applied by running the shown command.)
     pub title: String,
     /// What the user gains.
     pub why: String,
@@ -81,7 +80,6 @@ mod tests {
         assert!(!catalog.recommendation.is_empty());
         // Every entry has the required human fields and a category.
         for r in &catalog.recommendation {
-            assert!(!r.id.is_empty());
             assert!(!r.title.is_empty());
             assert!(!r.why.is_empty());
             assert!(!r.category.is_empty());
@@ -89,25 +87,24 @@ mod tests {
             assert!(
                 !r.packages.is_empty() || r.manual.is_some(),
                 "{} does nothing",
-                r.id
+                r.title
             );
         }
     }
 
     #[test]
-    fn entry_ids_are_unique() {
+    fn entry_titles_are_unique() {
         let catalog = Catalog::load().unwrap();
-        let mut ids: Vec<&str> = catalog.recommendation.iter().map(|r| r.id.as_str()).collect();
-        ids.sort_unstable();
-        let before = ids.len();
-        ids.dedup();
-        assert_eq!(before, ids.len(), "duplicate recommendation id");
+        let mut titles: Vec<&str> = catalog.recommendation.iter().map(|r| r.title.as_str()).collect();
+        titles.sort_unstable();
+        let before = titles.len();
+        titles.dedup();
+        assert_eq!(before, titles.len(), "duplicate recommendation title");
     }
 
     #[test]
     fn empty_distros_applies_everywhere() {
         let r = Recommendation {
-            id: "x".into(),
             title: "X".into(),
             why: "w".into(),
             category: "media".into(),
