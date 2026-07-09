@@ -173,15 +173,79 @@ impl Cli {
         }
     }
 
-    /// Dispatch the parsed command.
-    pub async fn run(self, config: Config) -> crate::error::Result<()> {
-        // `-v` forces Advanced for this run; otherwise the configured mode (default Friendly).
+    /// Build a renderer for the given config (mode: `-v` forces Advanced; else configured).
+    fn renderer_for(&self, config: &Config) -> Renderer {
         let mode = if self.global.verbose > 0 {
             crate::config::OutputMode::Advanced
         } else {
             config.ui.mode
         };
-        let renderer = Renderer::new(self.color_choice(&config), self.global.json, mode);
+        Renderer::new(self.color_choice(config), self.global.json, mode)
+    }
+
+    /// A short human echo of the invocation (`jii fastfetch`, `jii search foo`), used to tell
+    /// the user which command will run after first-run onboarding. `None` for commands that
+    /// shouldn't be preceded by the wizard: `setup` (it *is* the wizard), `doctor` (it runs a
+    /// setup of its own — onboarding would double it), `uninstall`, the hidden plumbing
+    /// (`completions`/`man`), and bare `jii` (its own welcome arm handles first-run).
+    fn onboarding_task_summary(&self) -> Option<String> {
+        match &self.command {
+            Some(Commands::Setup)
+            | Some(Commands::Doctor { .. })
+            | Some(Commands::Uninstall)
+            | Some(Commands::Completions { .. })
+            | Some(Commands::Man) => None,
+            Some(Commands::Install { packages }) => Some(format!("jii {}", packages.join(" "))),
+            Some(Commands::Remove { packages }) => {
+                Some(format!("jii remove {}", packages.join(" ")))
+            }
+            Some(Commands::Update { packages }) if packages.is_empty() => {
+                Some("jii update".to_string())
+            }
+            Some(Commands::Update { packages }) => {
+                Some(format!("jii update {}", packages.join(" ")))
+            }
+            Some(Commands::Search { query }) => Some(format!("jii search {}", query.join(" "))),
+            Some(Commands::Info { package }) => Some(format!("jii info {package}")),
+            Some(Commands::How { package }) => Some(format!("jii how {package}")),
+            Some(Commands::List { audit }) => {
+                Some(if *audit { "jii list --audit".to_string() } else { "jii list".to_string() })
+            }
+            Some(Commands::History) => Some("jii history".to_string()),
+            Some(Commands::Sources) => Some("jii sources".to_string()),
+            Some(Commands::Providers { .. }) => Some("jii providers".to_string()),
+            None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
+        }
+    }
+
+    /// Dispatch the parsed command.
+    pub async fn run(self, config: Config) -> crate::error::Result<()> {
+        let renderer = self.renderer_for(&config);
+
+        // First-run onboarding for *any* task (not just bare `jii`): the very first time JII is
+        // used on an interactive terminal, run the setup wizard first, then continue with the
+        // original invocation. The user is told up-front which command will run after the
+        // (optional) setup. Excluded commands (setup/doctor/uninstall/plumbing, bare `jii`)
+        // return `None` from `onboarding_task_summary` and fall straight through.
+        let config = if config.is_first_run() && self.interactive(&renderer) {
+            if let Some(summary) = self.onboarding_task_summary() {
+                renderer.info(&crate::t!("setup.first_use"));
+                renderer.info(&crate::t!("setup.will_run_after", cmd = summary.clone()));
+                renderer.info("");
+                self.setup(config.clone(), &renderer, true).await?;
+                renderer.info("");
+                renderer.info(&crate::t!("setup.now_running", cmd = summary));
+                renderer.info("");
+                // Reload so the dispatched command sees the wizard's saved choices.
+                Config::load().unwrap_or(config)
+            } else {
+                config
+            }
+        } else {
+            config
+        };
+        // Rebuild the renderer in case the wizard changed the output mode.
+        let renderer = self.renderer_for(&config);
 
         match &self.command {
             // Explicit `jii install <pkg…>` or bare `jii <pkg…>`.

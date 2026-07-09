@@ -186,6 +186,9 @@ detail_friendly = "Friendly — short, clear output (recommended)"
 detail_advanced = "Advanced — full detail, source rationale, diagnostics"
 run_doctor_q = "Run a quick system check and setup (jii doctor) now?"
 complete = "Setup complete."
+first_use = "Looks like this is your first time using JII — a quick setup first."
+will_run_after = "After the (optional) setup, this will run:  {cmd}"
+now_running = "▶ Now running:  {cmd}"
 
 [parse]
 invalid = "Invalid package '{raw}': {reason}"
