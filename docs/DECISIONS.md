@@ -1848,3 +1848,44 @@ in-memory config if the reload fails). New pure helper `onboarding_task_summary(
 `jii <args>`); `renderer_for()` extracted so the renderer can be rebuilt. Verified under a pty:
 `jii fastfetch` on a fresh `XDG_CONFIG_HOME` → first-use notice → wizard → "▶ Now running: jii
 fastfetch" → the install runs. 216 tests green, clippy clean.
+
+## ADR-0052 — Semantic colour palette + a mouse/keyboard chooser (crossterm)
+
+**Status:** Accepted (2026-07-10).
+
+**Context:** Owner asked for two "make it pretty / usable" polish items: colour in the human
+output, and mouse control of the interactive chooser (click an option to pick it). The old
+chooser used `dialoguer::Select` — arrow keys only, no mouse.
+
+**Decision (colour):** A small `Copy` `Palette { enabled }` in `ui`, obtained from
+`Renderer::palette()`, colours output **only** when the renderer's existing colour flag is on
+(so `--no-color`/`NO_COLOR`/`--json`/no-TTY stay plain — one gate, already resolved in
+`Renderer::new`). Every method returns the *plain* string when disabled, so callers never
+branch on colour and column widths are unaffected. Semantic hues: source ids cyan, trust levels
+official=green/community=yellow/untrusted=red, versions + secondary text dimmed, `✓`/`→`/`❯`
+green, headings/table-header rows bold. **Alignment rule:** pad to width *before* colouring (ANSI
+bytes must not count toward `{:8}`); free helpers like `candidate_line` take the `Palette`
+explicitly rather than reaching for a global.
+
+**Decision (chooser):** Replace `dialoguer` with a tiny inline `crossterm` menu in
+`prompt::choose`. Raw mode + mouse capture; supports arrow keys (↑/↓, `j`/`k`, Home/End, Enter,
+Esc/`q`, Ctrl-C) **and** the mouse (hover highlights, left-click a row picks it, scroll moves).
+The terminal is **always** restored (mouse capture off, raw mode off, cursor shown) and the menu
+region cleared, even on error — the fallible work runs in a closure whose result is handled after
+an unconditional cleanup. The anchor row is measured (and its cursor-position report consumed)
+**before** mouse capture is enabled, so the report can't race with mouse/key events; `n` lines
+are reserved first so a menu near the bottom scrolls cleanly. Non-TTY/`--json` still returns the
+default (unchanged consent semantics — picking is the consent; the untrusted trust barrier still
+gates downstream, ADR-0006).
+
+**Alternatives considered:** (a) keep dialoguer + add mouse — dialoguer/console expose no mouse
+events, so not possible without a different backend. (b) A full-screen alternate-screen TUI —
+rejected as heavier than warranted; the inline menu matches the old UX. (c) A process-global
+colour flag for the free helpers — rejected; threading a `Copy` `Palette` is explicit and
+test-friendly (`Palette::plain()`).
+
+**Consequences:** New dep `crossterm` (0.29); `dialoguer` dropped (it was used only by `choose`).
+`Palette` + `Renderer::palette()`/`heading()` added; `TrustLevel`/`Health` already had localized
+`display()` (ADR-0050) which the palette colours. 216 tests green, clippy clean; verified under a
+pty (menu renders in colour, keyboard nav selects the right source, terminal restored to cooked
+mode afterwards) and piped (zero ANSI, default taken, no hang).

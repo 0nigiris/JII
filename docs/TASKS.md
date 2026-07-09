@@ -435,9 +435,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       - [x] **First-run setup before ANY command** (ADR-0051). The onboarding wizard now greets the first
             *interactive* use of JII for any task (`jii fastfetch`), announces which command runs after the
             optional setup, then continues with it. pty-verified. 216 tests.
+      - [x] **Colour + mouse polish** (ADR-0052). Semantic `Palette` (source cyan, trust green/yellow/red,
+            versions/secondary dimmed, ✓/→ green, bold headings/table headers), colour-gated + alignment-safe.
+            Candidate chooser reimplemented on **crossterm** with **mouse** (hover/click/scroll) + keys;
+            dialoguer dropped. 216 tests, pty + pipe verified.
       - **Next (owner-chosen order):** ① smart GitHub by-name search (top-5 + "show more" + typo tolerance —
-            the deferred T5 repo chooser, now concrete, its own ADR); ② colour polish + mouse-click selection.
-            GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
+            the deferred T5 repo chooser, now concrete, its own ADR). GUI (Steam/KDE Discover/GNOME Software
+            blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

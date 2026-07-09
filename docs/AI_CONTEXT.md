@@ -33,11 +33,18 @@ on a bare `jii`. Now the very first *interactive* use of JII for any task (`jii 
 config, then continues with the original invocation. setup/doctor/uninstall + hidden plumbing
 are excluded. Verified under a pty (declining prompts → command still runs).
 
-**Next up (owner-requested, chosen order):** ① smart GitHub by-name search — free-text
-`jii exteragram` → top-5 repos with a "show more" (infinite pagination) + typo tolerance
-(`exeteragram`→`exteragram`); needs the GitHub Search API in the forge/github provider (its own
-ADR — this is the deferred T5 repo chooser, now scoped concretely). ② color polish + mouse-click
-selection. GUI (Steam + KDE Discover + GNOME Software blend) is **explicitly parked** until the
+**Colour + mouse polish DONE (ADR-0052).** Owner's "простое" item, landed after i18n: a semantic
+`Palette` (in `ui`, from `Renderer::palette()`) colours human output only when colour is enabled
+(`--no-color`/`NO_COLOR`/`--json`/no-TTY stay plain) — source ids cyan, trust official=green/
+community=yellow/untrusted=red, versions/secondary dimmed, `✓`/`→` green, headings + table headers
+bold; pad-before-colour keeps alignment. The candidate chooser is reimplemented on **crossterm**
+(dialoguer dropped): arrow keys **and mouse** (hover-highlight, click-to-pick, scroll), always
+restores the terminal, non-TTY takes the default. 216 tests, pty- and pipe-verified.
+
+**Next up:** ① smart GitHub by-name search — free-text `jii exteragram` → top-5 repos with a
+"show more" (infinite pagination) + typo tolerance (`exeteragram`→`exteragram`); needs the GitHub
+Search API in the forge/github provider (its own ADR — the deferred T5 repo chooser, now scoped
+concretely). GUI (Steam + KDE Discover + GNOME Software blend) is **explicitly parked** until the
 CLI is fully polished — do not start it.
 
 ---
