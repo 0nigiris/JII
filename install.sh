@@ -45,8 +45,12 @@ if [ -z "$TAG" ]; then
   # Use the /releases *list*, not /releases/latest: the latter 404s on a repo whose
   # only releases are pre-releases (every JII beta tag is one). The list is newest-first,
   # so the first tag_name is the newest published release. Parsed without needing jq.
-  TAG=$(fetch "https://api.github.com/repos/$REPO/releases?per_page=20" \
-    | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+  # Buffer the whole response first (into a variable), *then* filter — piping curl
+  # straight into `grep -m1` closes the pipe early and makes curl print a spurious
+  # "curl: (23)" write error.
+  RELEASES=$(fetch "https://api.github.com/repos/$REPO/releases?per_page=20") \
+    || err "could not reach GitHub to find the latest release; set JII_VERSION=<tag>."
+  TAG=$(printf '%s\n' "$RELEASES" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
   [ -n "$TAG" ] || err "could not determine the latest release; set JII_VERSION=<tag>."
 fi
 
