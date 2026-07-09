@@ -1771,3 +1771,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 **Consequences:**
 - This ADR is the lens for future features: before adding behaviour, ask "does this cooperate with the system the user already has, or does it assume JII is the centre?" New commands/providers must read real state and keep verbs in their lane.
 - No code of its own — it records the principle and points at ADR-0034/0040/0043/0045/0046/0047 as its concrete expressions.
+
+---
+
+## ADR-0049 — Forge abstraction: GitHub is one `Forge` among peers, not a hardcoded exception
+
+**Status:** Accepted (slice for #8).
+
+**Context:** GitHub Releases lived in `github.rs` with `api.github.com`, the GitHub JSON schema, its headers and the web URL all baked into the `Provider`. The owner wants Codeberg/Gitea, GitLab and similar forges to be easy to add later — so GitHub must not be a special case.
+
+**Decision:**
+- A new `Forge` trait captures **only** the host-specific bits: `id`, `label`, `repo_url(owner, repo)`, `async latest_release(...) -> Release` (normalised), and an optional `probe` (rate-limit). A generic `ForgeProvider` (in `provider/forge.rs`) implements `Provider` on top of it and owns everything forge-neutral: `owner/repo` parsing, arch-aware **asset selection** (raw binary / `.tar.gz` / `.zip`, musl-over-gnu, AppImage handling, OS/arch rejection), **checksum** discovery + verification, and the **user-space install plan** (`~/.local/bin`, no root, `untrusted` trust).
+- `Release`/`ForgeAsset` are **normalised** types; each forge maps its native JSON onto them (`GithubForge::latest_release` parses GitHub's shape and calls `.normalize()`). So the shared code never sees a GitHub-specific field.
+- GitHub becomes `GithubForge` (a ~120-line `Forge` impl). The registry builds it as `ForgeProvider::new(Box::new(GithubForge), token_env, arch)`. **Behaviour is identical** — same source id `"github"`, same candidates/plans, all prior tests moved and pass.
+
+**Adding a forge (the payoff):** implement `Forge` (Gitea/Codeberg's releases API is close to GitHub's — `tag_name` + `assets[].{name,url,size}` — so it's nearly a drop-in; GitLab's differs more and just needs its own `latest_release` mapping), register it in `ProviderRegistry` with a new source id, add that id to `KNOWN_SOURCES` + the default priority, and select it per-spec via `owner/repo:codeberg` (ADR-0031). No core or shared-code change.
+
+**Alternatives considered:**
+- **Parameterise `Github` with a base URL only.** Rejected: GitLab's release API and asset shape differ enough that a URL swap isn't sufficient; a trait with a `latest_release` mapping is the honest seam.
+- **A generic over `<F: Forge>` instead of `Box<dyn Forge>`.** Rejected: the registry stores `Box<dyn Provider>` and builds providers dynamically from config; a boxed forge keeps that uniform with no monomorphisation benefit here.
+
+**Consequences:**
+- `provider/forge.rs` holds the trait + `ForgeProvider` + all shared logic and tests; `github.rs` holds only `GithubForge` + GitHub JSON/rate-limit + its own tests. 210 tests green, clippy clean; `jii jqlang/jq` verified unchanged.
+- Codeberg/Gitea/GitLab are now a well-scoped follow-up (implement `Forge` + wire the source id), not a rewrite. No live non-GitHub forge ships yet — the abstraction is in place and proven by GitHub riding on it.

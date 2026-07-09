@@ -20,6 +20,7 @@ pub mod cargo;
 pub mod copr;
 pub mod dnf;
 pub mod flatpak;
+pub mod forge;
 pub mod github;
 pub mod go;
 pub mod homebrew;
@@ -266,7 +267,8 @@ impl ProviderRegistry {
             providers.push(Box::new(flatpak::Flatpak::new()));
         }
         if config.is_enabled("github") {
-            providers.push(Box::new(github::Github::new(
+            providers.push(Box::new(forge::ForgeProvider::new(
+                Box::new(github::GithubForge),
                 config.network.github_token_env.clone(),
                 crate::platform::Platform::detect().arch,
             )));
@@ -470,7 +472,7 @@ mod tests {
         // Base system repos are the system, not something JII installs → no ecosystem.
         assert!(dnf::Dnf::new().ecosystem().is_none());
         assert!(
-            github::Github::new("GITHUB_TOKEN".into(), "x86_64")
+            forge::ForgeProvider::new(Box::new(github::GithubForge), "GITHUB_TOKEN".into(), "x86_64")
                 .ecosystem()
                 .is_none()
         );
