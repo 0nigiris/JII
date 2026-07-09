@@ -381,10 +381,24 @@ lets cargo/npm explain "'X' is a library — nothing to install as a program." T
 miss, gated on `is_available`; the message renders under the miss in install/info/search. 185 tests (signal
 already covered by the `library_only_*_yields_no_candidate` tests), clippy clean, live-verified (lodash/serde
 explained; a truly-unknown name stays a plain miss; real programs unaffected). **Next:
-Beta prep resumes** (see BETA_ROADMAP.md): integration tests → clean-VM verification on Arch/Ubuntu/Debian/
-openSUSE (the one blocker needing the owner's real hosts) → README/logo/screenshots/asciinema → cut Beta by
-pushing a `v*` tag. The `cli/mod.rs` split into `cli/commands/*` (now ~1900 lines) is the queued structural
-cleanup, best done before more feature work.
+Beta prep** (see BETA_ROADMAP.md).
+
+**BETA PREP — packaging/distribution landed (ADR-0039).** Owner asked for "convenient install for every
+distro without building" + a full pre-release code audit, then cut Beta. Packaging done: **static musl
+binaries for x86_64 + aarch64** (one file, runs on every distro incl. ARM; built in CI via `cross`), native
+**.deb/.rpm via nfpm** (one `packaging/nfpm.yaml`, both formats/arches, bundling man page + bash/zsh/fish
+completions), an **`install.sh`** (`curl|sh`, arch-detect, sha256-verified, → ~/.local/bin), and **hidden
+`jii completions <shell>` / `jii man`** (clap_complete/clap_mangen, no build.rs — single-crate-safe).
+`release.yml` reworked into a build-matrix + aggregate-publish job attaching all assets on a `v*` tag.
+Official-repo scaffolding prepared but not published (needs owner accounts): `packaging/jii.spec` (COPR
+binary-repack) + `packaging/aur/PKGBUILD` (`jii-bin`) + `packaging/README.md` turnkey steps. `[profile.release]`
+gained lto/codegen-units=1/strip (behavior unchanged). README Install section rewritten. **186 tests, clippy
+clean, release binary builds (LTO ~58s); locally validated: tarball layout + install.sh extraction/checksum,
+completions/man non-empty, spec parses.** The full release workflow (musl cross-build, nfpm, publish) runs
+only on a real tag push — verified by construction + local checks; first run is the owner's `git tag v0.1.0-beta`.
+**Next: the pre-release code audit** (conservative — dedup/dead-code/optimize, DON'T remove useful functions
+or change behavior), then integration tests, then owner cuts Beta. clean-VM verification (Arch/Ubuntu/Debian/
+openSUSE) still needs the owner's hosts. `cli/mod.rs` split stays deferred (owner chose conservative cleanup).
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
@@ -570,7 +584,8 @@ None.
 
 ## Test status
 
-`cargo test` — **185 passing, 0 failing**. ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
+`cargo test` — **186 passing, 0 failing**. Packaging coverage: `cli::cli_definition_is_valid`
+(`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`
 (every ecosystem manager declares a non-empty binary + a usable `Bootstrap`; dnf/github declare none). U7 coverage: dnf/flatpak `plan_update_all` (whole-system
 upgrade, root vs user). U6 coverage: `error::remedy` (unknown-source lists the

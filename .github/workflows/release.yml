@@ -1,14 +1,15 @@
 name: Release
 
-# Builds the release binary and publishes it to a GitHub Release whenever a
-# version tag is pushed. The owner cuts a release by pushing a tag:
+# Builds prebuilt artifacts and publishes them to a GitHub Release when a version tag
+# is pushed. The owner cuts a release by pushing a tag:
 #
 #     git tag v0.1.0-beta && git push origin v0.1.0-beta
 #
-# Built on a pinned Ubuntu 22.04 (glibc 2.35) so the binary runs on every
-# current distro (Fedora 40+, Ubuntu 22.04+, Debian 12+, current Arch/openSUSE).
-# jii shells out to the system's package managers, so it needs no bundled libs.
-# (A fully static musl build is a post-Beta improvement once it can be verified.)
+# Produces, for x86_64 and aarch64:
+#   • a static musl binary (runs on every Linux distro — glibc, musl, old or new)
+#   • a .tar.gz (binary + man page + shell completions + docs) and its .sha256
+#   • a native .deb and .rpm (built with nfpm — one spec, both formats)
+# jii shells out to the system's package managers, so it bundles no libs.
 
 on:
   push:
@@ -16,47 +17,110 @@ on:
       - "v*"
 
 permissions:
-  contents: write # required to create the Release and upload assets
+  contents: write # create the Release and upload assets
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: build · package · publish
+  build:
+    name: build · ${{ matrix.arch }}
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: x86_64
+            nfpm_arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: aarch64
+            nfpm_arch: arm64
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-      - name: Build release binary
-        run: cargo build --release --locked
+      - name: Install cross + nfpm
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross,nfpm
 
-      - name: Package tarball + checksums
+      - name: Build static musl binary
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Generate man page + shell completions
         run: |
-          set -euo pipefail
+          set -euxo pipefail
+          # Arch-independent — emit them with a quick host build of jii.
+          mkdir -p dist/completions
+          cargo run --quiet -- completions bash > dist/completions/jii.bash
+          cargo run --quiet -- completions zsh  > dist/completions/_jii
+          cargo run --quiet -- completions fish > dist/completions/jii.fish
+          cargo run --quiet -- man > dist/jii.1
+
+      - name: Assemble tarball + checksum
+        id: pkg
+        run: |
+          set -euxo pipefail
           tag="${GITHUB_REF_NAME}"
-          dir="jii-${tag}-x86_64-linux"
-          mkdir -p "$dir"
-          cp target/release/jii "$dir/"
-          strip "$dir/jii" || true
-          cp README.md LICENSE "$dir/" 2>/dev/null || true
+          bin="target/${{ matrix.target }}/release/jii"
+          dir="jii-${tag}-${{ matrix.arch }}-linux"
+          mkdir -p "$dir/completions"
+          cp "$bin" "$dir/"
+          cp dist/jii.1 "$dir/"
+          cp dist/completions/* "$dir/completions/"
+          cp README.md LICENSE "$dir/"
           tar -czf "${dir}.tar.gz" "$dir"
           sha256sum "${dir}.tar.gz" > "${dir}.tar.gz.sha256"
-          # Also expose the bare binary for a one-line download.
-          cp "$dir/jii" "jii-${tag}-x86_64-linux"
-          sha256sum "jii-${tag}-x86_64-linux" > "jii-${tag}-x86_64-linux.sha256"
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+      - name: Build .deb and .rpm (nfpm)
+        env:
+          NFPM_ARCH: ${{ matrix.nfpm_arch }}
+          BIN: ${{ steps.pkg.outputs.bin }}
+        run: |
+          set -euxo pipefail
+          tag="${GITHUB_REF_NAME}"
+          export VERSION="${tag#v}" # package version has no leading 'v'
+          nfpm package -f packaging/nfpm.yaml -p deb -t .
+          nfpm package -f packaging/nfpm.yaml -p rpm -t .
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jii-${{ matrix.arch }}
+          path: |
+            jii-*-linux.tar.gz
+            jii-*-linux.tar.gz.sha256
+            *.deb
+            *.rpm
+          if-no-files-found: error
+
+  release:
+    name: publish
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Checksum the .deb / .rpm
+        run: |
+          set -euxo pipefail
+          cd artifacts
+          for f in *.deb *.rpm; do sha256sum "$f" > "$f.sha256"; done
+          ls -la
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          files: |
-            jii-*-x86_64-linux.tar.gz
-            jii-*-x86_64-linux.tar.gz.sha256
-            jii-*-x86_64-linux
-            jii-*-x86_64-linux.sha256
+          files: artifacts/*

@@ -53,29 +53,49 @@ $ jii fastfetch --auto
 
 ## Install
 
-**Download a binary (Beta).** Grab the latest from
-[Releases](https://github.com/0nigiris/JII/releases), verify it, and drop it on your `PATH`:
+JII ships prebuilt for **x86_64** and **aarch64** as a static [musl] binary — one file, no
+runtime deps, runs on every Linux distro (glibc or musl, old or new). No compiling required.
+
+**One-liner** (installs to `~/.local/bin`, no root):
+
+```console
+$ curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
+```
+
+It auto-detects your CPU, downloads the matching binary from the latest release, verifies its
+sha256, and installs it. Then run `jii doctor` to confirm it sees your sources.
+
+**Native package** — grab the `.rpm` or `.deb` for your arch from
+[Releases](https://github.com/0nigiris/JII/releases) and install it with your package manager
+(it also drops a man page + shell completions):
+
+```console
+$ sudo dnf install ./jii-*.rpm      # Fedora / RHEL / openSUSE
+$ sudo apt install ./jii_*.deb      # Debian / Ubuntu
+```
+
+**Arch (AUR):** `yay -S jii-bin` — once the package is published (see
+[`packaging/`](packaging/README.md)).
+
+**Manual tarball** — if you prefer to place it yourself:
 
 ```console
 $ tar -xzf jii-v0.1.0-beta-x86_64-linux.tar.gz
 $ sha256sum -c jii-v0.1.0-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
 $ install -Dm755 jii-v0.1.0-beta-x86_64-linux/jii ~/.local/bin/jii
-$ jii doctor                                                # confirm it sees your sources
 ```
-
-The binary is built on Ubuntu 22.04 (glibc 2.35), so it runs on every current distro
-(Fedora 40+, Ubuntu 22.04+, Debian 12+, current Arch/openSUSE). Make sure `~/.local/bin` is on
-your `PATH` (`jii doctor` warns if it isn't).
 
 **Build from source** (needs a recent Rust toolchain):
 
 ```console
 $ git clone https://github.com/0nigiris/JII && cd JII
-$ cargo install --path . # and add /home/USER/.cargo/bin to your path via .bashrc or whatever you have
+$ cargo install --path .    # then add ~/.cargo/bin to your PATH
 ```
 
 JII drives the package managers you already have — it doesn't bundle any. On a machine with none
 of its supported sources (dnf5, Flatpak, apt, …) it will run but find nothing to install.
+
+[musl]: https://musl.libc.org/
 
 ## Commands
 

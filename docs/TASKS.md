@@ -409,12 +409,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (needs the owner's real hosts; agent scripts a repeatable smoke test). *(owner + agent)*
       - [ ] **4. Public docs & assets** — README polish, CONTRIBUTING/SECURITY *(agent)*; asciinema
             script *(agent writes, owner records)*; logo + screenshots *(owner/designer)*.
-      - [~] **5. Public release** — release workflow **done** (`.github/workflows/release.yml`: on a
-            `v*` tag, builds on pinned Ubuntu 22.04 and publishes a GitHub Release with the binary +
-            tarball + sha256; `-`-tags marked prerelease). README gained an **Install** section
-            (download-a-binary + build-from-source) and a Beta **Status**. **Owner action to cut the
-            Beta:** `git push` this branch, then `git tag v0.1.0-beta && git push origin v0.1.0-beta`.
-            Still optional/nice-to-have: signed binary, COPR package, bundled completions + man page.
+      - [~] **5. Public release — packaging DONE (ADR-0039); owner cuts the tag.** `release.yml`
+            reworked: a `v*` tag builds **static musl** binaries for **x86_64 + aarch64** (via `cross`)
+            and publishes, on the GitHub Release: checksummed tarballs, native **.deb** + **.rpm** (nfpm,
+            `packaging/nfpm.yaml`, bundling **man page + bash/zsh/fish completions**). Added **`install.sh`**
+            (`curl|sh`, arch-detect, sha256-verified, → ~/.local/bin) and hidden `jii completions <shell>` /
+            `jii man` (clap_complete/clap_mangen, no build.rs). `[profile.release]` = lto/codegen-units=1/strip
+            (behavior unchanged). README **Install** rewritten (one-liner + .rpm/.deb + AUR + tarball + source).
+            COPR (`packaging/jii.spec`) + AUR (`packaging/aur/PKGBUILD`) prepared turnkey (`packaging/README.md`)
+            — need owner accounts. 186 tests, clippy clean; locally validated (tarball layout, install.sh
+            extraction/checksum, completions/man, spec parse). **Owner action to cut Beta:** `git tag
+            v0.1.0-beta && git push origin v0.1.0-beta` (the workflow does the rest). Only signing/COPR/AUR
+            publish remain owner-side.
       - **Absorbs the old T6/T7/T8:** T7 (hardening) = items 1–3 above; T8 (public polish) = items
         4–5. **T6 (bootstrap a missing manager) is FROZEN** — parked in BETA_ROADMAP, post-Beta.
       - **Frozen backlog (do NOT start pre-Beta):** doctor --fix, catalog aliases, version chooser,

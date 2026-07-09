@@ -1,0 +1,40 @@
+# nfpm config — builds a .deb and .rpm from one spec, any arch, on any host
+# (nfpm just assembles files; it needs no dpkg/rpm and no target machine).
+# The release workflow calls it once per architecture with these env vars set:
+#   VERSION    the release version without a leading 'v' (e.g. 0.1.0-beta)
+#   NFPM_ARCH  amd64 | arm64
+#   BIN        path to the built jii binary for that arch
+# See: https://nfpm.goreleaser.com
+name: jii
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: utils
+priority: optional
+maintainer: "0nigiris <0nigiris@users.noreply.github.com>"
+description: |
+  Just Install It — a smart universal package installer for Linux.
+  JII searches the sources you already have (DNF, COPR, Flatpak, GitHub Releases,
+  Cargo, npm, pipx, Go and more), ranks the results, installs the best option, and
+  explains why. It is not a package manager; it drives the ones you already have.
+vendor: "JII"
+homepage: "https://github.com/0nigiris/JII"
+license: "MIT"
+contents:
+  - src: ${BIN}
+    dst: /usr/bin/jii
+    file_info:
+      mode: 0755
+  - src: dist/completions/jii.bash
+    dst: /usr/share/bash-completion/completions/jii
+  - src: dist/completions/jii.fish
+    dst: /usr/share/fish/vendor_completions.d/jii.fish
+  - src: dist/completions/_jii
+    dst: /usr/share/zsh/site-functions/_jii
+  - src: dist/jii.1
+    dst: /usr/share/man/man1/jii.1
+  - src: README.md
+    dst: /usr/share/doc/jii/README.md
+  - src: LICENSE
+    dst: /usr/share/licenses/jii/LICENSE

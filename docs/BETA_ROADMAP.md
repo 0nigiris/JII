@@ -55,12 +55,15 @@ and reports back. This is the one Beta blocker an agent cannot close alone.
 - **Logo + screenshots** 🧑 — design/visual work; owner (or a designer) produces
   them. Agent can suggest a concept and wire them into the README once they exist.
 
-### 5. Public release 🤝
-Tag `v0.1.0-beta`, GitHub Release with notes, a signed binary and/or a COPR
-package (dogfood: install `jii` via `jii`). Agent can draft the release notes,
-the `.spec`/packaging, and shell completions + a man page (`clap_complete` /
-`clap_mangen`) to bundle; owner owns the actual publish, signing keys, and any
-account/registry steps.
+### 5. Public release 🤝 — **packaging DONE (ADR-0039); owner cuts the tag**
+Agent-owned pipeline is complete: pushing `v0.1.0-beta` builds **static musl** binaries
+for x86_64 + aarch64 and publishes checksummed tarballs, native **.deb** and **.rpm**
+(nfpm, with man page + bash/zsh/fish completions), all on the GitHub Release; plus an
+**`install.sh`** one-liner and hidden `jii completions`/`jii man`. COPR (`packaging/jii.spec`)
+and AUR (`packaging/aur/PKGBUILD`) are prepared as a **turnkey checklist**
+([`packaging/README.md`](../packaging/README.md)) — they need the owner's accounts/keys.
+**Owner owns:** the actual `git tag` push, signing keys, and the COPR/AUR account steps.
+Remaining agent draft: the release notes (the workflow auto-generates them; can be sharpened).
 
 **Beta is cut when:** CI is green, integration tests exist and pass, the CLI is
 verified on ≥1 real host per target distro, the repo reads as a finished public
