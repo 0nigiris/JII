@@ -51,14 +51,11 @@ impl Provider for Dnf {
     }
 
     fn highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
-        let mut h = vec![
-            "Official Fedora package".to_string(),
-            "Native — installs and updates with the system".to_string(),
-        ];
+        let mut h = vec![crate::t!("reason.dnf_official"), crate::t!("reason.dnf_native")];
         if let Some(repo) = candidate.raw.get("repoid").and_then(|v| v.as_str())
             && !repo.is_empty()
         {
-            h.push(format!("Repository: {repo}"));
+            h.push(crate::t!("reason.repository", repo = repo));
         }
         h
     }
@@ -116,10 +113,10 @@ impl Provider for Dnf {
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
 
-        let mut reasons = vec!["Official Fedora package".to_string()];
-        reasons.push(format!("Repository: {repoid}"));
+        let mut reasons = vec![crate::t!("reason.dnf_official")];
+        reasons.push(crate::t!("reason.repository", repo = repoid));
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
 
         Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
@@ -133,14 +130,14 @@ impl Provider for Dnf {
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Official Fedora packages: {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.dnf_official_many", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     // plan_remove / plan_update / list_installed are part of the Provider contract,
     // implemented now and exercised from Phase 2+ (remove, update, list).
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via dnf)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "dnf")];
         Ok(root_plan(&record.name, &["remove", "-y", &record.name], reasons))
     }
 
@@ -149,12 +146,12 @@ impl Provider for Dnf {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["remove", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via dnf): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "dnf", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via dnf", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "dnf")];
         Ok(root_plan(&record.name, &["upgrade", "-y", &record.name], reasons))
     }
 
@@ -163,13 +160,13 @@ impl Provider for Dnf {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["upgrade", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via dnf): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "dnf", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `dnf5 upgrade -y` with no names = upgrade every installed package (D10).
-        let reasons = vec!["Upgrade all system packages (via dnf)".to_string()];
+        let reasons = vec![crate::t!("reason.upgrade_all_system", mgr = "dnf")];
         Ok(Some(root_plan("system", &["upgrade", "-y"], reasons)))
     }
 

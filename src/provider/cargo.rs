@@ -52,10 +52,7 @@ impl Provider for Cargo {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![
-            "Built from crates.io source".to_string(),
-            "User install (~/.cargo/bin, no root)".to_string(),
-        ]
+        vec![crate::t!("reason.cargo_source"), crate::t!("reason.cargo_user")]
     }
 
     async fn is_available(&self) -> bool {
@@ -84,22 +81,17 @@ impl Provider for Cargo {
         let name = query.raw.trim();
         let url = format!("{API}/crates/{name}");
         let body = get_json_opt::<CrateResponse>(ID, &url).await.ok()??;
-        candidate(&body).is_none().then(|| {
-            format!(
-                "'{name}' is a Rust library on crates.io — it ships no executable, so there's nothing to install as a program."
-            )
-        })
+        candidate(&body)
+            .is_none()
+            .then(|| crate::t!("library.cargo", name = name))
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["crates.io (Rust community registry)".to_string()];
+        let mut reasons = vec![crate::t!("reason.cargo_registry")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push(format!(
-            "Builds {} into ~/.cargo/bin (no root; ensure it is on PATH)",
-            candidate.name
-        ));
+        reasons.push(crate::t!("reason.cargo_builds", name = candidate.name.clone()));
         Ok(cargo_plan(&candidate.name, "install", reasons))
     }
 
@@ -111,15 +103,12 @@ impl Provider for Cargo {
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
         argv.extend(names.iter().cloned());
-        let reasons = vec![format!(
-            "crates.io (Rust community registry): {}",
-            names.join(", ")
-        )];
+        let reasons = vec![crate::t!("reason.cargo_registry_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via cargo)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "cargo")];
         Ok(cargo_plan(&record.name, "uninstall", reasons))
     }
 
@@ -128,13 +117,13 @@ impl Provider for Cargo {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "uninstall".to_string()];
         argv.extend(names.iter().cloned());
-        let reasons = vec![format!("Remove (via cargo): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "cargo", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `cargo install` reinstalls the newest published version if one exists.
-        let reasons = vec![format!("Update {} via cargo (reinstall newest)", record.name)];
+        let reasons = vec![crate::t!("reason.update_one_reinstall", name = record.name.clone(), mgr = "cargo")];
         Ok(cargo_plan(&record.name, "install", reasons))
     }
 
@@ -143,7 +132,7 @@ impl Provider for Cargo {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
         argv.extend(names.iter().cloned());
-        let reasons = vec![format!("Update (via cargo, reinstall newest): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many_reinstall", mgr = "cargo", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 

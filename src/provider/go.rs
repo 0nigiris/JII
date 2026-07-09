@@ -81,14 +81,14 @@ impl Provider for Go {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["Go module (community)".to_string()];
+        let mut reasons = vec![crate::t!("reason.go_module")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push(format!(
-            "Builds {} into {} (no root; ensure it is on PATH)",
-            binary_name(&candidate.name),
-            go_bin_display(),
+        reasons.push(crate::t!(
+            "reason.go_builds",
+            name = binary_name(&candidate.name),
+            dir = go_bin_display()
         ));
         Ok(go_install_plan(&candidate.name, reasons))
     }
@@ -101,7 +101,7 @@ impl Provider for Go {
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
         argv.extend(names.iter().map(|n| format!("{n}@latest")));
-        let reasons = vec![format!("Go modules (community): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.go_modules_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
@@ -110,7 +110,7 @@ impl Provider for Go {
         let bin = go_bin_dir()
             .ok_or_else(|| JiiError::Other(anyhow::anyhow!("cannot resolve Go bin dir")))?
             .join(binary_name(&record.name));
-        let reasons = vec![format!("Remove {} (delete {})", record.name, bin.display())];
+        let reasons = vec![crate::t!("reason.go_remove", name = record.name.clone(), path = bin.display().to_string())];
         Ok(InstallPlan {
             candidate_ref: record.name.clone(),
             source_id: ID.to_string(),
@@ -122,7 +122,7 @@ impl Provider for Go {
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // Reinstalling @latest pulls the newest published version.
-        let reasons = vec![format!("Update {} via go install (newest)", record.name)];
+        let reasons = vec![crate::t!("reason.go_update_one", name = record.name.clone())];
         Ok(go_install_plan(&record.name, reasons))
     }
 
@@ -133,7 +133,7 @@ impl Provider for Go {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
         argv.extend(names.iter().map(|n| format!("{n}@latest")));
-        let reasons = vec![format!("Update (via go install, newest): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.go_update_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 

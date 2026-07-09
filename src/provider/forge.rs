@@ -98,10 +98,7 @@ impl Provider for ForgeProvider {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![
-            "Third-party release binary — verify before trusting".to_string(),
-            "Installs to ~/.local/bin (no root)".to_string(),
-        ]
+        vec![crate::t!("reason.forge_thirdparty"), crate::t!("reason.forge_installs_local")]
     }
 
     async fn is_available(&self) -> bool {
@@ -183,7 +180,7 @@ impl Provider for ForgeProvider {
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let dest = bin_dir()?.join(&record.name);
-        let reasons = vec![format!("Remove {} from {}", record.name, dest.display())];
+        let reasons = vec![crate::t!("reason.forge_remove", name = record.name.clone(), dest = dest.display().to_string())];
         Ok(InstallPlan {
             candidate_ref: record.name.clone(),
             source_id: self.id().to_string(),
@@ -472,18 +469,18 @@ fn build_install_plan(
         }
     };
 
-    let mut reasons = vec![format!("Release ({slug})")];
+    let mut reasons = vec![crate::t!("reason.forge_release", slug = slug)];
     if let Some(v) = version {
-        reasons.push(format!("Version {v}"));
+        reasons.push(crate::t!("reason.version", v = v.clone()));
     }
     if archive {
-        reasons.push(format!("Extracts '{name}' from the release archive"));
+        reasons.push(crate::t!("reason.forge_extracts", name = name));
     }
     reasons.push(match &sha256 {
-        Some(_) => "Verified sha256 checksum".to_string(),
-        None => "⚠ no checksum published — unverified".to_string(),
+        Some(_) => crate::t!("reason.forge_verified"),
+        None => crate::t!("reason.forge_unverified"),
     });
-    reasons.push(format!("Installs to {} (no root)", dest.display()));
+    reasons.push(crate::t!("reason.forge_installs", dest = dest.display().to_string()));
 
     InstallPlan {
         candidate_ref: name.to_string(),

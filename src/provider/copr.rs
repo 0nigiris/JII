@@ -54,10 +54,7 @@ impl Provider for Copr {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![
-            "Community COPR repo — not official Fedora".to_string(),
-            "Enables a third-party repository".to_string(),
-        ]
+        vec![crate::t!("reason.copr_community"), crate::t!("reason.copr_enables")]
     }
 
     async fn is_available(&self) -> bool {
@@ -96,7 +93,7 @@ impl Provider for Copr {
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via copr)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "copr")];
         Ok(root_plan(
             &record.name,
             vec![vec![BIN, "-y", "remove", &record.name]],
@@ -109,12 +106,12 @@ impl Provider for Copr {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut argv = vec![BIN, "-y", "remove"];
         argv.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via copr/dnf): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "copr/dnf", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via copr", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "copr")];
         Ok(root_plan(
             &record.name,
             vec![vec![BIN, "-y", "upgrade", &record.name]],
@@ -127,7 +124,7 @@ impl Provider for Copr {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut argv = vec![BIN, "-y", "upgrade"];
         argv.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via copr/dnf): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "copr/dnf", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
     }
 
@@ -231,9 +228,9 @@ fn candidate(project: &Project) -> PackageCandidate {
 /// The two privileged steps of a COPR install: enable the repo, then install.
 fn build_install_plan(name: &str, project: &str) -> InstallPlan {
     let reasons = vec![
-        "COPR (community repository)".to_string(),
-        format!("Repository: {project}"),
-        format!("Enables the repo, then installs {name}"),
+        crate::t!("reason.copr_repo"),
+        crate::t!("reason.repository", repo = project),
+        crate::t!("reason.copr_enables_then", name = name),
     ];
     root_plan(
         name,

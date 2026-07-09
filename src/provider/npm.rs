@@ -110,13 +110,14 @@ impl Provider for Npm {
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
         let prefix = user_prefix()?;
-        let mut reasons = vec!["npm registry (community)".to_string()];
+        let mut reasons = vec![crate::t!("reason.npm_registry")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push(format!(
-            "Installs {} into {prefix}/bin (no root; ensure it is on PATH)",
-            candidate.name
+        reasons.push(crate::t!(
+            "reason.npm_installs",
+            name = candidate.name.clone(),
+            prefix = prefix.clone()
         ));
         Ok(npm_plan(&candidate.name, "install", &prefix, reasons))
     }
@@ -136,35 +137,35 @@ impl Provider for Npm {
             prefix,
         ];
         argv.extend(names.iter().cloned());
-        let reasons = vec![format!("npm registry (community): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.npm_registry_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let prefix = user_prefix()?;
-        let reasons = vec![format!("Remove {} (installed via npm)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "npm")];
         Ok(npm_plan(&record.name, "uninstall", &prefix, reasons))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        Ok(Some(npm_many("uninstall", records, "Remove (via npm)")?))
+        Ok(Some(npm_many("uninstall", records, &crate::t!("reason.npm_remove_label"))?))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // Reinstalling the package pulls the newest published version.
         let prefix = user_prefix()?;
-        let reasons = vec![format!("Update {} via npm (reinstall newest)", record.name)];
+        let reasons = vec![crate::t!("reason.update_one_reinstall", name = record.name.clone(), mgr = "npm")];
         Ok(npm_plan(&record.name, "install", &prefix, reasons))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        Ok(Some(npm_many("install", records, "Update (via npm, reinstall newest)")?))
+        Ok(Some(npm_many("install", records, &crate::t!("reason.npm_update_label"))?))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `npm update -g` updates every globally-installed package in our user prefix (D10).
         let prefix = user_prefix()?;
-        let reasons = vec!["Update all global npm packages".to_string()];
+        let reasons = vec![crate::t!("reason.npm_upgrade_all")];
         let argv = vec![
             BIN.to_string(),
             "update".to_string(),
@@ -226,10 +227,7 @@ impl Manifest {
 /// install-path `explain_miss` and the `info`-path `reference` note, so the wording stays
 /// consistent and actionable.
 fn library_note(name: &str) -> String {
-    format!(
-        "'{name}' is an npm library — a code dependency, not a runnable program. JII installs \
-         programs, so there's nothing to install; to use it in a project run `npm install {name}`."
-    )
+    crate::t!("library.npm", name = name)
 }
 
 /// `npm ls -g --json` document (only the top-level dependency map).

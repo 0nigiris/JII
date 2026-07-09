@@ -74,31 +74,28 @@ impl Provider for Pipx {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["PyPI (Python application, via pipx)".to_string()];
+        let mut reasons = vec![crate::t!("reason.pipx_pypi")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push(format!(
-            "Installs {} into ~/.local/bin (no root; ensure it is on PATH)",
-            candidate.name
-        ));
+        reasons.push(crate::t!("reason.pipx_installs", name = candidate.name.clone()));
         Ok(pipx_plan(&candidate.name, "install", reasons))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via pipx)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "pipx")];
         Ok(pipx_plan(&record.name, "uninstall", reasons))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // pipx has a first-class upgrade (unlike cargo/npm where update == reinstall).
-        let reasons = vec![format!("Update {} via pipx", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "pipx")];
         Ok(pipx_plan(&record.name, "upgrade", reasons))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `pipx upgrade-all` upgrades every pipx-installed app (D10); user-space.
-        let reasons = vec!["Upgrade all pipx apps".to_string()];
+        let reasons = vec![crate::t!("reason.pipx_upgrade_all")];
         let argv = vec![BIN.to_string(), "upgrade-all".to_string()];
         Ok(Some(command_plan(ID, "all pipx apps", argv, false, reasons)))
     }

@@ -47,10 +47,7 @@ impl Provider for Flatpak {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![
-            "Sandboxed application".to_string(),
-            "Cross-distro (Flatpak/Flathub), no root".to_string(),
-        ]
+        vec![crate::t!("reason.flatpak_sandboxed"), crate::t!("reason.flatpak_crossdistro")]
     }
 
     async fn is_available(&self) -> bool {
@@ -89,16 +86,19 @@ impl Provider for Flatpak {
             .unwrap_or("flathub");
         let appid = &candidate.name;
 
-        let mut reasons = vec!["Flatpak (sandboxed)".to_string(), format!("Remote: {remote}")];
+        let mut reasons = vec![
+            crate::t!("reason.flatpak_short"),
+            crate::t!("reason.flatpak_remote", remote = remote),
+        ];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
 
         Ok(user_plan(appid, &["install", "-y", remote, appid], reasons))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via flatpak)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "flatpak")];
         Ok(user_plan(&record.name, &["uninstall", "-y", &record.name], reasons))
     }
 
@@ -107,12 +107,12 @@ impl Provider for Flatpak {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["uninstall", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via flatpak): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "flatpak", names = names.join(", "))];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via flatpak", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "flatpak")];
         Ok(user_plan(&record.name, &["update", "-y", &record.name], reasons))
     }
 
@@ -121,13 +121,13 @@ impl Provider for Flatpak {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["update", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via flatpak): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "flatpak", names = names.join(", "))];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `flatpak update -y` with no refs = update every installed app/runtime (D10).
-        let reasons = vec!["Update all Flatpak apps and runtimes".to_string()];
+        let reasons = vec![crate::t!("reason.flatpak_upgrade_all")];
         Ok(Some(user_plan("all flatpaks", &["update", "-y"], reasons)))
     }
 
