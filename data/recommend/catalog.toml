@@ -27,6 +27,8 @@ category = "repos"
 distros = ["fedora"]
 manual = "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
 note = "Third-party repositories — you are extending who you trust for packages. Official RPM Fusion instructions: https://rpmfusion.org/Configuration"
+# Already-enabled check: the free release package is installed once RPM Fusion is set up.
+check = "rpmfusion-free-release"
 
 [[recommendation]]
 id = "multimedia-codecs"
@@ -61,6 +63,8 @@ category = "gaming"
 distros = ["fedora"]
 packages = ["steam:flatpak"]
 note = "The Flatpak build is sandboxed and the least fuss on Fedora."
+# Installed Flatpak app-id (differs from the "steam" install spec).
+check = "com.valvesoftware.Steam"
 
 [[recommendation]]
 id = "wine"

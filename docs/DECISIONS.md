@@ -1638,3 +1638,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - New `MatchMode` enum + `Query::with_match_mode`; `Engine::broaden_search`; name-aware `rank` (all four call sites updated); capped, name-showing "Also available".
 - Broadening costs an extra provider round-trip **only on an exact miss** — the common case pays nothing.
 - Only dnf honors `Prefix` today (the confirmed case); COPR keeps its project-name resolver, and other providers rely on their native breadth. Extending explicit prefix support to more providers is incremental and needs no core change.
+
+---
+
+## ADR-0043 — Doctor analyses system state before suggesting (skip what's already done)
+
+**Status:** Accepted (slice 1 of the post-testing UX wave; refines ADR-0041).
+
+**Context:** `doctor`'s questionnaire offered every distro-appropriate catalog suggestion unconditionally — it proposed installing **VLC even though it was already installed**. That breaks the whole point of `doctor`: it must *diagnose the system*, not read out a canned list. The owner's principle (#9): JII cooperates with the system, it doesn't live beside it.
+
+**Decision:**
+- `doctor` gathers the **installed set once** (`Engine::installed_index` — a `HashSet` of source-native names/app-ids, one `list_installed` per available provider) and **filters out every suggestion the user has already done** before offering anything. If a fix and every suggestion are satisfied, it says "you're all good."
+- Each catalog entry declares how to tell it's done: an optional **`check`** identifier (a Flatpak app-id like `com.valvesoftware.Steam`, or a repo's release package `rpmfusion-free-release`) when the installed name differs from the install spec; otherwise satisfaction is derived from `packages` (bare names, `:source`/`@ref` stripped). An entry with no derivable identifier is never auto-hidden (offer beats wrongly hiding).
+- `Recommendation::is_satisfied(&installed)` is pure and unit-tested; the I/O (the scan) lives in the engine.
+
+**Alternatives considered:**
+- **Per-suggestion targeted "is X installed" calls.** Rejected: N suggestions × per-provider `list_installed` is O(N·providers) process spawns (dnf `repoquery --installed` each time). One shared index is a handful of calls total.
+- **Check via `which <name>`.** Rejected: catalog items (codecs, fonts, repos) aren't PATH binaries; only the source's installed list is authoritative.
+- **Verify installed state inside the pure catalog module.** Rejected: keeps `recommend` pure data (ADR-0033); the engine owns the I/O, the module owns the match logic.
+
+**Consequences:**
+- `doctor` now costs one installed-scan on the interactive path (acceptable — it *is* the diagnosis). The read-only `--json`/`-n` listing stays a plain catalog reference for now.
+- New `Recommendation.check` field + `satisfied_ids`/`is_satisfied`; `Engine::installed_index`; `doctor_offer` takes `&Engine`. Live-verified on Fedora: with VLC/codecs/fonts/Steam/RPM Fusion all present, doctor offers none of them.
+- Flatpak-pinned or repo-style entries need an accurate `check`; a wrong/missing one just means the entry is offered when already done (safe, not harmful).

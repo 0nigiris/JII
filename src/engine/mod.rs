@@ -644,6 +644,26 @@ impl Engine {
         installed.into_iter().find(|r| r.name == name)
     }
 
+    /// The set of package names currently installed across every **available** source,
+    /// gathered once (each provider's `list_installed` is called a single time). Backs
+    /// `doctor`'s "analyse the system first" step (#1): a suggestion whose identifiers are
+    /// all in this set is already done and must not be offered. Names are source-native
+    /// (dnf package names, Flatpak app-ids, npm package names…), matched against a
+    /// suggestion's `check`/`packages`. Best-effort — a provider that errors contributes
+    /// nothing rather than failing the whole index.
+    pub async fn installed_index(&self) -> std::collections::HashSet<String> {
+        let mut names = std::collections::HashSet::new();
+        for provider in self.providers.iter() {
+            if !provider.is_available().await {
+                continue;
+            }
+            if let Ok(installed) = provider.list_installed().await {
+                names.extend(installed.into_iter().map(|r| r.name));
+            }
+        }
+        names
+    }
+
     /// Whether the recorded install is still present, asked of its owning provider
     /// (which decides how to verify — list lookup or file existence).
     async fn is_installed_via(&self, record: &InstalledRecord) -> bool {

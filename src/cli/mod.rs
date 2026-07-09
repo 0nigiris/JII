@@ -1653,7 +1653,7 @@ impl Cli {
 
         if interactive {
             // The setup questionnaire: offer each fixable check and each suggestion, apply on yes.
-            self.doctor_offer(&checks, config_for_fix, renderer).await?;
+            self.doctor_offer(&engine, &checks, config_for_fix, renderer).await?;
         } else {
             // Read-only run (JSON handled earlier; here it's --no or a non-TTY). List the
             // suggestions catalog for reference and point at the interactive run.
@@ -1674,6 +1674,7 @@ impl Cli {
     /// `--dry-run` shows what each "yes" *would* do without changing anything.
     async fn doctor_offer(
         &self,
+        engine: &Engine,
         checks: &[SystemCheck],
         config: Config,
         renderer: &Renderer,
@@ -1685,10 +1686,18 @@ impl Cli {
 
         let catalog = crate::recommend::Catalog::load().ok();
         let distro_id = crate::platform::Platform::detect().distro.id();
-        let suggestions = catalog
+        let all_suggestions = catalog
             .as_ref()
             .map(|c| c.for_distro(distro_id))
             .unwrap_or_default();
+
+        // Analyse the system first (#1): drop suggestions the user has already done, so
+        // doctor is real diagnostics — not a canned list. One installed-scan for the batch.
+        let installed = engine.installed_index().await;
+        let suggestions: Vec<_> = all_suggestions
+            .into_iter()
+            .filter(|r| !r.is_satisfied(&installed))
+            .collect();
 
         if fixes.is_empty() && suggestions.is_empty() {
             renderer.info("");

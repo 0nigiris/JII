@@ -40,12 +40,40 @@ pub struct Recommendation {
     /// A caveat worth surfacing (e.g. a trust boundary, or "laptops only").
     #[serde(default)]
     pub note: Option<String>,
+    /// Optional identifier whose installed presence means this entry is **already
+    /// satisfied**, so `doctor` skips offering it (#1). Use it when the installed name
+    /// differs from the install spec — a Flatpak app-id (`com.valvesoftware.Steam` for
+    /// `steam:flatpak`) or a repo's release package (`rpmfusion-free-release`). When
+    /// absent, satisfaction is derived from `packages` (their bare names).
+    #[serde(default)]
+    pub check: Option<String>,
 }
 
 impl Recommendation {
     /// Whether this entry applies to a given distro id (empty `distros` = every distro).
     fn applies_to(&self, distro_id: &str) -> bool {
         self.distros.is_empty() || self.distros.iter().any(|d| d == distro_id)
+    }
+
+    /// Identifiers whose installed presence means this suggestion is already done. The
+    /// explicit `check` wins; otherwise the `packages` with any `:source`/`@ref` stripped.
+    /// Empty means "can't tell" — such an entry is always offered.
+    pub fn satisfied_ids(&self) -> Vec<String> {
+        if let Some(check) = &self.check {
+            return vec![check.clone()];
+        }
+        self.packages
+            .iter()
+            .map(|p| p.split([':', '@']).next().unwrap_or(p).to_string())
+            .collect()
+    }
+
+    /// Whether every identifier of this suggestion is present in the installed set — i.e.
+    /// the user has already done it. An entry with no derivable identifiers is never
+    /// considered satisfied (we'd rather offer than wrongly hide it).
+    pub fn is_satisfied(&self, installed: &std::collections::HashSet<String>) -> bool {
+        let ids = self.satisfied_ids();
+        !ids.is_empty() && ids.iter().all(|id| installed.contains(id))
     }
 }
 
@@ -112,10 +140,62 @@ mod tests {
             packages: vec!["x".into()],
             manual: None,
             note: None,
+            check: None,
         };
         assert!(r.applies_to("fedora"));
         assert!(r.applies_to("arch"));
         assert!(r.applies_to(""));
+    }
+
+    #[test]
+    fn satisfied_ids_prefers_check_then_strips_package_specs() {
+        let mut r = Recommendation {
+            title: "Steam".into(),
+            why: "games".into(),
+            category: "gaming".into(),
+            distros: vec!["fedora".into()],
+            packages: vec!["steam:flatpak".into()],
+            manual: None,
+            note: None,
+            check: Some("com.valvesoftware.Steam".into()),
+        };
+        // Explicit check wins (Flatpak app-id, not the "steam" spec).
+        assert_eq!(r.satisfied_ids(), vec!["com.valvesoftware.Steam".to_string()]);
+        // Without a check, the package spec's bare name is used.
+        r.check = None;
+        assert_eq!(r.satisfied_ids(), vec!["steam".to_string()]);
+    }
+
+    #[test]
+    fn is_satisfied_only_when_all_ids_installed() {
+        let r = Recommendation {
+            title: "Codecs".into(),
+            why: "media".into(),
+            category: "media".into(),
+            distros: vec![],
+            packages: vec!["a".into(), "b".into()],
+            manual: None,
+            note: None,
+            check: None,
+        };
+        let mut set = std::collections::HashSet::new();
+        set.insert("a".to_string());
+        assert!(!r.is_satisfied(&set)); // only one of two present
+        set.insert("b".to_string());
+        assert!(r.is_satisfied(&set)); // both present → already done
+
+        // An entry with no identifiers (manual-only, no check) is never "satisfied".
+        let manual = Recommendation {
+            title: "Repo".into(),
+            why: "w".into(),
+            category: "repos".into(),
+            distros: vec![],
+            packages: vec![],
+            manual: Some("do it".into()),
+            note: None,
+            check: None,
+        };
+        assert!(!manual.is_satisfied(&set));
     }
 
     #[test]
