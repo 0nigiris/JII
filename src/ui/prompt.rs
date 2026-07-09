@@ -22,6 +22,17 @@ pub struct PromptFlags {
     pub no: bool,
 }
 
+impl PromptFlags {
+    /// Fold in a caller-side "assume yes" — e.g. the `doctor` questionnaire, whose gate
+    /// question ("Set up X?") is itself the consent, so the ensuing install must not ask
+    /// again. The trust barrier (ADR-0006) still applies: an untrusted source is not
+    /// auto-confirmed by this, only by an explicit `allow_untrusted_auto`.
+    pub fn with_yes(mut self, yes: bool) -> Self {
+        self.yes = self.yes || yes;
+        self
+    }
+}
+
 /// Decide whether to proceed with installing a batch of one or more packages, governed
 /// by its **least-trusted** candidate: if anything in the batch is below the auto-confirm
 /// threshold, the whole batch requires an explicit answer (even under `--auto`/`--yes`,

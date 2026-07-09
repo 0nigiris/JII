@@ -374,6 +374,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   standalone `jii recommend` + apply-by-id **removed** — apply by running the shown
                   command. `Recommendation.id` dropped from runtime (uniqueness moved to `title`).
                   **② doctor complete.** 183 tests.
+            - [x] *Slice 4 — doctor becomes an interactive setup questionnaire* (ADR-0041). Reverses
+                  the read-only/advice stance at the owner's request: bare `jii doctor` now asks a
+                  yes/no per actionable item (fixable checks + catalog suggestions: RPM Fusion, codecs,
+                  fonts, VLC, PATH…) and applies on "yes". New `Fix::PathExport` edits the shell rc for
+                  `~/.local/bin`/`~/.cargo/bin`; `install`→`install_inner(assume_yes)` +
+                  `PromptFlags::with_yes` so one question is the consent (trust barrier still holds).
+                  Read-only under `--json`/`-n`/no-TTY; `--fix` kept as a hidden no-op. 194 tests.
       - [x] **③ providers/marketplace** (ADR-0036). `jii providers` lists the ecosystem managers
             (npm/cargo/brew/flatpak/snap/pipx/go/nix) with installed-vs-available status; `jii providers
             add <name>` bootstraps a missing one. Ecosystem-ness is optional `Provider::ecosystem`

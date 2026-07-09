@@ -12,6 +12,33 @@ _Last updated: 2026-07-09_
 
 ---
 
+## Most recent work (2026-07-09) — read this first
+
+Landed and pushed to `master` after the clean-VM UX waves:
+
+- **Beta published.** Static musl binaries (x86_64 + aarch64), `.rpm`/`.deb`/AUR/COPR packaging,
+  `install.sh` one-liner, completions + man page. CI release pipeline green; tags `v0.1.0-beta` and
+  **`v0.1.1-beta`** published (12 assets each). Version in `Cargo.toml` = `0.1.1-beta`.
+- **Self-update (ADR-0040, revised).** `jii update jii` self-updates method-aware (user-space →
+  atomic binary swap via `Action::Replace`/`fs::rename`, no root; package → dnf/apt). `jii uninstall`
+  self-removes. **Bare `jii update` updates everything** — system *then* JII itself (still prompts).
+- **`jii doctor` is now an interactive setup questionnaire (ADR-0041).** Not advice anymore: each
+  fixable check and each catalog suggestion (RPM Fusion, codecs, fonts, VLC, PATH…) is a yes/no
+  question, applied on "yes". New `Fix::PathExport` edits the shell rc for `~/.local/bin` /
+  `~/.cargo/bin`; `install`→`install_inner(assume_yes)` + `PromptFlags::with_yes` so the single
+  question is the consent (trust barrier still gates untrusted). Read-only under `--json`/`-n`/no-TTY.
+- **Relicensed MIT → GPL-3.0-or-later** (LICENSE = canonical GPLv3; Cargo/README/packaging updated).
+- **README** fully rewritten into a detailed, badged landing page.
+
+**In-flight / next:** improve **search matching** — a query like `ayugram` should find
+`ayugram-desktop`, and a near-miss like `ayugramm` should still find it or offer "did you mean …?"
+(fuzzy / substring matching + a suggestion prompt). Not yet implemented.
+
+**Still open (needs owner's hosts):** install/run the published `.rpm`/`.deb` on a live non-Fedora
+box and on real aarch64; true end-to-end self-update fires only when the *next* tag is cut.
+
+---
+
 ## What JII is
 
 A smart universal package **installer** (not a manager) for Linux, in Rust,

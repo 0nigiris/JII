@@ -106,11 +106,13 @@ pub enum Commands {
         /// Package name.
         package: String,
     },
-    /// Report source availability, latency and health, plus host system checks.
+    /// Diagnose sources + host, then interactively offer to set up what's missing
+    /// (git/curl, PATH, Flathub, RPM Fusion, codecs, fonts…). Each item is a yes/no
+    /// question, applied on "yes"; nothing changes without your answer.
     Doctor {
-        /// Offer to fix what can be fixed (install git/curl, add the Flathub remote).
-        /// Each fix is previewed and confirmed; nothing is changed silently.
-        #[arg(long)]
+        /// Deprecated: setup is now interactive by default, so this flag is a no-op
+        /// (kept so existing `jii doctor --fix` invocations still work).
+        #[arg(long, hide = true)]
         fix: bool,
     },
     /// List software installed via JII. Add `--audit` for the security view (source,
@@ -202,7 +204,7 @@ impl Cli {
             Some(Commands::List { audit }) => self.list(*audit, config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
 
-            Some(Commands::Doctor { fix }) => self.doctor(*fix, config, &renderer).await,
+            Some(Commands::Doctor { fix: _ }) => self.doctor(config, &renderer).await,
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
 
@@ -241,6 +243,20 @@ impl Cli {
         packages: &[String],
         config: Config,
         renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        self.install_inner(packages, config, renderer, false).await
+    }
+
+    /// The install flow. `assume_yes` lets a caller that already obtained consent (the
+    /// `doctor` questionnaire) skip the redundant final confirmation — the trust barrier
+    /// still gates untrusted sources (ADR-0006), so this only auto-confirms trusted-enough
+    /// candidates.
+    async fn install_inner(
+        &self,
+        packages: &[String],
+        config: Config,
+        renderer: &Renderer,
+        assume_yes: bool,
     ) -> crate::error::Result<()> {
         let mut engine = Engine::new(self.apply_profile(config))?;
         if !self.ensure_usable_source(&engine, renderer).await {
@@ -321,7 +337,7 @@ impl Cli {
                     version_or_unknown(available.as_ref()),
                 ));
                 if single && !self.global.dry_run {
-                    let flags = self.prompt_flags(engine.config().install.auto);
+                    let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
                     if !prompt::confirm(renderer, "Update now?", true, &flags) {
                         renderer.info("Keeping the installed version.");
                         continue;
@@ -400,7 +416,7 @@ impl Cli {
             return Ok(());
         }
         if !not_found.is_empty() {
-            let flags = self.prompt_flags(engine.config().install.auto);
+            let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
             if !prompt::confirm(renderer, "Continue installing the rest?", true, &flags) {
                 renderer.info("Aborted.");
                 return Ok(());
@@ -436,7 +452,7 @@ impl Cli {
             .map(|c| c.trust)
             .max()
             .unwrap_or(crate::model::TrustLevel::Official);
-        let flags = self.prompt_flags(engine.config().install.auto);
+        let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
         // An interactive chooser pick is itself the consent for a trusted-enough source,
         // so we don't ask twice; an untrusted pick still hits the trust barrier below
         // (ADR-0006 — untrusted always needs an explicit answer).
@@ -1416,10 +1432,12 @@ impl Cli {
         };
         config.ui.mode = mode;
 
-        // Step 2 — optional system check (read-only here; the wizard never auto-fixes).
-        if prompt::confirm(renderer, "Run a quick system check (jii doctor) now?", true, &flags) {
+        // Step 2 — optional system check + setup. `doctor` is interactive: it diagnoses,
+        // then offers to set up what's missing (each item a separate yes/no — the user stays
+        // in control, and can skip every one with Enter).
+        if prompt::confirm(renderer, "Run a quick system check and setup (jii doctor) now?", true, &flags) {
             renderer.info("");
-            self.doctor(false, config.clone(), renderer).await?;
+            self.doctor(config.clone(), renderer).await?;
         }
 
         // Persist the choices and mark the wizard done.
@@ -1518,12 +1536,14 @@ impl Cli {
         Ok(())
     }
 
-    /// Report source availability, latency and health (per-source), then a short set of
-    /// **Tier-1 system checks** about JII itself working — is `~/.local/bin` on `PATH` (where
-    /// user-space installs land), is a GitHub token set (rate limit). Read-only: each check
-    /// reports and advises; nothing is changed (Analyze → Explain, no auto-apply — U6/D6).
-    async fn doctor(&self, fix: bool, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
-        // Capture what the system checks (and any `--fix`) need before `config` moves
+    /// Report source availability, latency and health (per-source), then a set of **system
+    /// checks** about the host (network, common tools, `PATH`, Flathub, GitHub token). In an
+    /// interactive terminal `doctor` then becomes a **setup questionnaire** (ADR-0041): each
+    /// fixable check and each distro-appropriate suggestion (RPM Fusion, codecs, fonts…) is
+    /// offered as a yes/no question and, on "yes", applied on the spot. It stays read-only in
+    /// `--json`, under `-n/--no`, or with no TTY (Analyze → Explain → Ask → Apply).
+    async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        // Capture what the system checks (and the questionnaire) need before `config` moves
         // into the engine.
         let token_env = config.network.github_token_env.clone();
         let config_for_fix = config.clone();
@@ -1567,6 +1587,12 @@ impl Cli {
         // System checks: probe the host environment (network, common tools, PATH, Flathub).
         let facts = gather_system_facts(&token_env).await;
         let checks = system_checks(&facts);
+
+        // Interactive (a TTY, not JSON, not `--no`) → we'll turn actionable items into a
+        // yes/no questionnaire below. Suppress a fixable check's manual advice then: the
+        // upcoming question replaces it (and would otherwise contradict "we'll do it").
+        let interactive = self.interactive(renderer) && !self.global.no;
+
         renderer.info("");
         renderer.info("System checks:");
         let mut warnings = 0usize;
@@ -1583,7 +1609,10 @@ impl Cli {
                 }
             }
             if let Some(advice) = &c.advice {
-                renderer.info(&format!("    → {advice}"));
+                let offered = interactive && c.fix.is_some();
+                if !offered {
+                    renderer.info(&format!("    → {advice}"));
+                }
             }
         }
         renderer.info("");
@@ -1594,24 +1623,28 @@ impl Cli {
             renderer.info(&format!("{warnings} thing{plural} to look at above."));
         }
 
-        // Curated suggestions (the folded-in recommend catalog) — informational, before any
-        // interactive fixing so the fix prompts stay last.
-        self.suggestions(renderer);
-
-        if fix {
-            self.doctor_fix(&checks, config_for_fix, renderer).await?;
-        } else if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
-            renderer.info("");
-            renderer.info("Run `jii doctor --fix` to fix the fixable ones.");
+        if interactive {
+            // The setup questionnaire: offer each fixable check and each suggestion, apply on yes.
+            self.doctor_offer(&checks, config_for_fix, renderer).await?;
+        } else {
+            // Read-only run (JSON handled earlier; here it's --no or a non-TTY). List the
+            // suggestions catalog for reference and point at the interactive run.
+            self.list_suggestions(renderer);
+            if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
+                renderer.info("");
+                renderer.info("Run `jii doctor` in a terminal to set these up interactively.");
+            }
         }
         Ok(())
     }
 
-    /// Apply the fixable checks (`doctor --fix`). Analyze → Explain → Ask → Apply: package
-    /// fixes route through the normal install path (which previews and confirms itself);
-    /// the Flathub remote is a plain command shown before it runs (Flatpak elevates via its
-    /// own polkit). `--dry-run` previews every fix without asking or changing anything.
-    async fn doctor_fix(
+    /// The `doctor` setup questionnaire (ADR-0041). Walks every actionable item — each fixable
+    /// system check (git/curl, Flathub, PATH) and each distro-appropriate catalog suggestion
+    /// (RPM Fusion, codecs, fonts, …) — asks a plain yes/no (Enter = skip, default no), and on
+    /// "yes" applies it immediately. The single question is the consent, so installs don't ask
+    /// twice (`with_yes`); the trust barrier (ADR-0006) still gates anything untrusted.
+    /// `--dry-run` shows what each "yes" *would* do without changing anything.
+    async fn doctor_offer(
         &self,
         checks: &[SystemCheck],
         config: Config,
@@ -1622,46 +1655,167 @@ impl Cli {
             .filter_map(|c| c.fix.as_ref().filter(|_| !c.ok).map(|f| (c, f)))
             .collect();
 
-        renderer.info("");
-        if fixes.is_empty() {
-            renderer.info("Nothing here can be fixed automatically — the items above need a manual step.");
+        let catalog = crate::recommend::Catalog::load().ok();
+        let distro_id = crate::platform::Platform::detect().distro.id();
+        let suggestions = catalog
+            .as_ref()
+            .map(|c| c.for_distro(distro_id))
+            .unwrap_or_default();
+
+        if fixes.is_empty() && suggestions.is_empty() {
+            renderer.info("");
+            renderer.success("Nothing to set up — you're all good.");
             return Ok(());
         }
 
         let flags = self.prompt_flags(config.install.auto);
+        renderer.info("");
+        renderer.info("Let's set up what's missing — y to do it, Enter to skip:");
+
+        // A) Fixable system checks.
         for (check, fix) in fixes {
-            renderer.info(&format!("→ {}", check.label));
-            match fix {
-                Fix::Install(pkg) => {
-                    // install() previews, confirms, and honors --dry-run itself.
-                    self.install(&[pkg.to_string()], config.clone(), renderer).await?;
-                }
-                Fix::Command { argv, show } => {
-                    if self.global.dry_run {
-                        renderer.info(&format!("  would run:  {show}"));
-                        continue;
-                    }
+            let question = match fix {
+                Fix::Install(pkg) => format!("Install {pkg}?"),
+                Fix::PathExport { dir } => format!("Add {} to your PATH?", dir.display()),
+                Fix::Command { .. } => format!("{} — fix it now?", check.label),
+            };
+            if !prompt::confirm(renderer, &format!("  {question}"), false, &flags) {
+                continue;
+            }
+            self.apply_fix(fix, config.clone(), renderer).await?;
+        }
+
+        // B) Curated, distro-aware suggestions (the folded-in recommend catalog).
+        let mut last_category: Option<&str> = None;
+        for r in &suggestions {
+            if last_category != Some(r.category.as_str()) {
+                renderer.info(&format!("  [{}]", r.category));
+                last_category = Some(r.category.as_str());
+            }
+            renderer.info(&format!("    {} — {}", r.title, r.why));
+            if let Some(note) = &r.note {
+                renderer.info(&format!("        note: {note}"));
+            }
+            if !prompt::confirm(renderer, &format!("    Set up {}?", r.title), false, &flags) {
+                continue;
+            }
+            self.apply_suggestion(r, config.clone(), renderer).await?;
+        }
+        Ok(())
+    }
+
+    /// Apply one fixable system check. Installs route through the normal path with the
+    /// questionnaire's "yes" carried through (`assume_yes`); a `Command` is shown then run;
+    /// a `PathExport` appends the right line to the user's shell rc.
+    async fn apply_fix(
+        &self,
+        fix: &Fix,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        match fix {
+            Fix::Install(pkg) => {
+                self.install_inner(&[pkg.to_string()], config, renderer, true).await?;
+            }
+            Fix::Command { argv, show } => {
+                if self.global.dry_run {
+                    renderer.info(&format!("  would run:  {show}"));
+                } else {
                     renderer.info(&format!("  runs:  {show}"));
-                    if !prompt::confirm(renderer, "  Run it?", true, &flags) {
-                        continue;
-                    }
                     match run_plain_command(argv).await {
                         Ok(()) => renderer.success("  Done."),
                         Err(e) => renderer.error(&format!("  Failed: {e}")),
                     }
                 }
             }
+            Fix::PathExport { dir } => self.apply_path_export(dir, renderer),
         }
         Ok(())
     }
 
-    /// Print curated, distro-aware suggestions at the tail of `doctor` (the old
-    /// `jii recommend`, now folded in — a fresh system's "worth adding" list). Compact:
-    /// one line per entry — title, why, and the exact way to add it (`jii …` for
-    /// installable entries; the documented command for a third-party repo an install
-    /// can't express). Purely informational: nothing is changed, the user runs what they
-    /// like. Silent when the catalog has nothing for this distro, so it never nags.
-    fn suggestions(&self, renderer: &Renderer) {
+    /// Apply one catalog suggestion: install its packages (via the normal path, consent
+    /// already given) or run its documented `manual` command (a repo-enable etc., which may
+    /// use shell syntax like `$(rpm -E %fedora)`, so it runs through `sh -c`).
+    async fn apply_suggestion(
+        &self,
+        r: &crate::recommend::Recommendation,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        if !r.packages.is_empty() {
+            self.install_inner(&r.packages, config, renderer, true).await?;
+        } else if let Some(manual) = &r.manual {
+            if self.global.dry_run {
+                renderer.info(&format!("  would run:  {manual}"));
+            } else {
+                renderer.info(&format!("  runs:  {manual}"));
+                match run_shell_command(manual).await {
+                    Ok(()) => renderer.success("  Done."),
+                    Err(e) => renderer.error(&format!("  Failed: {e}")),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Put `dir` on `PATH` by appending the right line to the user's shell rc (ADR-0041).
+    /// Picks the rc file and syntax from `$SHELL` (fish → `fish_add_path`; else an
+    /// `export PATH=…` line), is idempotent (skips if the rc already references the dir),
+    /// and honors `--dry-run`.
+    fn apply_path_export(&self, dir: &std::path::Path, renderer: &Renderer) {
+        let Some(base) = directories::BaseDirs::new() else {
+            renderer.error("  Can't resolve your home directory — add it to PATH manually.");
+            return;
+        };
+        let shell = std::env::var("SHELL")
+            .ok()
+            .and_then(|s| {
+                std::path::Path::new(&s)
+                    .file_name()
+                    .map(|f| f.to_string_lossy().into_owned())
+            })
+            .unwrap_or_default();
+        let dir_str = dir.display().to_string();
+        let (rc_rel, line) = path_export_edit(&shell, &dir_str);
+        let rc_path = base.home_dir().join(rc_rel);
+
+        if self.global.dry_run {
+            renderer.info(&format!("  would add to {}:  {line}", rc_path.display()));
+            return;
+        }
+        // Idempotent: if the rc already references this dir, don't add a second line.
+        if let Ok(existing) = std::fs::read_to_string(&rc_path)
+            && existing.contains(&dir_str)
+        {
+            renderer.info(&format!(
+                "  {} already references {dir_str} — nothing to do.",
+                rc_path.display()
+            ));
+            return;
+        }
+        if let Some(parent) = rc_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::OpenOptions::new().create(true).append(true).open(&rc_path) {
+            Ok(mut file) => {
+                use std::io::Write;
+                if let Err(e) = writeln!(file, "\n# Added by jii — put {dir_str} on PATH\n{line}") {
+                    renderer.error(&format!("  Couldn't update {}: {e}", rc_path.display()));
+                    return;
+                }
+                renderer.success(&format!(
+                    "  Added to {rc}. Run `source {rc}` or open a new terminal.",
+                    rc = rc_path.display()
+                ));
+            }
+            Err(e) => renderer.error(&format!("  Couldn't write {}: {e}", rc_path.display())),
+        }
+    }
+
+    /// List the curated, distro-aware catalog for a read-only `doctor` run (`--no`, no TTY):
+    /// title, why, and the exact way to add it. Nothing is changed. Silent when the catalog
+    /// has nothing for this distro, so it never nags.
+    fn list_suggestions(&self, renderer: &Renderer) {
         let catalog = match crate::recommend::Catalog::load() {
             Ok(c) => c,
             Err(_) => return, // a broken catalog must never break `doctor`
@@ -1692,7 +1846,7 @@ impl Cli {
                 renderer.info(&format!("        note: {note}"));
             }
         }
-        renderer.info("Informational — nothing was changed. Add one by running the command shown.");
+        renderer.info("Informational — run `jii doctor` in a terminal to set these up.");
     }
 
     /// Show installation history, newest first.
@@ -1913,11 +2067,11 @@ fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>)
     reasons
 }
 
-/// How `doctor --fix` can remedy a failing check. A check with no `Fix` is manual-only
-/// (JII won't edit your shell rc or invent a GitHub token for you).
+/// How the `doctor` questionnaire can remedy a failing check. A check with no `Fix` is
+/// manual-only (JII won't invent a GitHub token for you).
 #[derive(Debug)]
 enum Fix {
-    /// Install a package through JII's normal path — which previews and confirms itself.
+    /// Install a package through JII's normal path.
     Install(&'static str),
     /// Run a plain command JII shows first. Used for the Flathub remote, which Flatpak
     /// elevates via its own polkit (like its installs), so JII wraps no sudo/pkexec.
@@ -1926,6 +2080,9 @@ enum Fix {
         /// Human-readable rendering of `argv`, shown before running.
         show: String,
     },
+    /// Put a directory on `PATH` by appending an export line to the user's shell rc.
+    /// JII edits your shell rc only on an explicit yes in the questionnaire (ADR-0041).
+    PathExport { dir: std::path::PathBuf },
 }
 
 /// One `doctor` system check about the host environment (not a source's live health).
@@ -2034,9 +2191,9 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
         SystemCheck::warn(
             format!("{local} is not on your PATH"),
             "User-space installs (cargo, npm, pipx, go, GitHub binaries) land there, so their \
-             commands won't be found. Add it, e.g.:  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' \
-             >> ~/.bashrc && exec $SHELL",
+             commands won't be found.",
         )
+        .fixable(Fix::PathExport { dir: f.local_bin.clone() })
     });
 
     // ~/.cargo/bin on PATH — only when cargo is actually in play.
@@ -2047,9 +2204,9 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
         } else {
             SystemCheck::warn(
                 format!("{cargo} is not on your PATH"),
-                "Cargo installs binaries there. Add it, e.g.:  echo 'export \
-                 PATH=\"$HOME/.cargo/bin:$PATH\"' >> ~/.bashrc && exec $SHELL",
+                "Cargo installs binaries there, so their commands won't be found.",
             )
+            .fixable(Fix::PathExport { dir: f.cargo_bin.clone() })
         });
     }
 
@@ -2156,8 +2313,8 @@ async fn check_internet() -> bool {
     client.head("https://api.github.com").send().await.is_ok()
 }
 
-/// Run a plain, non-JII-elevated command for `doctor --fix`, letting it inherit the
-/// terminal so a tool's own polkit prompt (Flatpak) is visible. Errors on spawn failure
+/// Run a plain, non-JII-elevated command for the `doctor` questionnaire, letting it inherit
+/// the terminal so a tool's own polkit prompt (Flatpak) is visible. Errors on spawn failure
 /// or a non-zero exit so the caller can report it.
 async fn run_plain_command(argv: &[String]) -> crate::error::Result<()> {
     let status = tokio::process::Command::new(&argv[0])
@@ -2172,6 +2329,37 @@ async fn run_plain_command(argv: &[String]) -> crate::error::Result<()> {
             "`{}` exited with {status}",
             argv.join(" ")
         )))
+    }
+}
+
+/// Run a documented catalog `manual` command through `sh -c` — it may use shell syntax
+/// (e.g. `$(rpm -E %fedora)`) and can carry its own `sudo`, whose password prompt is
+/// visible because the child inherits the terminal. Errors on spawn failure or non-zero exit.
+async fn run_shell_command(cmd: &str) -> crate::error::Result<()> {
+    let status = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .status()
+        .await
+        .map_err(|e| crate::error::JiiError::spawn("sh", e))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(crate::error::JiiError::Other(anyhow::anyhow!(
+            "`{cmd}` exited with {status}"
+        )))
+    }
+}
+
+/// Pick the shell rc file (relative to `$HOME`) and the line that puts `dir` on `PATH`,
+/// from the shell's basename. Pure, so the wording is unit-tested. Fish uses
+/// `fish_add_path`; every POSIX shell gets an `export PATH="…:$PATH"` line. An unknown
+/// shell falls back to `~/.bashrc` (the most common interactive default).
+fn path_export_edit(shell: &str, dir: &str) -> (&'static str, String) {
+    match shell {
+        "fish" => (".config/fish/config.fish", format!("fish_add_path {dir}")),
+        "zsh" => (".zshrc", format!("export PATH=\"{dir}:$PATH\"")),
+        _ => (".bashrc", format!("export PATH=\"{dir}:$PATH\"")),
     }
 }
 
@@ -2196,6 +2384,24 @@ mod tests {
         // duplicate subcommands…). Cheap insurance that the CLI surface always parses.
         use clap::CommandFactory;
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn path_export_edit_picks_rc_and_syntax_per_shell() {
+        // Fish has its own PATH command and config file.
+        let (rc, line) = path_export_edit("fish", "/home/u/.cargo/bin");
+        assert_eq!(rc, ".config/fish/config.fish");
+        assert_eq!(line, "fish_add_path /home/u/.cargo/bin");
+
+        // zsh → ~/.zshrc with an export line that prepends the dir.
+        let (rc, line) = path_export_edit("zsh", "/home/u/.local/bin");
+        assert_eq!(rc, ".zshrc");
+        assert_eq!(line, "export PATH=\"/home/u/.local/bin:$PATH\"");
+
+        // An unknown/empty shell falls back to bash's rc, never panics.
+        let (rc, line) = path_export_edit("", "/x");
+        assert_eq!(rc, ".bashrc");
+        assert_eq!(line, "export PATH=\"/x:$PATH\"");
     }
 
     fn candidate(trust: TrustLevel, signed: bool, version: Option<&str>) -> PackageCandidate {
@@ -2329,13 +2535,17 @@ mod tests {
     }
 
     #[test]
-    fn system_checks_flag_missing_path_with_advice() {
+    fn system_checks_flag_missing_path_with_a_pathexport_fix() {
         let mut f = facts_all_good();
         f.local_bin_on_path = false;
         let checks = system_checks(&f);
         let path_check = checks.iter().find(|c| c.label.contains(".local/bin")).unwrap();
         assert!(!path_check.ok);
-        assert!(path_check.advice.as_deref().unwrap().contains("PATH"));
+        assert!(path_check.label.contains("PATH"));
+        match &path_check.fix {
+            Some(Fix::PathExport { dir }) => assert!(dir.ends_with(".local/bin")),
+            other => panic!("expected a PathExport fix, got {other:?}"),
+        }
     }
 
     #[test]
@@ -2417,14 +2627,19 @@ mod tests {
     }
 
     #[test]
-    fn passing_checks_and_manual_ones_carry_no_fix() {
-        // A healthy env: no fixes anywhere.
+    fn a_healthy_env_carries_no_fixes() {
+        // Every check passes → nothing to offer in the questionnaire.
         assert!(system_checks(&facts_all_good()).iter().all(|c| c.fix.is_none()));
-        // The PATH papercut is real but manual-only (JII won't edit your shell rc).
+    }
+
+    #[test]
+    fn missing_cargo_path_carries_a_pathexport_fix() {
+        // The cargo/bin papercut is now fixable — JII offers to add it to PATH (ADR-0041).
         let mut f = facts_all_good();
-        f.local_bin_on_path = false;
+        f.cargo_bin_on_path = false;
         let checks = system_checks(&f);
-        let path = checks.iter().find(|c| c.label.contains(".local/bin")).unwrap();
-        assert!(!path.ok && path.fix.is_none());
+        let cargo = checks.iter().find(|c| c.label.contains(".cargo/bin")).unwrap();
+        assert!(!cargo.ok);
+        assert!(matches!(&cargo.fix, Some(Fix::PathExport { dir }) if dir.ends_with(".cargo/bin")));
     }
 }

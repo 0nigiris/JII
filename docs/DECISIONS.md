@@ -1584,3 +1584,30 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - A real package literally named `jii` on some source is now shadowed by the self-management path — acceptable (JII is the tool; that name belongs to it).
 - `Action::Replace` is a small general primitive (atomic rename into place); the executor, `describe_action`, and the JSON schema all handle it.
 - The self-update fetch + swap **can't be exercised without a real newer release**; the plan-building and asset selection are pure and unit-tested, the network fetch + atomic swap are verified by construction + `--dry-run`. First true end-to-end self-update happens when the owner cuts the *next* tag.
+
+---
+
+## ADR-0041 — `jii doctor` is an interactive setup questionnaire (not a list of advice)
+
+**Status:** Accepted (supersedes the read-only-doctor stance of ADR-0034-era U6/D6).
+
+**Context:** `doctor` diagnosed the system and *advised* — it printed "add it with: `jii git`", "run: `flatpak remote-add …`", and a passive "Suggestions for your system" list (RPM Fusion, codecs, fonts…). The user had to copy/paste each command. The owner's explicit ask: doctor should **do** it, not describe it — "Want RPM Fusion? [y/N]" → yes → it runs the command; "Add cargo to PATH? [y/N]" → yes → it edits your shell rc. A questionnaire, not a wall of tips.
+
+**Decision:**
+- **`jii doctor` (bare) is interactive by default.** After the source diagnostics + system checks, in an interactive terminal it walks every actionable item as a plain **yes/no question** (default **no** — Enter skips) and, on "yes", **applies it on the spot**: install a package, run a documented command, or fix `PATH`. The old passive suggestions list and the old `--fix` behavior are folded into this one flow.
+- **What it can now set up:** the fixable system checks (`git`/`curl`, the Flathub remote, **and now `~/.local/bin` / `~/.cargo/bin` on `PATH`**) *plus* every distro-appropriate catalog suggestion (RPM Fusion, multimedia codecs, fonts, VLC, Steam, Wine, power tuning…).
+- **PATH fixes edit the shell rc** (`Fix::PathExport`): JII appends the correct line for the user's `$SHELL` — `fish_add_path <dir>` for fish, `export PATH="<dir>:$PATH"` for bash/zsh — idempotently (skips if the rc already references the dir). This **reverses the earlier "JII won't edit your shell rc" boundary**, but only on an explicit per-item "yes".
+- **The single question is the consent.** Installs carry a `with_yes` through the normal install path so they don't ask twice; the **trust barrier still holds** — an untrusted source is never auto-confirmed by the questionnaire's yes (ADR-0006). Catalog `manual` commands run via `sh -c` (they use `$(rpm -E %fedora)` and carry their own `sudo`, whose prompt is visible). `--dry-run` shows what each "yes" *would* do and changes nothing.
+- **Read-only is preserved** for the non-interactive contexts: `--json` (unchanged machine schema), `-n/--no`, and no-TTY all skip the questionnaire and just report + list the catalog. The first-run wizard runs the interactive doctor (prime onboarding moment), gated behind its own opt-in prompt.
+- **`--fix` is now a hidden no-op** kept only so existing `jii doctor --fix` invocations don't error.
+
+**Alternatives considered:**
+- **Keep advice-only + `--fix` for applying.** Rejected: the owner wants the default doctor to act; copy/pasting commands is exactly the friction JII exists to remove.
+- **Refuse to touch the shell rc (the old boundary).** Rejected at the owner's request — but constrained to an explicit per-item yes and made idempotent, so it's a consented edit, not a silent one.
+- **Default each question to "yes".** Rejected: a fresh-system questionnaire that installs on Enter is too aggressive; default-no keeps the user in control (press `y` to opt in).
+- **Bare doctor stays read-only; add `jii setup`/`--interactive`.** Rejected: the bare, most-common invocation should do the obviously-wanted thing (same principle as ADR-0034's bare `update`).
+
+**Consequences:**
+- `doctor` now mutates the system (with consent) — the JSON/`--no`/non-TTY read-only paths are the contract for scripting.
+- New `Fix::PathExport` primitive + a pure `path_export_edit(shell, dir)` helper (unit-tested); `install` split into `install_inner(assume_yes)` with a thin `install` wrapper, and `PromptFlags::with_yes`.
+- The `data/recommend/catalog.toml` entries are now *actionable* prompts, not just text — their `packages`/`manual` fields drive real applies, so they must stay conservative and correct.

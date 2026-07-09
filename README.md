@@ -225,8 +225,8 @@ jii how <name>       explain how JII would install (or did install) it   (alias:
 jii sources          list installation sources and whether each is usable here
 jii providers        show ecosystem managers (npm, cargo, brew, Flatpak…) + what's installed
 jii providers add    bootstrap a missing manager (e.g. jii providers add npm)
-jii doctor           source health + latency + system checks + curated suggestions
-jii doctor --fix     offer to fix what it can (install git/curl, add the Flathub remote)
+jii doctor           diagnose sources + host, then interactively set up what's missing
+                     (git/curl, PATH, Flathub, RPM Fusion, codecs, fonts…) — one y/n per item
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
 jii history          installation history
 jii setup            re-run the first-run wizard (output mode, optional doctor)
