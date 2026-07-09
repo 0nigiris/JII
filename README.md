@@ -266,10 +266,15 @@ name → │  Search  │ →   │  Rank  │  →  │ Recommend │  →  │
 ```
 
 1. **Search** — JII queries every usable source in parallel. Each source self-gates: if its tool
-   isn't installed, it quietly sits out (no errors, no noise in Friendly mode).
-2. **Rank** — candidates are scored by **trust level**, **freshness** (does the version match
-   upstream?), your **profile**, and source **priority**. The core never branches on the source
-   name — it only reasons over the `Provider` trait and a uniform `PackageCandidate` model.
+   isn't installed, it quietly sits out (no errors, no noise in Friendly mode). Matching is
+   **exact-first, then it broadens on a miss**: `jii ayugram` finds `ayugram-desktop`, and even a
+   trailing typo like `jii ayugramm` still gets there — JII shows *"No exact match — closest:
+   ayugram-desktop"* and lets you confirm or decline. Common exact queries (`jii git`) stay
+   noise-free and fast.
+2. **Rank** — candidates are scored by **name-match closeness** (an exact name beats a prefix beats
+   a substring), then **trust level**, your **profile**, and source **priority**. The core never
+   branches on the source name — it only reasons over the `Provider` trait and a uniform
+   `PackageCandidate` model.
 3. **Recommend** — the top candidate is presented with plain-language reasons ("Official package",
    "Highest trust", "Version matches upstream").
 4. **Plan** — the chosen install becomes an `InstallPlan` of concrete actions (download, verify,

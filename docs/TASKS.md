@@ -381,6 +381,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   `~/.local/bin`/`~/.cargo/bin`; `install`→`install_inner(assume_yes)` +
                   `PromptFlags::with_yes` so one question is the consent (trust barrier still holds).
                   Read-only under `--json`/`-n`/no-TTY; `--fix` kept as a hidden no-op. 194 tests.
+      - [x] **Smart search matching** (ADR-0042). Exact-first, broaden only on a miss: prefix search
+            (`ayugram` → `ayugram-desktop`) + a ≤2-char trailing-trim typo fallback (`ayugramm` still
+            resolves); shows "No exact match — closest: …" then the normal confirm (the "did you mean").
+            `MatchMode` on `Query` (dnf appends `*`, others rely on native breadth); name-aware
+            `rank(config, query, cands)` (exact>prefix>substring tier, then priority/trust/shorter-name);
+            `Engine::broaden_search`; capped, name-showing "Also available". Exact queries stay
+            noise-free (avoided `*git*` = ~1300 hits). 197 tests, live-verified on Fedora (ayugram-desktop).
       - [x] **③ providers/marketplace** (ADR-0036). `jii providers` lists the ecosystem managers
             (npm/cargo/brew/flatpak/snap/pipx/go/nix) with installed-vs-available status; `jii providers
             add <name>` bootstraps a missing one. Ecosystem-ness is optional `Provider::ecosystem`

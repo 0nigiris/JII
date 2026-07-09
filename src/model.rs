@@ -44,16 +44,38 @@ pub struct Query {
     /// search (Phase 6). Read then, so it's an intentional forward-looking field.
     #[allow(dead_code)]
     pub kind: QueryKind,
+    /// How strictly a provider should match `raw` (ADR-0042). Defaults to `Exact`; the
+    /// engine escalates to `Prefix` as a fallback only when an exact search finds nothing,
+    /// so `jii git` stays noise-free while `jii ayugram` still finds `ayugram-desktop`.
+    pub match_mode: MatchMode,
 }
 
 impl Query {
-    /// Build a name query (the only kind used in the MVP).
+    /// Build an exact-name query (the default kind).
     pub fn name(raw: impl Into<String>) -> Self {
         Query {
             raw: raw.into(),
             kind: QueryKind::Name,
+            match_mode: MatchMode::Exact,
         }
     }
+
+    /// Same query, reinterpreted with a different match mode (the engine's broaden-on-miss step).
+    pub fn with_match_mode(mut self, mode: MatchMode) -> Self {
+        self.match_mode = mode;
+        self
+    }
+}
+
+/// How strictly a provider should match a [`Query`]'s `raw` term against package names.
+/// A provider that can't express a mode (no glob support) may treat `Prefix` like its
+/// natural search — the engine still filters/ranks by match quality afterwards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchMode {
+    /// Match the name exactly (the noise-free default).
+    Exact,
+    /// Match names that start with the term (e.g. `ayugram` → `ayugram-desktop`).
+    Prefix,
 }
 
 /// How a [`Query`] should be interpreted.

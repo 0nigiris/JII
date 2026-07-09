@@ -84,8 +84,16 @@ impl Provider for Dnf {
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        // Exact-name, latest-version, available packages. Empty output = no match
-        // (dnf5 exits 0 even when nothing matches).
+        // Latest-version, available packages. Empty output = no match (dnf5 exits 0 even
+        // when nothing matches). By default the term is an exact name; on the engine's
+        // broaden-on-miss step (ADR-0042) it becomes a `<term>*` prefix glob, so
+        // `ayugram` can resolve to `ayugram-desktop` — dnf5 repoquery matches names by
+        // shell glob. (A `*term*` substring is deliberately avoided: `*git*` matches ~1300
+        // packages; a prefix keeps the fallback focused.)
+        let pattern = match query.match_mode {
+            crate::model::MatchMode::Exact => query.raw.clone(),
+            crate::model::MatchMode::Prefix => format!("{}*", query.raw),
+        };
         let qf = format!("%{{name}}{SEP}%{{evr}}{SEP}%{{repoid}}{SEP}%{{summary}}\n");
         let out = run_capture(&[
             BIN,
@@ -93,7 +101,7 @@ impl Provider for Dnf {
             "-q",
             "--available",
             "--latest-limit=1",
-            &query.raw,
+            &pattern,
             "--qf",
             &qf,
         ])

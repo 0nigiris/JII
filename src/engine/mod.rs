@@ -14,7 +14,8 @@ use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Health, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    Health, InstallPlan, InstalledRecord, MatchMode, PackageCandidate, PkgVersion, Query,
+    TrustLevel,
 };
 use crate::privilege::Privilege;
 use crate::provider::ProviderRegistry;
@@ -269,9 +270,43 @@ impl Engine {
         }
     }
 
-    /// Rank candidates, best first.
-    pub fn rank(&self, candidates: Vec<PackageCandidate>) -> Vec<PackageCandidate> {
-        ranking::rank(&self.config, candidates)
+    /// Rank candidates, best first, for the name the user typed (`query`) — exact name
+    /// matches sort above prefix/substring matches (ADR-0042).
+    pub fn rank(&self, query: &str, candidates: Vec<PackageCandidate>) -> Vec<PackageCandidate> {
+        ranking::rank(&self.config, query, candidates)
+    }
+
+    /// Broaden a search that found no exact match (ADR-0042), ranked best-first. Called by
+    /// the install/search flows only after the exact search comes up empty, so common
+    /// queries stay noise-free. Two stages:
+    ///
+    /// 1. **Prefix** — `<name>*`, so `ayugram` resolves to `ayugram-desktop`.
+    /// 2. **Typo fallback** — trim up to two trailing characters and retry the prefix
+    ///    search (a trailing slip like `ayugramm` still reaches `ayugram*`). Stops at the
+    ///    first stage that yields anything; a stem shorter than four characters is not
+    ///    tried (too little signal to be a useful guess).
+    ///
+    /// Returns candidates ranked against whatever term matched (empty if nothing did).
+    pub async fn broaden_search(&self, name: &str) -> Vec<PackageCandidate> {
+        let prefix_q = Query::name(name).with_match_mode(MatchMode::Prefix);
+        let prefix = self.rank(name, self.search(&prefix_q).await.candidates);
+        if !prefix.is_empty() {
+            return prefix;
+        }
+
+        let chars: Vec<char> = name.chars().collect();
+        for drop in 1..=2 {
+            if chars.len().saturating_sub(drop) < 4 {
+                break;
+            }
+            let stem: String = chars[..chars.len() - drop].iter().collect();
+            let q = Query::name(&stem).with_match_mode(MatchMode::Prefix);
+            let hit = self.rank(&stem, self.search(&q).await.candidates);
+            if !hit.is_empty() {
+                return hit;
+            }
+        }
+        Vec::new()
     }
 
     /// Group a batch of candidates by owning source and, for each group, ask the source
@@ -698,7 +733,7 @@ impl Engine {
     pub async fn first_available_package(&self, names: &[&str]) -> Option<String> {
         for name in names {
             let query = crate::model::Query::name(*name);
-            let ranked = self.rank(self.search(&query).await.candidates);
+            let ranked = self.rank(name, self.search(&query).await.candidates);
             if !ranked.is_empty() {
                 return Some((*name).to_string());
             }

@@ -1611,3 +1611,29 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - `doctor` now mutates the system (with consent) — the JSON/`--no`/non-TTY read-only paths are the contract for scripting.
 - New `Fix::PathExport` primitive + a pure `path_export_edit(shell, dir)` helper (unit-tested); `install` split into `install_inner(assume_yes)` with a thin `install` wrapper, and `PromptFlags::with_yes`.
 - The `data/recommend/catalog.toml` entries are now *actionable* prompts, not just text — their `packages`/`manual` fields drive real applies, so they must stay conservative and correct.
+
+---
+
+## ADR-0042 — Search matching: exact-first, broaden on a miss (prefix + trailing-typo)
+
+**Status:** Accepted.
+
+**Context:** Providers searched by **exact name**, so `jii ayugram` found nothing even though `ayugram-desktop` exists, and a typo like `ayugramm` was hopeless. The owner wants `ayugram` to resolve to `ayugram-desktop`, and a near-miss to still be found or offered ("did you mean …?"). But naive broadening is dangerous: `dnf5 repoquery '*git*'` matches **~1300** packages; even `'git*'` is 68. So we cannot just substring-match everything on every query.
+
+**Decision:**
+- **Exact-first, broaden only on a miss.** The normal search stays exact (noise-free, fast — `jii git` is unaffected). Only when the exact search returns **nothing** does the engine broaden (`Engine::broaden_search`):
+  1. **Prefix** — re-query with `MatchMode::Prefix` (dnf sends `<term>*`), so `ayugram` → `ayugram-desktop`. Prefix, not substring, keeps the fallback focused (68 vs 1300 for `git`).
+  2. **Trailing-typo fallback** — if the prefix finds nothing, trim up to two trailing characters and retry the prefix search, so `ayugramm` still reaches `ayugram*`. A stem under four characters isn't tried (too little signal).
+- **Match mode is a `Query` field**, set by the engine and honored per-provider (dnf appends `*`; providers with no glob support ignore it — their native search is already broad, and ranking filters afterwards). The core still doesn't branch on the source: it sets one uniform mode and lets each provider interpret it.
+- **Ranking is now name-aware** (`rank(config, query, candidates)`): the primary sort key is a **name-match tier** — 0 exact · 1 prefix · 2 substring · 3 unrelated (case-insensitive) — then the existing source-priority and trust, then shorter-name-first. So an exact match on a *lower-priority* source still beats a prefix match on a higher-priority one, and a broadened result never recommends a random longer name over the closest one.
+- **The recommend + confirm is the "did you mean".** When the best match isn't what was typed, install prints `No exact match for '<typed>'. Closest: <name>.` before the normal preview + confirmation, so a broadened result is never installed silently — the user sees the substituted name and can decline. `search`/`info` broaden the same way. "Also available" is capped (6) and now shows names, since alternatives can differ from the pick.
+
+**Alternatives considered:**
+- **Always substring-match (`*term*`).** Rejected: ~1300 hits for `git` — slow, noisy, and it buries the exact match. Exact-first with a prefix fallback gives the recall without the noise.
+- **Full fuzzy/edit-distance "did you mean" over all package names.** Rejected for now: JII has no local name index, and dnf/repoquery can't edit-distance match; enumerating every package to score locally is far too expensive on the hot path. The trailing-trim heuristic covers the most common slip cheaply; broader fuzzy is future work (a follow-up ADR if it earns its keep).
+- **Auto-install the closest match without asking.** Rejected: a broadened match is a *guess*; the existing confirm (with the "closest" note) keeps the human in the loop, matching Analyze → Explain → Ask.
+
+**Consequences:**
+- New `MatchMode` enum + `Query::with_match_mode`; `Engine::broaden_search`; name-aware `rank` (all four call sites updated); capped, name-showing "Also available".
+- Broadening costs an extra provider round-trip **only on an exact miss** — the common case pays nothing.
+- Only dnf honors `Prefix` today (the confirmed case); COPR keeps its project-name resolver, and other providers rely on their native breadth. Extending explicit prefix support to more providers is incremental and needs no core change.

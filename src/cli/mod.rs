@@ -295,13 +295,27 @@ impl Cli {
             }
             let result = engine.search(&query).await;
             self.report_source_failures(&result.failed, renderer);
-            let mut ranked = engine.rank(result.candidates);
+            let mut ranked = engine.rank(name, result.candidates);
+            // No exact match? Broaden the search (ADR-0042): `ayugram` → `ayugram-desktop`,
+            // and a trailing typo like `ayugramm` still reaches it. The recommend + confirm
+            // below is the "did you mean" — the resolved name is shown and can be declined.
+            if ranked.is_empty() {
+                ranked = engine.broaden_search(name).await;
+            }
             if let Some(source) = pkg_source {
                 ranked.retain(|c| &c.source_id == source);
             }
             if ranked.is_empty() {
                 not_found.push(name.clone());
                 continue;
+            }
+            // Be explicit when the best match isn't what was typed, so a broadened result
+            // never silently installs a differently-named package.
+            if !ranked[0].name.eq_ignore_ascii_case(name) {
+                renderer.info(&format!(
+                    "No exact match for '{name}'. Closest: {}.",
+                    ranked[0].name
+                ));
             }
 
             // Cooperate with the system, don't clobber it (UX #3): if the package is
@@ -545,19 +559,28 @@ impl Cli {
         if alternatives.is_empty() || renderer.is_json() {
             return;
         }
+        // A broadened search (ADR-0042) can surface many near-name matches; cap the list so
+        // it stays a hint, not a wall. The name is shown because alternatives may now differ
+        // from the recommended one (e.g. `git` → also `gitk`, `git-lfs`).
+        const MAX: usize = 6;
         renderer.info("Also available:");
-        for candidate in alternatives {
+        for candidate in alternatives.iter().take(MAX) {
             let version = candidate
                 .version
                 .as_ref()
                 .map(|v| format!("v{v}, "))
                 .unwrap_or_default();
             renderer.info(&format!(
-                "  {} ({}{})",
+                "  {} — {} ({}{})",
+                candidate.name,
                 candidate.source_id,
                 version,
                 candidate.trust.label()
             ));
+        }
+        let extra = alternatives.len().saturating_sub(MAX);
+        if extra > 0 {
+            renderer.info(&format!("  …and {extra} more"));
         }
     }
 
@@ -1132,7 +1155,7 @@ impl Cli {
         record: &InstalledRecord,
     ) -> Option<PackageCandidate> {
         let query = Query::name(&record.name);
-        let mut ranked = engine.rank(engine.search(&query).await.candidates);
+        let mut ranked = engine.rank(&record.name, engine.search(&query).await.candidates);
         ranked.retain(|c| c.source_id == record.source_id);
         ranked.into_iter().next()
     }
@@ -1464,7 +1487,12 @@ impl Cli {
         let query = Query::name(name);
         let result = engine.search(&query).await;
         self.report_source_failures(&result.failed, renderer);
-        let mut ranked = engine.rank(result.candidates);
+        let mut ranked = engine.rank(name, result.candidates);
+        // Broaden on an exact miss (ADR-0042) so `search`/`info` find `ayugram-desktop`
+        // from `ayugram` (and tolerate a trailing typo) — same behaviour as install.
+        if ranked.is_empty() {
+            ranked = engine.broaden_search(name).await;
+        }
         if let Some(source) = source {
             ranked.retain(|c| &c.source_id == source);
         }

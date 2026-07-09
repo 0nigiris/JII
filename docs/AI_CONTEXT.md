@@ -27,12 +27,13 @@ Landed and pushed to `master` after the clean-VM UX waves:
   question, applied on "yes". New `Fix::PathExport` edits the shell rc for `~/.local/bin` /
   `~/.cargo/bin`; `install`→`install_inner(assume_yes)` + `PromptFlags::with_yes` so the single
   question is the consent (trust barrier still gates untrusted). Read-only under `--json`/`-n`/no-TTY.
+- **Smart search matching (ADR-0042).** Exact-first, broaden on a miss: `jii ayugram` →
+  `ayugram-desktop`, trailing typo `ayugramm` still reaches it (prefix search + a ≤2-char
+  trailing-trim fallback); shows "No exact match — closest: …" and confirms. `MatchMode` on `Query`
+  (dnf appends `*`); name-aware `rank(config, query, cands)` with an exact>prefix>substring tier;
+  `Engine::broaden_search`. Exact queries (`jii git`) stay noise-free. Verified live on Fedora.
 - **Relicensed MIT → GPL-3.0-or-later** (LICENSE = canonical GPLv3; Cargo/README/packaging updated).
 - **README** fully rewritten into a detailed, badged landing page.
-
-**In-flight / next:** improve **search matching** — a query like `ayugram` should find
-`ayugram-desktop`, and a near-miss like `ayugramm` should still find it or offer "did you mean …?"
-(fuzzy / substring matching + a suggestion prompt). Not yet implemented.
 
 **Still open (needs owner's hosts):** install/run the published `.rpm`/`.deb` on a live non-Fedora
 box and on real aarch64; true end-to-end self-update fires only when the *next* tag is cut.
