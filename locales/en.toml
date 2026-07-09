@@ -8,6 +8,11 @@
 
 [common]
 aborted = "Aborted."
+steps = "steps:"
+dry_run_unchanged = "(dry-run: nothing was changed)"
+dry_run_not_installed = "(dry-run: nothing was installed)"
+dry_run_not_updated = "(dry-run: nothing was updated)"
+dry_run_not_removed = "(dry-run: nothing was removed)"
 
 [install]
 searching = "Searching…"
@@ -16,3 +21,31 @@ not_found_via = "Not found via source '{source}': {names}"
 
 [doctor]
 all_good = "Nothing to set up — you're all good."
+
+[selfupdate]
+checking = "Checking for a newer JII…"
+check_failed = "Couldn't check for updates: {error}"
+up_to_date = "JII is already up to date ({version})."
+available = "JII {current} → {latest} available."
+update_now = "Update JII now?"
+updated = "JII updated to {version}."
+removes = "This removes JII itself."
+remove_prompt = "Remove JII?"
+removed = "JII removed. Thanks for trying it — reinstall anytime."
+
+[sources]
+active = "Active sources:"
+unavailable = "Enabled but unavailable (tool not installed):"
+
+[providers]
+installed = "Installed ecosystems:"
+available = "Available to install:"
+add_hint = "{label} — jii providers add {id}"
+unknown = "Unknown ecosystem: {name}"
+known = "Known ecosystems: {names}"
+already_installed = "{label} is already installed — it's a package manager JII drives."
+looking = "Looking for a package that provides {label}…"
+not_found = "Couldn't find a package for {label} in your active sources."
+tried = "Tried: {names}"
+script_only = "{label} isn't in your distro's repositories — it installs via its own script."
+script_wont_run = "JII won't run an installer script for you. To install it, run:"

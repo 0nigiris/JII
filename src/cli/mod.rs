@@ -474,7 +474,7 @@ impl Cli {
         }
 
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was installed)");
+            renderer.info(&crate::t!("common.dry_run_not_installed"));
             return Ok(());
         }
 
@@ -805,7 +805,7 @@ impl Cli {
         // 3. Preview, dry-run guard, one confirmation (default no — removal is destructive).
         self.preview_record_batch(&batch.plans, renderer);
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was removed)");
+            renderer.info(&crate::t!("common.dry_run_not_removed"));
             return Ok(());
         }
         let names = record_batch_names(&batch.plans);
@@ -949,7 +949,7 @@ impl Cli {
         }
 
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was updated)");
+            renderer.info(&crate::t!("common.dry_run_not_updated"));
             return Ok(());
         }
 
@@ -983,41 +983,41 @@ impl Cli {
     async fn self_update(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let install = selfupdate::detect_install().await?;
-        renderer.info("Checking for a newer JII…");
+        renderer.info(&crate::t!("selfupdate.checking"));
         let latest = match selfupdate::latest_release().await {
             Ok(l) => l,
             Err(e) => {
-                renderer.error(&format!("Couldn't check for updates: {e}"));
+                renderer.error(&crate::t!("selfupdate.check_failed", error = e));
                 return Ok(());
             }
         };
         if !selfupdate::update_available(&latest.tag) {
-            renderer.success(&format!(
-                "JII is already up to date ({}).",
-                selfupdate::current_version()
+            renderer.success(&crate::t!(
+                "selfupdate.up_to_date",
+                version = selfupdate::current_version()
             ));
             return Ok(());
         }
         let plan = selfupdate::plan_update(&install, &latest).await?;
-        renderer.info(&format!(
-            "JII {} → {} available.",
-            selfupdate::current_version(),
-            selfupdate::normalize_tag(&latest.tag)
+        renderer.info(&crate::t!(
+            "selfupdate.available",
+            current = selfupdate::current_version(),
+            latest = selfupdate::normalize_tag(&latest.tag)
         ));
         self.preview_self_plan(&plan, renderer);
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was changed)");
+            renderer.info(&crate::t!("common.dry_run_unchanged"));
             return Ok(());
         }
         let flags = self.prompt_flags(engine.config().install.auto);
-        if !prompt::confirm(renderer, "Update JII now?", true, &flags) {
+        if !prompt::confirm(renderer, &crate::t!("selfupdate.update_now"), true, &flags) {
             renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
         engine.run_self_plan(&plan, renderer).await?;
-        renderer.success(&format!(
-            "JII updated to {}.",
-            selfupdate::normalize_tag(&latest.tag)
+        renderer.success(&crate::t!(
+            "selfupdate.updated",
+            version = selfupdate::normalize_tag(&latest.tag)
         ));
         Ok(())
     }
@@ -1028,19 +1028,19 @@ impl Cli {
         let engine = Engine::new(config)?;
         let install = selfupdate::detect_install().await?;
         let plan = selfupdate::plan_uninstall(&install);
-        renderer.info("This removes JII itself.");
+        renderer.info(&crate::t!("selfupdate.removes"));
         self.preview_self_plan(&plan, renderer);
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was changed)");
+            renderer.info(&crate::t!("common.dry_run_unchanged"));
             return Ok(());
         }
         let flags = self.prompt_flags(engine.config().install.auto);
-        if !prompt::confirm(renderer, "Remove JII?", false, &flags) {
+        if !prompt::confirm(renderer, &crate::t!("selfupdate.remove_prompt"), false, &flags) {
             renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
         engine.run_self_plan(&plan, renderer).await?;
-        renderer.success("JII removed. Thanks for trying it — reinstall anytime.");
+        renderer.success(&crate::t!("selfupdate.removed"));
         Ok(())
     }
 
@@ -1049,7 +1049,7 @@ impl Cli {
         for reason in &plan.reasons {
             renderer.info(&format!("  {reason}"));
         }
-        renderer.info("  steps:");
+        renderer.info(&format!("  {}", crate::t!("common.steps")));
         for action in &plan.actions {
             renderer.info(&format!("    {}", crate::ui::describe_action(action)));
         }
@@ -1115,7 +1115,7 @@ impl Cli {
         }
 
         if self.global.dry_run {
-            renderer.info("(dry-run: nothing was updated)");
+            renderer.info(&crate::t!("common.dry_run_not_updated"));
             return Ok(());
         }
 
@@ -1361,13 +1361,13 @@ impl Cli {
 
         let (active, inactive): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.available);
         if !active.is_empty() {
-            renderer.info("Active sources:");
+            renderer.info(&crate::t!("sources.active"));
             for e in &active {
                 renderer.info(&format!("  ✓ {:8} ({})", e.id, e.trust.label()));
             }
         }
         if !inactive.is_empty() {
-            renderer.info("Enabled but unavailable (tool not installed):");
+            renderer.info(&crate::t!("sources.unavailable"));
             for e in &inactive {
                 renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.label()));
             }
@@ -1399,7 +1399,7 @@ impl Cli {
 
         let (have, missing): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.installed);
         if !have.is_empty() {
-            renderer.info("Installed ecosystems:");
+            renderer.info(&crate::t!("providers.installed"));
             for e in &have {
                 renderer.info(&format!("  ✓ {}", e.label));
             }
@@ -1408,9 +1408,12 @@ impl Cli {
             if !have.is_empty() {
                 renderer.info("");
             }
-            renderer.info("Available to install:");
+            renderer.info(&crate::t!("providers.available"));
             for e in &missing {
-                renderer.info(&format!("  ○ {} — jii providers add {}", e.label, e.id));
+                renderer.info(&format!(
+                    "  ○ {}",
+                    crate::t!("providers.add_hint", label = e.label, id = e.id)
+                ));
             }
         }
         Ok(())
@@ -1433,9 +1436,9 @@ impl Cli {
         let catalog = engine.ecosystem_catalog().await;
 
         let Some(eco) = catalog.iter().find(|e| e.id == name) else {
-            renderer.error(&format!("Unknown ecosystem: {name}"));
+            renderer.error(&crate::t!("providers.unknown", name = name));
             let known: Vec<_> = catalog.iter().map(|e| e.id).collect();
-            renderer.info(&format!("Known ecosystems: {}", known.join(", ")));
+            renderer.info(&crate::t!("providers.known", names = known.join(", ")));
             return Ok(());
         };
         self.bootstrap_ecosystem(&engine, eco, config, renderer).await
@@ -1488,16 +1491,13 @@ impl Cli {
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
         if eco.installed {
-            renderer.success(&format!(
-                "{} is already installed — it's a package manager JII drives.",
-                eco.label
-            ));
+            renderer.success(&crate::t!("providers.already_installed", label = eco.label));
             return Ok(());
         }
         let label = eco.label;
         match eco.bootstrap {
             Bootstrap::Packages(names) => {
-                renderer.info(&format!("Looking for a package that provides {label}…"));
+                renderer.info(&crate::t!("providers.looking", label = label));
                 match engine.first_available_package(names).await {
                     // route_managers=false: the bootstrap package's name (e.g. `pipx`) may
                     // itself be a manager id — routing it would loop. Box::pin breaks the
@@ -1506,19 +1506,15 @@ impl Cli {
                         Box::pin(self.install_inner(&[pkg], config, renderer, false, false)).await
                     }
                     None => {
-                        renderer.error(&format!(
-                            "Couldn't find a package for {label} in your active sources."
-                        ));
-                        renderer.info(&format!("Tried: {}", names.join(", ")));
+                        renderer.error(&crate::t!("providers.not_found", label = label));
+                        renderer.info(&crate::t!("providers.tried", names = names.join(", ")));
                         Ok(())
                     }
                 }
             }
             Bootstrap::Script(cmd) => {
-                renderer.info(&format!(
-                    "{label} isn't in your distro's repositories — it installs via its own script."
-                ));
-                renderer.info("JII won't run an installer script for you. To install it, run:");
+                renderer.info(&crate::t!("providers.script_only", label = label));
+                renderer.info(&crate::t!("providers.script_wont_run"));
                 renderer.info(&format!("  {cmd}"));
                 Ok(())
             }

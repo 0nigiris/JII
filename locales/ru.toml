@@ -6,6 +6,11 @@
 
 [common]
 aborted = "Отменено."
+steps = "шаги:"
+dry_run_unchanged = "(dry-run: ничего не изменено)"
+dry_run_not_installed = "(dry-run: ничего не установлено)"
+dry_run_not_updated = "(dry-run: ничего не обновлено)"
+dry_run_not_removed = "(dry-run: ничего не удалено)"
 
 [install]
 searching = "Поиск…"
@@ -14,3 +19,31 @@ not_found_via = "Не найдено через источник «{source}»: {
 
 [doctor]
 all_good = "Настраивать нечего — всё в порядке."
+
+[selfupdate]
+checking = "Проверяю наличие новой версии JII…"
+check_failed = "Не удалось проверить обновления: {error}"
+up_to_date = "JII уже последней версии ({version})."
+available = "Доступно обновление JII {current} → {latest}."
+update_now = "Обновить JII сейчас?"
+updated = "JII обновлён до {version}."
+removes = "Это удалит сам JII."
+remove_prompt = "Удалить JII?"
+removed = "JII удалён. Спасибо, что попробовали — переустановить можно в любой момент."
+
+[sources]
+active = "Активные источники:"
+unavailable = "Включены, но недоступны (инструмент не установлен):"
+
+[providers]
+installed = "Установленные экосистемы:"
+available = "Доступны для установки:"
+add_hint = "{label} — jii providers add {id}"
+unknown = "Неизвестная экосистема: {name}"
+known = "Известные экосистемы: {names}"
+already_installed = "{label} уже установлен — это менеджер пакетов, которым управляет JII."
+looking = "Ищу пакет, предоставляющий {label}…"
+not_found = "Не удалось найти пакет для {label} в активных источниках."
+tried = "Пробовал: {names}"
+script_only = "{label} нет в репозиториях вашего дистрибутива — он ставится своим скриптом."
+script_wont_run = "JII не будет запускать установочный скрипт за вас. Чтобы установить, выполните:"
