@@ -1730,3 +1730,24 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 **Consequences:**
 - Verified on Fedora: `jii npm`/`jii cargo` → "already installed" (no reinstall); `jii pipx` (absent) → resolves the dnf `pipx` and offers it via dnf, no loop; `jii npm:npm` → the registry package; `jii vlc` unaffected. 204 tests.
 - New `Engine::ecosystem_ids`; `route_managers` + `bootstrap_ecosystem` in the CLI; `install_inner` gained a `route_managers` flag. A manager with only a `Bootstrap::Script` (brew/nix) shows its script, never runs it (trust boundary, ADR-0005).
+
+---
+
+## ADR-0047 — Nix `list_installed`: schema-tolerant `nix profile list --json`
+
+**Status:** Accepted (slice for #3). *Unverified on a live Nix host — parser is fixture-tested.*
+
+**Context:** The Nix provider left `list_installed` empty because `nix profile list --json`'s schema changed across versions, so JII couldn't see Nix packages installed *outside* jii — it only knew its own registry records. The owner wants correct detection of already-installed Nix packages (#3).
+
+**Decision:**
+- Parse `nix profile list --json` via `serde_json::Value` and tolerate **both** shapes: modern Nix (≥2.20) keys `elements` by the profile element **name** (a map); older Nix makes `elements` an **array** where the name is derived from `attrPath`'s last segment (`legacyPackages.x86_64-linux.ripgrep` → `ripgrep`), falling back to the store-path basename. Any unrecognised/empty/garbage shape yields **no records**, never an error — a broken `nix` must not break JII.
+- Version is best-effort from the store path (`…-<name>-<version>`); absent it's just `None` (versions are opaque, ADR-0009).
+- `is_installed` keeps its profile-symlink check as an independent verifier.
+
+**Alternatives considered:**
+- **Keep it empty, rely on the registry + symlink.** Rejected: it can't see non-jii installs, which is exactly the "cooperate with the system" gap (#3/#9).
+- **Pin to one schema.** Rejected: it would silently return nothing on the other Nix version — the tolerant parser handles the field that's stable (`attrPath`/`storePaths`).
+
+**Consequences:**
+- Fixture-tested on both schemas + garbage; **needs a real Nix host to confirm** the live JSON matches (open risk — flagged in AI_CONTEXT). Pure helpers (`parse_profile_list`, `element_name`, `store_name`, `store_version`) are unit-tested.
+- Nix now participates in `installed_index` (so `doctor` and cross-source "already installed" see Nix packages) and in remove/update owner resolution.
