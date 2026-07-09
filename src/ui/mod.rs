@@ -146,6 +146,9 @@ pub fn describe_action(action: &Action) -> String {
             dest.display()
         ),
         Action::RemoveFile { path } => format!("remove {}", path.display()),
+        Action::Replace { src, dest } => {
+            format!("replace {} ← {}", dest.display(), src.display())
+        }
     }
 }
 
@@ -178,6 +181,9 @@ fn action_to_json(action: &Action) -> serde_json::Value {
         }),
         Action::RemoveFile { path } => serde_json::json!({
             "kind": "remove", "path": path,
+        }),
+        Action::Replace { src, dest } => serde_json::json!({
+            "kind": "replace", "src": src, "dest": dest,
         }),
     }
 }

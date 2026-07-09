@@ -46,6 +46,7 @@ async fn run_action(action: &Action, privilege: &Privilege) -> Result<()> {
         Action::Place { src, dest, mode } => place(src, dest, *mode),
         Action::Extract { archive, member, dest, mode } => extract(archive, member, dest, *mode),
         Action::RemoveFile { path } => remove_file(path),
+        Action::Replace { src, dest } => replace_file(src, dest),
     }
 }
 
@@ -129,6 +130,13 @@ fn place(src: &Path, dest: &Path, mode: u32) -> Result<()> {
 /// Remove a single file (uninstall for file-based sources).
 fn remove_file(path: &Path) -> Result<()> {
     std::fs::remove_file(path).map_err(|e| JiiError::io(path.display().to_string(), e))
+}
+
+/// Atomically move `src` onto `dest` via rename (same filesystem). Safe to run over a
+/// **live** executable: rename swaps the directory entry to a new inode, so the running
+/// process keeps its old inode until it exits — unlike a copy, which would hit `ETXTBSY`.
+fn replace_file(src: &Path, dest: &Path) -> Result<()> {
+    std::fs::rename(src, dest).map_err(|e| JiiError::io(dest.display().to_string(), e))
 }
 
 /// One regular file read out of an archive.

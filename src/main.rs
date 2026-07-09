@@ -15,6 +15,7 @@ mod privilege;
 mod provider;
 mod recommend;
 mod registry;
+mod selfupdate;
 mod ui;
 
 use clap::Parser;

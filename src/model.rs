@@ -272,6 +272,11 @@ pub enum Action {
     },
     /// Remove a file (uninstall for file-based sources).
     RemoveFile { path: PathBuf },
+    /// Atomically move `src` onto `dest` (rename within the same filesystem). Used to swap
+    /// a freshly-downloaded binary over one that may be **running** — copying over a live
+    /// executable fails with `ETXTBSY`, but a rename creates a new inode so the running
+    /// process is undisturbed. Drives `jii update jii` for a user-space install.
+    Replace { src: PathBuf, dest: PathBuf },
 }
 
 /// A previewable, executable plan. `Plan` is a first-class concept: every action

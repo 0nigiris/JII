@@ -8,8 +8,9 @@ use clap::{Parser, Subcommand};
 
 use crate::config::{ColorChoice, Config, Profile};
 use crate::engine::Engine;
-use crate::model::{InstalledRecord, PackageCandidate, PackageSpec, Query};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PackageSpec, Query};
 use crate::provider::Bootstrap;
+use crate::selfupdate;
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
@@ -132,6 +133,8 @@ pub enum Commands {
     },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
+    /// Remove JII itself (same as `jii remove jii`).
+    Uninstall,
     /// Print a shell completion script for the given shell (bash, zsh, fish, …).
     #[command(hide = true)]
     Completions {
@@ -213,6 +216,7 @@ impl Cli {
                 }
             },
             Some(Commands::Setup) => self.setup(config, &renderer, false).await,
+            Some(Commands::Uninstall) => self.self_uninstall(config, &renderer).await,
             Some(Commands::Completions { shell }) => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
                 clap_complete::generate(*shell, &mut cmd, "jii", &mut std::io::stdout());
@@ -642,6 +646,22 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
+        // `jii remove jii` removes JII itself (see also `jii uninstall`). Handle it, then
+        // remove any remaining names normally.
+        let wants_self = packages.iter().any(|p| p == selfupdate::SELF_NAME);
+        if wants_self {
+            self.self_uninstall(config.clone(), renderer).await?;
+        }
+        let rest: Vec<String> = packages
+            .iter()
+            .filter(|p| *p != selfupdate::SELF_NAME)
+            .cloned()
+            .collect();
+        if wants_self && rest.is_empty() {
+            return Ok(());
+        }
+        let packages = &rest;
+
         let mut engine = Engine::new(config)?;
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
@@ -764,9 +784,28 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        // Bare `jii update` = update the whole system (every manager's bulk upgrade, D10).
+        // `jii update jii` (or `jii` among the names) updates JII **itself** — a self-managed
+        // action, not a registry package. Handle it, then update any remaining names.
+        let wants_self = packages.iter().any(|p| p == selfupdate::SELF_NAME);
+        if wants_self {
+            self.self_update(config.clone(), renderer).await?;
+        }
+        let rest: Vec<String> = packages
+            .iter()
+            .filter(|p| *p != selfupdate::SELF_NAME)
+            .cloned()
+            .collect();
+        if wants_self && rest.is_empty() {
+            return Ok(());
+        }
+        let packages = &rest;
+
+        // Bare `jii update` = update the whole system (every manager's bulk upgrade, D10),
+        // then quietly nudge if a newer JII is out.
         if packages.is_empty() {
-            return self.update_system(config, renderer).await;
+            self.update_system(config.clone(), renderer).await?;
+            self.self_update_nudge(config, renderer).await;
+            return Ok(());
         }
 
         let mut engine = Engine::new(self.apply_profile(config))?;
@@ -874,6 +913,102 @@ impl Cli {
     /// bulk path (github, cargo, go). One preview, one confirmation, one privilege escalation,
     /// one run. The bulk plans upgrade the system beyond JII's registry, so they aren't
     /// recorded; only the per-record fallbacks refresh the registry.
+    /// `jii update jii` — update JII itself from the newest GitHub release, the right way
+    /// for how it was installed (user-space binary swap, or a `.rpm`/`.deb` via dnf/apt).
+    /// Everything is a previewable plan; `--dry-run` shows it and stops.
+    async fn self_update(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let install = selfupdate::detect_install().await?;
+        renderer.info("Checking for a newer JII…");
+        let latest = match selfupdate::latest_release().await {
+            Ok(l) => l,
+            Err(e) => {
+                renderer.error(&format!("Couldn't check for updates: {e}"));
+                return Ok(());
+            }
+        };
+        if !selfupdate::update_available(&latest.tag) {
+            renderer.success(&format!(
+                "JII is already up to date ({}).",
+                selfupdate::current_version()
+            ));
+            return Ok(());
+        }
+        let plan = selfupdate::plan_update(&install, &latest).await?;
+        renderer.info(&format!(
+            "JII {} → {} available.",
+            selfupdate::current_version(),
+            selfupdate::normalize_tag(&latest.tag)
+        ));
+        self.preview_self_plan(&plan, renderer);
+        if self.global.dry_run {
+            renderer.info("(dry-run: nothing was changed)");
+            return Ok(());
+        }
+        let flags = self.prompt_flags(engine.config().install.auto);
+        if !prompt::confirm(renderer, "Update JII now?", true, &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+        engine.run_self_plan(&plan, renderer).await?;
+        renderer.success(&format!(
+            "JII updated to {}.",
+            selfupdate::normalize_tag(&latest.tag)
+        ));
+        Ok(())
+    }
+
+    /// After a bare `jii update`, quietly mention a newer JII (no prompt storm mid-update).
+    /// Best-effort: any check failure is silent — the system update already succeeded.
+    async fn self_update_nudge(&self, config: Config, renderer: &Renderer) {
+        let _ = config;
+        if let Ok(latest) = selfupdate::latest_release().await
+            && selfupdate::update_available(&latest.tag)
+        {
+            renderer.info(&format!(
+                "A newer JII is available ({} → {}). Run `jii update jii` to upgrade.",
+                selfupdate::current_version(),
+                selfupdate::normalize_tag(&latest.tag)
+            ));
+        }
+    }
+
+    /// `jii uninstall` / `jii remove jii` — remove JII itself: delete the user-space binary,
+    /// or uninstall the package via dnf/apt. Previewable; defaults the prompt to "no".
+    async fn self_uninstall(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let install = selfupdate::detect_install().await?;
+        let plan = selfupdate::plan_uninstall(&install);
+        renderer.info("This removes JII itself.");
+        self.preview_self_plan(&plan, renderer);
+        if self.global.dry_run {
+            renderer.info("(dry-run: nothing was changed)");
+            return Ok(());
+        }
+        let flags = self.prompt_flags(engine.config().install.auto);
+        if !prompt::confirm(renderer, "Remove JII?", false, &flags) {
+            renderer.info("Aborted.");
+            return Ok(());
+        }
+        engine.run_self_plan(&plan, renderer).await?;
+        renderer.success("JII removed. Thanks for trying it — reinstall anytime.");
+        Ok(())
+    }
+
+    /// Preview a self-management plan: the human reasons, the actions, and a root note.
+    fn preview_self_plan(&self, plan: &InstallPlan, renderer: &Renderer) {
+        for reason in &plan.reasons {
+            renderer.info(&format!("  {reason}"));
+        }
+        renderer.info("  steps:");
+        for action in &plan.actions {
+            renderer.info(&format!("    {}", crate::ui::describe_action(action)));
+        }
+        if plan.needs_root() {
+            renderer.info("  privileges: root required (the exact command is shown above)");
+        }
+    }
+
     async fn update_system(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let mut engine = Engine::new(self.apply_profile(config))?;
         if !self.ensure_usable_source(&engine, renderer).await {

@@ -1558,3 +1558,29 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - The full release workflow (musl cross-build, nfpm, publish) **cannot be run without pushing a tag**, so it is verified by construction + local checks (host release build with the new profile; tarball layout + `install.sh` extraction/checksum; completions/man non-empty; spec parses); first real run is the owner's tag push. The `install.sh` and package layouts were validated against a locally-assembled tarball.
 - Completions/man add two small deps (`clap_complete`, `clap_mangen`) and two hidden subcommands (`cli_definition_is_valid` test guards the tree).
 - COPR/AUR go live only when the owner runs the documented steps; until then the GitHub-release `.deb`/`.rpm`/tarball/`install.sh` already cover every distro.
+
+---
+
+## ADR-0040 — JII self-update/uninstall: `jii` is a special name that manages the tool itself
+
+**Status:** Accepted 2026-07-09. Owner-requested during Beta (self-update unfrozen, like `doctor --fix`) — a Beta needs an easy path to the next Beta. Pure ADR-0022-style additive growth: one new `Action`, one self-contained module; no change to the `Provider` trait or the core model's meaning.
+
+**Context:** People install JII several ways (install.sh/tarball → `~/.local/bin`, `cargo` → `~/.cargo/bin`, or a `.rpm`/`.deb` → `/usr/bin`), and a downloaded `.rpm`/`.deb` is **not in a repo**, so `dnf/apt upgrade` won't move it. JII already knows how to install software the right way for its source; it should treat *itself* the same. Owner decisions (AskUserQuestion): **fold self-update into `jii update`** (the literal name `jii` means "the tool itself"), **add `jii uninstall` / `jii remove jii`**, and for the package case **"do whatever's best for the user."**
+
+**Decision:**
+- **`jii` is a reserved package name** meaning JII itself. `jii update jii` self-updates; `jii remove jii` and `jii uninstall` self-remove; a bare `jii update` runs the system update and then *nudges* if a newer JII exists (a message, not a surprise self-install mid-update). When mixed with real names (`jii update jii ripgrep`), the self action runs first, then the rest go through the normal path.
+- **The mechanism follows how jii was installed** (`selfupdate::detect_install`, via `current_exe()` + `rpm -qf`/`dpkg -S` ownership; anything under `$HOME` is user-space by definition):
+  - **user-space binary** → download the matching static-musl tarball, verify sha256, extract, and **atomically swap** it over the running binary. A new `Action::Replace { src, dest }` does an `fs::rename` — copying over a live executable fails with `ETXTBSY`, but a rename gives the new file a fresh inode while the running process keeps its old one. **No root.**
+  - **package install** → download the matching `.rpm`/`.deb` and install it via `dnf`/`apt` as a previewable **root** step (escalated through `privilege.rs`, exact command shown first). JII never clobbers a packaged file behind rpm's back — the package database stays consistent ("cooperate, don't clobber").
+- **Everything is an `InstallPlan`** built in the `selfupdate` module and run through the existing executor (`Engine::run_self_plan`), so `--dry-run` previews it and the download/verify path is the usual one. Version comparison is a deliberate **plain "different tag → offer"** (versions are opaque, ADR-0009) — no fragile semver ordering. `Cargo.toml` version was aligned to `0.1.0-beta` so the binary's reported version matches the release tag.
+
+**Alternatives considered:**
+- **A separate `jii self update` namespace.** Rejected: owner chose to fold it into `update` with `jii` as the special name — fewer commands, reads naturally.
+- **Always self-replace the binary, even for `/usr/bin`.** Rejected: it desyncs the rpm/dpkg database (`rpm -V` would flag a modified file) — the exact "clobbering the system" JII refuses to do.
+- **Semver-compare versions to decide "newer".** Rejected: versions are opaque (ADR-0009); "different published tag → offer, you decide" is honest and simpler.
+- **Auto-self-update on every `jii update`.** Rejected: a surprise self-install mid system-update is startling; a nudge respects consent (Analyze → Explain → Ask).
+
+**Consequences:**
+- A real package literally named `jii` on some source is now shadowed by the self-management path — acceptable (JII is the tool; that name belongs to it).
+- `Action::Replace` is a small general primitive (atomic rename into place); the executor, `describe_action`, and the JSON schema all handle it.
+- The self-update fetch + swap **can't be exercised without a real newer release**; the plan-building and asset selection are pure and unit-tested, the network fetch + atomic swap are verified by construction + `--dry-run`. First true end-to-end self-update happens when the owner cuts the *next* tag.

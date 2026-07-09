@@ -518,6 +518,14 @@ impl Engine {
         outcome
     }
 
+    /// Run a single self-management plan (jii updating or removing **itself**) through the
+    /// same executor + privilege layer as any plan. Kept apart from the registry batch paths:
+    /// it acts on jii's own binary/package, not on a tracked install.
+    pub async fn run_self_plan(&self, plan: &InstallPlan, renderer: &Renderer) -> Result<()> {
+        crate::exec::prime_for(std::slice::from_ref(&plan), &self.privilege).await?;
+        crate::exec::run_actions(plan, &self.privilege, renderer).await
+    }
+
     /// Resolve which source owns an installed package.
     ///
     /// Uses the registry as a hint but verifies against the real manager; if the

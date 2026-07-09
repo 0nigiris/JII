@@ -414,6 +414,23 @@ builds. **Next: owner cuts Beta** (`git tag v0.1.0-beta`); optional remaining ag
 (BETA item 2) + CONTRIBUTING/SECURITY docs (item 4). clean-VM verification (Arch/Ubuntu/Debian/openSUSE) needs
 the owner's hosts. `cli/mod.rs` split stays deferred (owner chose conservative cleanup).
 
+**FIRST BETA PUBLISHED (2026-07-09).** `v0.1.0-beta` released end-to-end after two CI fixes (nfpm from the
+goreleaser apt repo — install-action can't; render nfpm.yaml via `envsubst` — nfpm left `${BIN}` unexpanded).
+Release has 12 assets: tarball/.deb/.rpm for x86_64 + aarch64 (+ sha256). **Not yet installed/run on a live
+host** (risk #1 open — cross-distro + arm64 unproven).
+
+**Self-update/uninstall landed (ADR-0040).** Owner-requested: `jii` is now a reserved name meaning the tool
+itself. `jii update jii` self-updates from the newest GitHub release the right way for how it was installed —
+**user-space binary** (install.sh/tarball/cargo) is atomically swapped in place (new `Action::Replace` =
+`fs::rename`, no `ETXTBSY`, no root); **package** (.rpm/.deb) is upgraded via dnf/apt as a previewable root
+step (never clobbers the package db). `jii uninstall` / `jii remove jii` self-remove. Bare `jii update` nudges
+if a newer JII is out. All previewable (`--dry-run`); version compare is opaque "different tag → offer"
+(ADR-0009). New `src/selfupdate.rs` (detection + release fetch + asset selection + pure plan builders,
+unit-tested); `Engine::run_self_plan` executes via the existing executor+privilege. `Cargo.toml` version
+aligned to `0.1.0-beta`. **Verify once Bash classifier is back: clippy + full test suite (expected ~192).**
+The self-update fetch+swap can't be exercised until the owner cuts the *next* tag — pure parts tested, network
+path verified by construction + `--dry-run`.
+
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
 The VM run reprioritised to UX-wave 2 *before* cutting Beta; the Beta plan still stands and resumes

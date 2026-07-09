@@ -409,7 +409,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (needs the owner's real hosts; agent scripts a repeatable smoke test). *(owner + agent)*
       - [ ] **4. Public docs & assets** — README polish, CONTRIBUTING/SECURITY *(agent)*; asciinema
             script *(agent writes, owner records)*; logo + screenshots *(owner/designer)*.
-      - [~] **5. Public release — packaging DONE (ADR-0039); owner cuts the tag.** `release.yml`
+      - [x] **5. Public release — `v0.1.0-beta` PUBLISHED (2026-07-09).** Released end-to-end after two CI
+            fixes: nfpm installed from the goreleaser apt repo (taiki-e/install-action can't do nfpm); nfpm.yaml
+            rendered via `envsubst` (nfpm left `${BIN}` unexpanded). Release carries 12 assets — tarball/.deb/.rpm
+            for x86_64 + aarch64 (+ sha256). **Still unverified on a live host** (install/run, esp. non-Fedora +
+            arm64 — risk #1 open).
+      - [x] **Self-update / uninstall** (ADR-0040, owner-requested). `jii` reserved as the tool's own name:
+            `jii update jii` self-updates from the newest release (user-space → atomic binary swap via new
+            `Action::Replace`, no root; package → dnf/apt install shown first), `jii uninstall`/`jii remove jii`
+            self-remove, bare `jii update` nudges. `src/selfupdate.rs` (pure builders unit-tested) + `Engine::run_self_plan`.
+            Cargo version → `0.1.0-beta`. Fetch+swap exercised only on the next real tag; pure parts tested + `--dry-run`.
+      - [~] **5b. (was 5) Packaging pipeline (ADR-0039).** `release.yml`
             reworked: a `v*` tag builds **static musl** binaries for **x86_64 + aarch64** (via `cross`)
             and publishes, on the GitHub Release: checksummed tarballs, native **.deb** + **.rpm** (nfpm,
             `packaging/nfpm.yaml`, bundling **man page + bash/zsh/fish completions**). Added **`install.sh`**
