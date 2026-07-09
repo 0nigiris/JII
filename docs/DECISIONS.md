@@ -1584,6 +1584,7 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - A real package literally named `jii` on some source is now shadowed by the self-management path — acceptable (JII is the tool; that name belongs to it).
 - `Action::Replace` is a small general primitive (atomic rename into place); the executor, `describe_action`, and the JSON schema all handle it.
 - The self-update fetch + swap **can't be exercised without a real newer release**; the plan-building and asset selection are pure and unit-tested, the network fetch + atomic swap are verified by construction + `--dry-run`. First true end-to-end self-update happens when the owner cuts the *next* tag.
+- **Update (v0.1.3-beta):** `latest_release()` must use the **list** endpoint (`/releases`, take the first non-draft), not `/releases/latest` — the latter 404s on a repo whose only releases are pre-releases (every JII beta tag is a prerelease). Any binary built before this fix is stuck on the 404 and needs one manual update (install.sh / rebuild) to get a working checker; self-update works from then on.
 
 ---
 

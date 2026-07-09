@@ -113,6 +113,8 @@ pub struct Asset {
 struct ReleaseJson {
     tag_name: String,
     #[serde(default)]
+    draft: bool,
+    #[serde(default)]
     assets: Vec<Asset>,
 }
 
@@ -162,8 +164,13 @@ fn deb_arch(arch: &str) -> &str {
 }
 
 /// Fetch the newest release metadata from GitHub.
+///
+/// Uses the **list** endpoint (`/releases`), not `/releases/latest`: the latter 404s on a
+/// repo that has only pre-releases (which JII's beta tags are), because it deliberately
+/// excludes drafts and prereleases. The list is returned newest-first, so we take the first
+/// non-draft — prerelease or not — which is the newest tag a user could install.
 pub async fn latest_release() -> Result<Latest> {
-    let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
+    let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=20");
     let resp = http_client()?
         .get(&url)
         .send()
@@ -171,10 +178,14 @@ pub async fn latest_release() -> Result<Latest> {
         .map_err(|e| JiiError::Other(anyhow::anyhow!("checking for updates: {e}")))?
         .error_for_status()
         .map_err(|e| JiiError::Other(anyhow::anyhow!("checking for updates: {e}")))?;
-    let rel: ReleaseJson = resp
+    let releases: Vec<ReleaseJson> = resp
         .json()
         .await
         .map_err(|e| JiiError::Other(anyhow::anyhow!("release metadata: {e}")))?;
+    let rel = releases
+        .into_iter()
+        .find(|r| !r.draft)
+        .ok_or_else(|| JiiError::Other(anyhow::anyhow!("no published release found")))?;
     Ok(Latest {
         tag: rel.tag_name,
         assets: rel.assets,
