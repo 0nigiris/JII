@@ -150,9 +150,7 @@ impl Provider for Nix {
     }
 
     async fn is_installed(&self, record: &InstalledRecord) -> bool {
-        nix_profile_bin(&record.name)
-            .map(|p| p.exists())
-            .unwrap_or(false)
+        nix_profile_bin(&record.name).is_some_and(|p| p.exists())
     }
 }
 

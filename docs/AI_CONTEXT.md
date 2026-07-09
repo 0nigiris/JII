@@ -396,9 +396,23 @@ gained lto/codegen-units=1/strip (behavior unchanged). README Install section re
 clean, release binary builds (LTO ~58s); locally validated: tarball layout + install.sh extraction/checksum,
 completions/man non-empty, spec parses.** The full release workflow (musl cross-build, nfpm, publish) runs
 only on a real tag push — verified by construction + local checks; first run is the owner's `git tag v0.1.0-beta`.
-**Next: the pre-release code audit** (conservative — dedup/dead-code/optimize, DON'T remove useful functions
-or change behavior), then integration tests, then owner cuts Beta. clean-VM verification (Arch/Ubuntu/Debian/
-openSUSE) still needs the owner's hosts. `cli/mod.rs` split stays deferred (owner chose conservative cleanup).
+**Pre-release code audit DONE (conservative, behavior-preserving).** Combed the codebase per the owner's
+"comb every line, dedup, remove unneeded, optimize — but don't remove useful functions or break it": (1)
+**narrowed the model.rs `#![allow(dead_code)]`** module-wide silencer to three *targeted*, documented
+`#[allow(dead_code)]` (Query.kind + QueryKind::Description reserved for Phase 6 semantic search;
+Verification::Gpg/Sigstore reserved, verifier stubs them fail-closed per ADR-0016) — so future *accidental*
+dead code in model.rs is now caught (BETA_ROADMAP debt "narrow or remove it" addressed conservatively, no API
+removed); (2) **idiomatic cleanups** at 10 sites (`map(f).unwrap_or(false)`→`is_ok_and`/`is_some_and`,
+`map(f).unwrap_or(x)`→`map_or`) across provider/mod, copr, github, go, nix, snap, cli — behavior identical.
+Audit findings: **no** TODO/FIXME/unimplemented, **no** panic risks outside idiomatic `Mutex::lock().unwrap()`
+(poison-only), **no** renderer-bypass printing (all stdout is in main's error-reporter, the Renderer itself,
+the prompt, and the deliberate completions/man output), no further worthwhile dedup (providers already share
+helpers, ADR-0027). Standard clippy stays clean; the 241 pedantic/nursery hits are style-only (`Self::`,
+const-fn, doc backticks) and deliberately not chased (churn without value, against "don't break it").
+Behavior re-verified live (providers/info/sources/library-miss unchanged). 186 tests, clippy clean, release
+builds. **Next: owner cuts Beta** (`git tag v0.1.0-beta`); optional remaining agent work: integration tests
+(BETA item 2) + CONTRIBUTING/SECURITY docs (item 4). clean-VM verification (Arch/Ubuntu/Debian/openSUSE) needs
+the owner's hosts. `cli/mod.rs` split stays deferred (owner chose conservative cleanup).
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).

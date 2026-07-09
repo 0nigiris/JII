@@ -1641,7 +1641,7 @@ impl Cli {
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|e| {
-                let trust = e.trust.map(|t| t.label()).unwrap_or("unknown");
+                let trust = e.trust.map_or("unknown", |t| t.label());
                 let status = if e.concerns.is_empty() {
                     "ok".to_string()
                 } else {
@@ -2004,7 +2004,7 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
     );
     let flathub = if flatpak { flathub_configured().await } else { false };
     let cargo_bin_relevant = cargo || cargo_bin.exists();
-    let token_set = std::env::var(token_env).map(|v| !v.is_empty()).unwrap_or(false);
+    let token_set = std::env::var(token_env).is_ok_and(|v| !v.is_empty());
 
     SystemFacts {
         local_bin,
@@ -2061,8 +2061,7 @@ async fn flathub_configured() -> bool {
         .args(["remotes", "--columns=name"])
         .output()
         .await
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "flathub"))
-        .unwrap_or(false)
+        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "flathub"))
 }
 
 #[cfg(test)]

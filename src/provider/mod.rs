@@ -111,8 +111,7 @@ pub trait Provider: Send + Sync {
     async fn is_installed(&self, record: &InstalledRecord) -> bool {
         self.list_installed()
             .await
-            .map(|list| list.iter().any(|r| r.name == record.name))
-            .unwrap_or(false)
+            .is_ok_and(|list| list.iter().any(|r| r.name == record.name))
     }
 
     /// Probe this source's live health for `jii doctor`. Default: local availability
@@ -407,8 +406,7 @@ pub(crate) async fn which(bin: &str) -> bool {
         .arg("--version")
         .output()
         .await
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .is_ok_and(|o| o.status.success())
 }
 
 /// Parse tab-separated `name<TAB>version` lines into installed records. Shared by

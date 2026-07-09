@@ -208,9 +208,8 @@ fn candidate(info: &SnapInfo) -> PackageCandidate {
     let version = default_channel
         .and_then(|e| e.version.clone())
         .filter(|s| !s.is_empty());
-    let classic = default_channel
-        .map(|e| e.confinement.as_deref() == Some("classic"))
-        .unwrap_or(false);
+    let classic =
+        default_channel.is_some_and(|e| e.confinement.as_deref() == Some("classic"));
     let summary = info
         .snap
         .summary

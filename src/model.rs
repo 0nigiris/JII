@@ -3,10 +3,10 @@
 //! These types are source-agnostic on purpose — the engine and UI operate only on
 //! them, never on provider-specific details (see `docs/ARCHITECTURE.md` §11).
 
-// The full model is defined up front per the agreed architecture; some fields and
-// variants are consumed only by later phases (trust/audit, health, registry). Allow
-// dead code for the model module while those phases land (see docs/ROADMAP.md).
-#![allow(dead_code)]
+// The model is defined up front per the agreed architecture, so a few fields/variants
+// are reserved for later phases. These are marked with a *targeted* `#[allow(dead_code)]`
+// and a note at each site — rather than a module-wide silencer — so any *accidental* dead
+// code added to this module in future is still caught (BETA_ROADMAP: "narrow or remove it").
 
 use std::fmt;
 use std::path::PathBuf;
@@ -40,6 +40,9 @@ impl fmt::Display for PkgVersion {
 #[derive(Debug, Clone)]
 pub struct Query {
     pub raw: String,
+    /// Reserved: only `Name` is used today; `Description` lands with semantic/fuzzy
+    /// search (Phase 6). Read then, so it's an intentional forward-looking field.
+    #[allow(dead_code)]
     pub kind: QueryKind,
 }
 
@@ -58,7 +61,8 @@ impl Query {
 pub enum QueryKind {
     /// Match against package names (MVP).
     Name,
-    /// Match against descriptions/metadata (future).
+    /// Match against descriptions/metadata (future). Reserved for Phase 6 semantic search.
+    #[allow(dead_code)]
     Description,
 }
 
@@ -175,7 +179,12 @@ impl Health {
 pub enum Verification {
     /// Expected lowercase hex SHA-256 digest.
     Sha256(String),
+    /// GPG-signed artifact. Reserved: the verifier stubs it fail-closed until a source
+    /// needs it (ADR-0016); kept so the trust model is complete and typed.
+    #[allow(dead_code)]
     Gpg,
+    /// Sigstore-signed artifact. Reserved, same as `Gpg`.
+    #[allow(dead_code)]
     Sigstore,
     /// No verification available (the source provides none).
     None,

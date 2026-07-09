@@ -142,8 +142,7 @@ impl Provider for Copr {
         // A COPR install ends up in the rpm db; verify by querying it.
         run_capture(&[BIN, "repoquery", "-q", "--installed", &record.name])
             .await
-            .map(|out| out.lines().any(|l| !l.trim().is_empty()))
-            .unwrap_or(false)
+            .is_ok_and(|out| out.lines().any(|l| !l.trim().is_empty()))
     }
 
     async fn probe(&self) -> Probe {

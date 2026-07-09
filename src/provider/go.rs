@@ -144,9 +144,7 @@ impl Provider for Go {
     }
 
     async fn is_installed(&self, record: &InstalledRecord) -> bool {
-        go_bin_dir()
-            .map(|d| d.join(binary_name(&record.name)).exists())
-            .unwrap_or(false)
+        go_bin_dir().is_some_and(|d| d.join(binary_name(&record.name)).exists())
     }
 }
 

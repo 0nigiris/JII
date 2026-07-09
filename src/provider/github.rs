@@ -171,7 +171,7 @@ impl Provider for Github {
 
     async fn is_installed(&self, record: &InstalledRecord) -> bool {
         // Verify the registry hint by checking the placed binary still exists.
-        bin_dir().map(|d| is_placed(&d, &record.name)).unwrap_or(false)
+        bin_dir().is_ok_and(|d| is_placed(&d, &record.name))
     }
 
     async fn probe(&self) -> Probe {
