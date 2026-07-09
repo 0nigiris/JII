@@ -84,7 +84,7 @@ jii <name…>         search → rank → recommend → install (one or many pac
 jii remove <name>   remove using the source that installed it
 jii update [<name>] named: update that package; bare: update the whole system
 jii search <query>  show ranked candidates without installing
-jii info <name>     sources, versions, trust, and the recommendation + why
+jii info <name>     app card: description, homepage, license, author + all sources & why
 jii sources         list providers and whether each is usable here
 jii providers       show ecosystem managers (npm, cargo, brew, Flatpak…) + what's installed
 jii providers add   bootstrap a missing manager (e.g. `jii providers add npm`)

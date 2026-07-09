@@ -11,7 +11,7 @@ use serde_json::json;
 use super::{Provider, command_plan, nonempty_lines, run_capture, which};
 use crate::error::Result;
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, TrustLevel,
 };
 
 /// Field separator embedded in the `--queryformat`. A real tab is sent to dnf5
@@ -65,6 +65,22 @@ impl Provider for Dnf {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    async fn describe(&self, candidate: &PackageCandidate) -> Option<PackageInfo> {
+        // `jii info` is an explicit "tell me more", so one extra `dnf5 info` call is fine
+        // (never on the hot search path). Parsed by the pure, tested `parse_info`.
+        let out = run_capture(&[BIN, "info", &candidate.name]).await.ok()?;
+        let fields = parse_info(&out);
+        let get = |k: &str| fields.get(k).cloned().filter(|s| !s.is_empty());
+        let info = PackageInfo {
+            description: get("Description").or_else(|| get("Summary")),
+            homepage: get("URL"),
+            repository: None,
+            license: get("License"),
+            author: get("Vendor"),
+        };
+        (!info.is_empty()).then_some(info)
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
@@ -192,9 +208,69 @@ fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
         .collect()
 }
 
+/// Parse `dnf5 info <pkg>` (`Key : Value`, with `      : …` continuation lines) into a
+/// field map, keeping the **first** stanza's value for each key (dnf lists the installed
+/// copy before available ones; the first is what the card shows). Pure and unit-tested.
+fn parse_info(stdout: &str) -> std::collections::HashMap<String, String> {
+    let mut fields: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut last_key: Option<String> = None;
+    for line in stdout.lines() {
+        let Some((left, right)) = line.split_once(':') else {
+            last_key = None;
+            continue;
+        };
+        let key = left.trim();
+        let val = right.trim();
+        if key.is_empty() {
+            // Continuation of the previous field (folded description, etc.).
+            if let Some(k) = &last_key
+                && let Some(existing) = fields.get_mut(k)
+            {
+                existing.push(' ');
+                existing.push_str(val);
+            }
+        } else if !fields.contains_key(key) {
+            fields.insert(key.to_string(), val.to_string());
+            last_key = Some(key.to_string());
+        } else {
+            // A repeated key = a later stanza; keep the first and stop folding into it.
+            last_key = None;
+        }
+    }
+    fields
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_info_takes_first_stanza_and_folds_continuations() {
+        let sample = "\
+Installed packages
+Name            : firefox
+Summary         : Mozilla Firefox Web browser
+URL             : https://www.mozilla.org/firefox/
+License         : MPL-2.0
+Description     : Mozilla Firefox is an open-source web browser, designed for standards
+                : compliance, performance and portability.
+Vendor          : Fedora Project
+
+Available packages
+Name            : firefox
+License         : SOMETHING-ELSE
+";
+        let f = parse_info(sample);
+        assert_eq!(f.get("URL").unwrap(), "https://www.mozilla.org/firefox/");
+        assert_eq!(f.get("Vendor").unwrap(), "Fedora Project");
+        // The folded continuation line joins onto the description.
+        assert_eq!(
+            f.get("Description").unwrap(),
+            "Mozilla Firefox is an open-source web browser, designed for standards compliance, performance and portability."
+        );
+        // The first stanza wins over the later "Available packages" one.
+        assert_eq!(f.get("License").unwrap(), "MPL-2.0");
+    }
 
     #[test]
     fn parses_search_line() {

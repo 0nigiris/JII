@@ -11,7 +11,8 @@ use serde::de::DeserializeOwned;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query,
+    TrustLevel,
 };
 
 pub mod apt;
@@ -137,6 +138,17 @@ pub trait Provider: Send + Sync {
     fn highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
         let _ = candidate;
         Vec::new()
+    }
+
+    /// Rich human metadata for `jii info`'s **app card** (#4): description, homepage,
+    /// repository, license, author. Default `None` — a source that can't cheaply describe a
+    /// candidate opts out and the card degrades to the basics it already has (version, trust,
+    /// source). This is the ADR-0022 optional-method growth again; it *may* do I/O (dnf runs
+    /// `dnf5 info`), so it is async, unlike the pure `highlights`. The engine calls it only for
+    /// the recommended candidate on `jii info`, never on the hot search path.
+    async fn describe(&self, candidate: &PackageCandidate) -> Option<PackageInfo> {
+        let _ = candidate;
+        None
     }
 
     /// If this source is an installable *ecosystem* manager (npm, cargo, brew, flatpak…),

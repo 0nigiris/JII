@@ -482,7 +482,7 @@ locale = "auto"
 | `jii remove <name>` | resolve source (registry→verify) → plan → remove |
 | `jii update [<name>]` | named: update that package via its source; bare: update the whole system — aggregate every manager's bulk upgrade + per-record fallback (ADR-0034) |
 | `jii search <query>` | show candidates only, no install |
-| `jii info <name>` | availability, versions, trust, size |
+| `jii info <name>` | app **card**: description, homepage, repository, license, author (via optional `Provider::describe`, ADR-0037) + every source, versions, trust, and the recommendation |
 | `jii how <name>` (alias `why`) | explain how/why it was (or would be) installed |
 | `jii doctor [--fix]` | source availability, latency, rate limits + host system checks (internet, git/curl, PATH, ~/.cargo/bin, Flathub, token) + curated distro-aware suggestions (the folded-in catalog, ADR-0033/0035); `--fix` offers previewable fixes |
 | `jii setup` | first-run wizard: output mode + optional system check |

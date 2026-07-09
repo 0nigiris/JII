@@ -22,8 +22,8 @@ use serde_json::json;
 use super::{Probe, Provider, http_client};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-    Verification,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query,
+    TrustLevel, Verification,
 };
 use std::path::{Path, PathBuf};
 
@@ -73,6 +73,21 @@ impl Provider for Github {
         // surfaced per-request as a search error/timeout, which the engine handles
         // gracefully; a real rate-limit/health probe for `doctor` is a later slice.
         true
+    }
+
+    async fn describe(&self, candidate: &PackageCandidate) -> Option<PackageInfo> {
+        // Cheap card from what search already captured (`owner/repo`), no extra API call:
+        // the repository URL and the owner as author. Description/license would need the
+        // repo metadata endpoint — a later enrichment.
+        let slug = candidate.raw.get("slug")?.as_str()?;
+        let owner = slug.split('/').next().filter(|o| !o.is_empty());
+        Some(PackageInfo {
+            description: None,
+            homepage: None,
+            repository: Some(format!("https://github.com/{slug}")),
+            license: None,
+            author: owner.map(str::to_string),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

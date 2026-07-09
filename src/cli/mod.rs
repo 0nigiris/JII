@@ -1029,17 +1029,52 @@ impl Cli {
             return Ok(());
         }
         if renderer.is_json() {
-            renderer.json_value(&serde_json::json!(ranked));
+            let info = engine.candidate_info(&ranked[0]).await;
+            renderer.json_value(&serde_json::json!({
+                "candidates": ranked,
+                "recommended": ranked[0].source_id,
+                "info": info,
+            }));
             return Ok(());
         }
-        renderer.info(&format!(
-            "{name} — available from {} source(s):",
-            ranked.len()
+
+        // The app card (#4): name → description → a metadata block of whatever the source
+        // cheaply knows (license, links, author), then the source list + recommendation.
+        // `describe` degrades gracefully — a source with no card leaves the block sparse.
+        let best = &ranked[0];
+        let info = engine.candidate_info(best).await.unwrap_or_default();
+
+        renderer.info(name);
+        if let Some(desc) = info.description.as_ref().or(best.summary.as_ref()) {
+            renderer.info(desc);
+        }
+        renderer.info("");
+        let row = |label: &str, value: &str| format!("  {label:<11}{value}");
+        renderer.info(&row(
+            "Source",
+            &format!("{} ({})", best.source_id, best.trust.label()),
         ));
+        if let Some(v) = &best.version {
+            renderer.info(&row("Version", &v.to_string()));
+        }
+        if let Some(l) = &info.license {
+            renderer.info(&row("License", l));
+        }
+        if let Some(h) = &info.homepage {
+            renderer.info(&row("Homepage", h));
+        }
+        if let Some(r) = &info.repository {
+            renderer.info(&row("Repository", r));
+        }
+        if let Some(a) = &info.author {
+            renderer.info(&row("Author", a));
+        }
+        renderer.info("");
+
+        renderer.info(&format!("Available from {} source(s):", ranked.len()));
         for candidate in &ranked {
             renderer.info(&format!("  {}", candidate_line(candidate)));
         }
-        let best = &ranked[0];
         renderer.info(&format!("Recommended: {}", best.source_id));
         let highlights = engine.candidate_highlights(best);
         for reason in recommendation_reasons(best, highlights) {

@@ -352,8 +352,21 @@ handed to the **normal install path** (preview→confirm→execute→record, the
 installed / unknown-ecosystem answer clearly. 184 tests, clippy clean; live-verified on Fedora (providers
 list + JSON; add already-installed/unknown/script/packages-dry-run → pipx resolved to dnf `pipx` with full
 preview). **Debt:** the `Packages` candidate lists are hand-curated, unverified on clean non-Fedora VMs (T7).
-**Next: ④ info app-card** (description/GitHub/site/license/author — needs provider-supplied metadata),
-then the list+audit merge (`jii list` / `jii list --audit`).
+
+**④ info app-card landed (ADR-0037).** `jii info` is now an app **card**: name → description → an aligned
+metadata block (Source, Version, License, Homepage, Repository, Author — present fields only) → the source
+list + recommendation. Rich metadata is an optional **`async Provider::describe(&candidate) -> Option<PackageInfo>`**
+(default `None`, ADR-0022 growth) called only for the recommended candidate on `info` (never on the search
+path). **dnf implements it fully** (one `dnf5 info` call, pure tested `parse_info`: Description/URL/License/
+Vendor, first stanza wins, folds continuation lines); **github gives a cheap card** (repo URL + owner as
+author from the `owner/repo` already in `raw`, no extra call); every other source inherits `None` and shows
+the basic card (name/summary/version/trust/source degrade gracefully). `--json` now returns
+`{candidates, recommended, info}` (was a bare array). 185 tests, clippy clean; live-verified (firefox full
+dnf card, jqlang/jq github card, ripgrep:cargo sparse card, JSON). **Debt:** dnf License/Vendor shown
+verbatim (RPM's SPDX-ish strings); cargo/npm/flatpak richer cards + the GitHub repo-metadata fetch are
+follow-ups.
+**Next: list+audit merge** — `jii list` with security via `jii list --audit` (#5); then UX-wave 2 is complete
+and Beta prep resumes.
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
@@ -539,7 +552,8 @@ None.
 
 ## Test status
 
-`cargo test` — **184 passing, 0 failing**. ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`
+`cargo test` — **185 passing, 0 failing**. ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
+(folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`
 (every ecosystem manager declares a non-empty binary + a usable `Bootstrap`; dnf/github declare none). U7 coverage: dnf/flatpak `plan_update_all` (whole-system
 upgrade, root vs user). U6 coverage: `error::remedy` (unknown-source lists the
 known ones, Io branches on `ErrorKind`, opaque errors invent nothing), `cli::system_checks` (PATH +

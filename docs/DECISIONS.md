@@ -1480,3 +1480,27 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - Adding a future ecosystem = implement `ecosystem()` on its provider; the listing and bootstrap come for free. The trait's required surface is unchanged.
 - `Bootstrap::Packages` correctness depends on the candidate name lists; they are hand-curated and **unverified on clean non-Fedora VMs** (T7 debt, same class as the recommend catalog). A wrong/missing name degrades gracefully to an honest "couldn't find a package for X".
 - **Follow-ups:** `jii providers remove <name>` (uninstall a manager) and richer per-ecosystem detail (version, count of packages JII installed through it) are natural next slices, deferred to keep this one small.
+
+---
+
+## ADR-0037 — `jii info` is an app *card*; rich metadata via optional `Provider::describe`
+
+**Status:** Accepted 2026-07-09. UX-wave 2 item ④ (agreed order ①→④). Pure ADR-0022 optional-method growth — no change to the required `Provider` surface, the model's core types, or the executor.
+
+**Context:** VM-feedback #4 — `jii info` printed a source list + recommendation reasons, but not the *"what is this app"* card a user expects: a description, homepage/repository, license, author. The data isn't on the hot search path (`PackageCandidate.raw` is minimal — enough to plan an install, not to describe a project), so the card needs a richer, on-demand metadata pull.
+
+**Decision:**
+- **A new `PackageInfo`** value type (all fields `Option`: description, homepage, repository, license, author) carries the card. It renders only the fields present, so a sparse source degrades gracefully.
+- **An optional `async Provider::describe(&candidate) -> Option<PackageInfo>`** (default `None`) lets a source assemble the card. It is **async on purpose** (unlike the pure `highlights`): a source may do one extra call to fill it. The engine (`candidate_info`) calls it **only for the recommended candidate on `jii info`** — never on search — so the extra latency lands only where the user asked "tell me more".
+- **dnf (the Fedora-first platform) implements it fully:** one `dnf5 info <name>` call, parsed by a pure, unit-tested `parse_info` (`Key : Value` with folded `      : …` continuations, first stanza wins) → Description/URL/License/Vendor. **github implements a cheap card** from what search already captured (`owner/repo` → repository URL + owner as author), no extra API call. Every other source inherits `None` and shows the basic card (name, summary, version, trust, source).
+- **The card layout:** name → description (falls back to the candidate's one-line summary) → an aligned metadata block (Source, Version, License, Homepage, Repository, Author — present fields only) → the existing source list + recommendation. `--json` now returns an object `{ candidates, recommended, info }` (was a bare array) — richer and self-describing for a card command.
+
+**Alternatives considered:**
+- **Enrich `PackageCandidate` at search time** so `info` needs no second call. Rejected: it would slow every search to serve one command, and most fields (dnf License/URL, a repo's license) aren't in the cheap search response anyway.
+- **A synchronous `describe`.** Rejected: dnf needs a subprocess call; forcing it sync would either block or push the I/O back into search. Async keeps it lazy and honest.
+- **Fetch the GitHub repo-metadata endpoint for description/license.** Deferred: it is a second authenticated call per `info`; the cheap repo+author card ships now, the richer fetch is a follow-up.
+
+**Consequences:**
+- Adding a card for another source = implement `describe` on its provider; the rest is free. The required trait surface is unchanged.
+- `jii info`'s JSON shape changed from an array to an object — acceptable now (no external consumers; the object is the correct shape for a card), noted for anyone scripting against it.
+- **Follow-ups:** richer cargo/npm cards (their registry manifests carry homepage/repository/license/author — capture at search or a small extra fetch), the GitHub repo-metadata fetch (description/license), and flatpak AppStream metadata. **Debt:** dnf's `License`/`Vendor` are whatever the RPM declares (e.g. Fedora's `LicenseRef-Callaway-…` SPDX-ish strings) — shown verbatim, not normalized.

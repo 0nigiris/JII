@@ -377,8 +377,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (brew/nix) is shown, never run (trust boundary). 184 tests, live-verified on Fedora.
             **Note:** install/remove/update of a manager beyond `add` (e.g. `providers remove`) deferred
             as a follow-up to keep the slice small.
-      - [ ] **④ info app-card** — split search/info; info shows description/GitHub/site/license/author
-            (#4; needs provider-supplied metadata).
+      - [x] **④ info app-card** (ADR-0037). `jii info` is now a card: name → description → aligned
+            metadata block (Source/Version/License/Homepage/Repository/Author, present fields only) →
+            source list + recommendation. Optional `async Provider::describe -> Option<PackageInfo>`
+            (ADR-0022 growth), called only for the recommended candidate on `info`. dnf implements it
+            fully (`dnf5 info` + pure tested `parse_info`); github gives a cheap repo+author card; other
+            sources degrade gracefully. `--json` → `{candidates, recommended, info}`. 185 tests.
+            **Follow-ups:** richer cargo/npm/flatpak cards + GitHub repo-metadata fetch (description/license).
       - [ ] **list + audit merge** — `jii list`, security via `jii list --audit` (#5).
       - **Note:** this unfreezes `doctor --fix` (was in the frozen backlog) by explicit owner
         reprioritisation; the rest of the freeze list stays frozen.

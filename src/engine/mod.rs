@@ -633,6 +633,19 @@ impl Engine {
             .unwrap_or_default()
     }
 
+    /// Rich metadata for `jii info`'s app card (#4), asked of the candidate's owning
+    /// provider (optional `describe`, ADR-0022). `None` if the source is no longer enabled
+    /// or offers no card. May do I/O (dnf runs `dnf5 info`) — called only on `jii info`.
+    pub async fn candidate_info(
+        &self,
+        candidate: &PackageCandidate,
+    ) -> Option<crate::model::PackageInfo> {
+        match self.providers.get(&candidate.source_id) {
+            Some(p) => p.describe(candidate).await,
+            None => None,
+        }
+    }
+
     /// List the enabled providers with their trust and live availability (backs
     /// `jii sources`). Availability only — no network health probe (that is `doctor`).
     pub async fn source_catalog(&self) -> Vec<SourceEntry> {

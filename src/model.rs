@@ -209,6 +209,35 @@ pub struct PackageCandidate {
     pub raw: serde_json::Value,
 }
 
+/// Rich, human-facing metadata for `jii info`'s **app card** (#4) — description, links,
+/// license, author. Every field is optional and filled only where a source cheaply knows
+/// it; a provider assembles it in [`describe`](crate::provider::Provider::describe), and
+/// the card renders just the fields that are present (graceful when a source offers none).
+#[derive(Debug, Default, Serialize)]
+pub struct PackageInfo {
+    /// A longer description (falls back to the candidate's one-line summary).
+    pub description: Option<String>,
+    /// Project homepage / website.
+    pub homepage: Option<String>,
+    /// Source repository (e.g. the GitHub URL).
+    pub repository: Option<String>,
+    /// License identifier (e.g. `MIT`, `MPL-2.0`).
+    pub license: Option<String>,
+    /// Author / maintainer / vendor.
+    pub author: Option<String>,
+}
+
+impl PackageInfo {
+    /// Whether the card has anything worth a metadata block (any field present).
+    pub fn is_empty(&self) -> bool {
+        self.description.is_none()
+            && self.homepage.is_none()
+            && self.repository.is_none()
+            && self.license.is_none()
+            && self.author.is_none()
+    }
+}
+
 /// One action in a plan. Each variant has a single, clear responsibility; the plan
 /// executor dispatches to a focused handler per variant. Providers describe actions
 /// but never execute them.
