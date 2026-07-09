@@ -45,10 +45,20 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Install cross + nfpm
+      - name: Install cross
         uses: taiki-e/install-action@v2
         with:
-          tool: cross,nfpm
+          tool: cross
+
+      - name: Install nfpm
+        run: |
+          set -euxo pipefail
+          # nfpm is a Go tool (not a crate), so install it from goreleaser's apt repo.
+          echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' \
+            | sudo tee /etc/apt/sources.list.d/goreleaser.list
+          sudo apt-get update
+          sudo apt-get install -y nfpm
+          nfpm --version
 
       - name: Build static musl binary
         run: cross build --release --locked --target ${{ matrix.target }}
