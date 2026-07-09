@@ -1661,3 +1661,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - `doctor` now costs one installed-scan on the interactive path (acceptable — it *is* the diagnosis). The read-only `--json`/`-n` listing stays a plain catalog reference for now.
 - New `Recommendation.check` field + `satisfied_ids`/`is_satisfied`; `Engine::installed_index`; `doctor_offer` takes `&Engine`. Live-verified on Fedora: with VLC/codecs/fonts/Steam/RPM Fusion all present, doctor offers none of them.
 - Flatpak-pinned or repo-style entries need an accurate `check`; a wrong/missing one just means the entry is offered when already done (safe, not harmful).
+
+---
+
+## ADR-0044 — Search speed: a per-source failure circuit breaker
+
+**Status:** Accepted (slice 2 of the post-testing UX wave).
+
+**Context:** Search felt slow. Measured: even a *warm* `jii search` took **~5.06 s** wall at ~0.04 s CPU — one source (COPR, whose search API is ~9 s against the 5 s per-provider timeout) times out every time, and the fan-out `join_all` waits for the slowest source. Failures weren't cached, so every search re-paid COPR's full timeout.
+
+**Decision:**
+- Add a **disk-persisted, per-source failure table** to the search cache (a **circuit breaker**). When a source times out or errors, its id is stamped with the time (`mark_failure`); a source that failed within `network.failure_cooldown_secs` (default **120 s**) is **skipped without waiting** on later searches (`recently_failed`), serving a stale cache entry if present. A successful search clears the mark (`clear_failure`) — the circuit self-heals after the cooldown or on first success ("half-open" retry).
+- It must persist to disk because each `jii` invocation builds a fresh `Engine`; an in-process breaker wouldn't survive between commands, and "every *separate* `jii` search waits 5 s" is exactly the complaint. The failure table rides in the existing `search-cache.json` (schema bumped to `{ entries, failures }`; an old plain-map file is simply discarded as a stale cache).
+- A **missing local tool** (`is_available == false`) is *not* a failure — it's instant, and marking it would wrongly suppress a source the user might install mid-session.
+
+**Alternatives considered:**
+- **Lower the global timeout (5 → 2–3 s).** Rejected as the primary fix: it would permanently break COPR (genuinely ~9 s) even when it's working, and still pays the timeout on the first hit. The breaker keeps a working-but-slow source usable (it succeeds once, then is cached) while making repeats instant. (The timeout knob stays available for tuning.)
+- **In-process circuit breaker only.** Rejected: doesn't survive between `jii` invocations, so it wouldn't speed up the common "run a few searches in a row" flow.
+- **Early return once high-priority sources answer (don't await stragglers).** Deferred: a real improvement for the *first* search, but it changes result completeness/ranking and is a bigger change; the breaker delivers most of the felt speedup first.
+
+**Consequences:**
+- Verified on Fedora: first search 5.07 s (pays COPR once, marks it), every subsequent search **~1.1 s** (~4.5× faster) until the cooldown lapses.
+- A source that's slow/down contributes nothing for up to `failure_cooldown_secs` even if it recovers early — acceptable; stale cache still serves its last-known results, and `jii sources`/`doctor` probe it directly.
+- New `network.failure_cooldown_secs` config; `Cache` gains `recently_failed`/`mark_failure`/`clear_failure` (unit-tested); `search_one` consults and updates the breaker. The first search of a session still pays one timeout — the future early-return work (above) would address that.

@@ -64,8 +64,19 @@ pub struct TrustConfig {
 pub struct NetworkConfig {
     pub timeout_secs: u64,
     pub cache_ttl_secs: u64,
+    /// How long (seconds) a source that timed out / errored is skipped on later searches
+    /// before being retried — the circuit-breaker cooldown that keeps a slow source (e.g.
+    /// COPR) from making every search wait out its timeout again.
+    #[serde(default = "default_failure_cooldown_secs")]
+    pub failure_cooldown_secs: u64,
     /// Env var name to read a token from (e.g. GITHUB_TOKEN) to lift rate limits.
     pub github_token_env: String,
+}
+
+/// Default circuit-breaker cooldown: two minutes is long enough to spare repeat searches
+/// in a session, short enough that a recovered source comes back quickly.
+fn default_failure_cooldown_secs() -> u64 {
+    120
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +178,7 @@ impl Default for NetworkConfig {
             // docs/UX_EVALUATION.md (U0/U2).
             timeout_secs: 5,
             cache_ttl_secs: 3600,
+            failure_cooldown_secs: default_failure_cooldown_secs(),
             github_token_env: "GITHUB_TOKEN".to_string(),
         }
     }

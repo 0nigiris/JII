@@ -176,7 +176,10 @@ impl Engine {
     pub fn new(config: Config) -> Result<Self> {
         let providers = ProviderRegistry::from_config(&config);
         let registry = Registry::load()?;
-        let cache = Cache::load(config.network.cache_ttl_secs);
+        let cache = Cache::load(
+            config.network.cache_ttl_secs,
+            config.network.failure_cooldown_secs,
+        );
         Ok(Engine {
             config,
             providers,
@@ -244,10 +247,21 @@ impl Engine {
             return Ok(cached);
         }
 
-        // On any failure, fall back to a stale cache entry if we have one.
-        let or_stale = |failure: (String, String)| match self.cache.get_stale(&id, &query.raw) {
-            Some(stale) => Ok(stale),
-            None => Err(failure),
+        // Circuit breaker (#2): a source that timed out / errored within the cooldown is
+        // skipped *without waiting* — the single biggest search-latency win, since one slow
+        // source (a ~9 s COPR against a 5 s timeout) otherwise makes every search pay that
+        // timeout via the fan-out `join_all`. Serve a stale entry if we have one.
+        if self.cache.recently_failed(&id) {
+            return Ok(self.cache.get_stale(&id, &query.raw).unwrap_or_default());
+        }
+
+        // On any failure, record it (opens the circuit) and fall back to a stale entry.
+        let or_stale = |failure: (String, String)| {
+            self.cache.mark_failure(&id);
+            match self.cache.get_stale(&id, &query.raw) {
+                Some(stale) => Ok(stale),
+                None => Err(failure),
+            }
         };
 
         match tokio::time::timeout(timeout, provider.is_available()).await {
@@ -256,12 +270,14 @@ impl Engine {
             // (apt/pacman/zypper on Fedora, dnf on Arch, …). This is not a failure worth
             // reporting: surfacing it once per source per search is pure noise (UX #1), so we
             // contribute nothing silently (a stale cache entry still counts if we have one).
+            // Not a circuit-breaker failure either — a missing local tool is instant, not slow.
             // `jii sources`/`jii doctor` remain the place to see what's unavailable.
             Ok(false) => return Ok(self.cache.get_stale(&id, &query.raw).unwrap_or_default()),
             Err(_) => return or_stale(fail("timeout")),
         }
         match tokio::time::timeout(timeout, provider.search(query)).await {
             Ok(Ok(candidates)) => {
+                self.cache.clear_failure(&id); // success closes the circuit
                 self.cache.put(&id, &query.raw, candidates.clone());
                 Ok(candidates)
             }
