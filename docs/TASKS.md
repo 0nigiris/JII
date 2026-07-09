@@ -417,7 +417,8 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       - [x] **Self-update / uninstall** (ADR-0040, owner-requested). `jii` reserved as the tool's own name:
             `jii update jii` self-updates from the newest release (user-space → atomic binary swap via new
             `Action::Replace`, no root; package → dnf/apt install shown first), `jii uninstall`/`jii remove jii`
-            self-remove, bare `jii update` nudges. `src/selfupdate.rs` (pure builders unit-tested) + `Engine::run_self_plan`.
+            self-remove, bare `jii update` updates everything (system + JII itself, self-update last, still prompts).
+            `src/selfupdate.rs` (pure builders unit-tested) + `Engine::run_self_plan`.
             Cargo version → `0.1.0-beta`. Fetch+swap exercised only on the next real tag; pure parts tested + `--dry-run`.
       - [~] **5b. (was 5) Packaging pipeline (ADR-0039).** `release.yml`
             reworked: a `v*` tag builds **static musl** binaries for **x86_64 + aarch64** (via `cross`)

@@ -102,7 +102,7 @@ of its supported sources (dnf5, Flatpak, apt, …) it will run but find nothing 
 ```
 jii <name…>         search → rank → recommend → install (one or many packages)
 jii remove <name>   remove using the source that installed it
-jii update [<name>] named: update that package; bare: update the whole system
+jii update [<name>] named: update that package; bare: update the whole system + JII itself
 jii update jii      update JII itself from the latest GitHub release (self-update)
 jii search <query>  show ranked candidates without installing
 jii info <name>     app card: description, homepage, license, author + all sources & why
@@ -121,8 +121,8 @@ jii uninstall       remove JII itself (same as `jii remove jii`)
 **Updating JII itself.** `jii update jii` checks GitHub for the newest release and updates
 this binary the right way for how you installed it: a user-space install (install.sh / tarball
 / `cargo`) is swapped in place with no root; a `.rpm`/`.deb` install is upgraded through
-`dnf`/`apt` (shown first). A bare `jii update` also mentions when a newer JII is out. Remove
-JII with `jii uninstall`. Everything is previewable with `--dry-run`.
+`dnf`/`apt` (shown first). A bare `jii update` updates **everything** — the whole system and
+then JII itself. Remove JII with `jii uninstall`. Everything is previewable with `--dry-run`.
 
 **Package spec — `name[:source]`.** Pin a source right on the name to skip the chooser:
 `jii firefox:flatpak`, `jii remove firefox:flatpak`, `jii info node:npm`. The same spec

@@ -800,11 +800,12 @@ impl Cli {
         }
         let packages = &rest;
 
-        // Bare `jii update` = update the whole system (every manager's bulk upgrade, D10),
-        // then quietly nudge if a newer JII is out.
+        // Bare `jii update` updates **everything**: the whole system (every manager's bulk
+        // upgrade, D10) and then JII itself. Self-update runs last so the atomic binary swap
+        // happens after the system upgrade completes.
         if packages.is_empty() {
             self.update_system(config.clone(), renderer).await?;
-            self.self_update_nudge(config, renderer).await;
+            self.self_update(config, renderer).await?;
             return Ok(());
         }
 
@@ -956,21 +957,6 @@ impl Cli {
             selfupdate::normalize_tag(&latest.tag)
         ));
         Ok(())
-    }
-
-    /// After a bare `jii update`, quietly mention a newer JII (no prompt storm mid-update).
-    /// Best-effort: any check failure is silent — the system update already succeeded.
-    async fn self_update_nudge(&self, config: Config, renderer: &Renderer) {
-        let _ = config;
-        if let Ok(latest) = selfupdate::latest_release().await
-            && selfupdate::update_available(&latest.tag)
-        {
-            renderer.info(&format!(
-                "A newer JII is available ({} → {}). Run `jii update jii` to upgrade.",
-                selfupdate::current_version(),
-                selfupdate::normalize_tag(&latest.tag)
-            ));
-        }
     }
 
     /// `jii uninstall` / `jii remove jii` — remove JII itself: delete the user-space binary,

@@ -423,8 +423,8 @@ host** (risk #1 open — cross-distro + arm64 unproven).
 itself. `jii update jii` self-updates from the newest GitHub release the right way for how it was installed —
 **user-space binary** (install.sh/tarball/cargo) is atomically swapped in place (new `Action::Replace` =
 `fs::rename`, no `ETXTBSY`, no root); **package** (.rpm/.deb) is upgraded via dnf/apt as a previewable root
-step (never clobbers the package db). `jii uninstall` / `jii remove jii` self-remove. Bare `jii update` nudges
-if a newer JII is out. All previewable (`--dry-run`); version compare is opaque "different tag → offer"
+step (never clobbers the package db). `jii uninstall` / `jii remove jii` self-remove. Bare `jii update` updates
+everything — the system and then JII itself (self-update runs last, still prompts). All previewable (`--dry-run`); version compare is opaque "different tag → offer"
 (ADR-0009). New `src/selfupdate.rs` (detection + release fetch + asset selection + pure plan builders,
 unit-tested); `Engine::run_self_plan` executes via the existing executor+privilege. `Cargo.toml` version
 aligned to `0.1.0-beta`. **Verify once Bash classifier is back: clippy + full test suite (expected ~192).**
