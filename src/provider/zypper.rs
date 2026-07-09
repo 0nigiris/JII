@@ -76,11 +76,11 @@ impl Provider for Zypper {
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
         let mut reasons = vec![
-            "Official openSUSE package".to_string(),
-            format!("Repository: {repo}"),
+            crate::t!("reason.zypper_official"),
+            crate::t!("reason.repository", repo = repo),
         ];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
         Ok(root_plan(&candidate.name, &["install", &candidate.name], reasons))
     }
@@ -93,12 +93,12 @@ impl Provider for Zypper {
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Official openSUSE packages: {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.zypper_official_many", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via zypper)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "zypper")];
         Ok(root_plan(&record.name, &["remove", &record.name], reasons))
     }
 
@@ -106,12 +106,12 @@ impl Provider for Zypper {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["remove"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via zypper): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "zypper", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via zypper", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "zypper")];
         Ok(root_plan(&record.name, &["update", &record.name], reasons))
     }
 
@@ -119,14 +119,14 @@ impl Provider for Zypper {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["update"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via zypper): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "zypper", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `zypper --non-interactive update` (root_plan injects --non-interactive) updates
         // every installed package (D10).
-        let reasons = vec!["Update all system packages (via zypper)".to_string()];
+        let reasons = vec![crate::t!("reason.zypper_upgrade_all")];
         Ok(Some(root_plan("system", &["update"], reasons)))
     }
 

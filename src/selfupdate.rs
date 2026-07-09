@@ -269,8 +269,8 @@ fn user_update_plan(exe: &Path, asset: &Asset, tag: &str, verify: Verification) 
     self_plan(
         actions,
         vec![
-            format!("Update JII {} → {}", current_version(), normalize_tag(tag)),
-            format!("Replace {} in place (no root)", exe.display()),
+            crate::t!("selfupdate.plan_update", current = current_version(), latest = normalize_tag(tag)),
+            crate::t!("selfupdate.plan_replace", exe = exe.display().to_string()),
         ],
     )
 }
@@ -297,10 +297,10 @@ fn package_update_plan(manager: Manager, asset: &Asset, tag: &str, verify: Verif
     ];
     self_plan(
         actions,
-        vec![format!(
-            "Update JII {} → {} via the system package manager",
-            current_version(),
-            normalize_tag(tag)
+        vec![crate::t!(
+            "selfupdate.plan_update_pkg",
+            current = current_version(),
+            latest = normalize_tag(tag)
         )],
     )
 }
@@ -310,7 +310,7 @@ pub fn plan_uninstall(install: &Install) -> InstallPlan {
     match install {
         Install::UserBinary(exe) => self_plan(
             vec![Action::RemoveFile { path: exe.clone() }],
-            vec![format!("Remove JII ({})", exe.display())],
+            vec![crate::t!("selfupdate.plan_remove", exe = exe.display().to_string())],
         ),
         Install::Package { manager, .. } => {
             let argv = match manager {
@@ -327,7 +327,7 @@ pub fn plan_uninstall(install: &Install) -> InstallPlan {
                     argv,
                     needs_root: true,
                 }],
-                vec!["Remove JII via the system package manager".to_string()],
+                vec![crate::t!("selfupdate.plan_remove_pkg")],
             )
         }
     }

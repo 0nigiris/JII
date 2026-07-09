@@ -79,11 +79,11 @@ impl Provider for Homebrew {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["Homebrew (community formula)".to_string()];
+        let mut reasons = vec![crate::t!("reason.brew_formula")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push("Installs into Homebrew's prefix (no root)".to_string());
+        reasons.push(crate::t!("reason.brew_installs"));
         Ok(brew_plan(&candidate.name, "install", reasons))
     }
 
@@ -93,35 +93,35 @@ impl Provider for Homebrew {
     ) -> Result<Option<InstallPlan>> {
         // `brew install a b c` installs the whole group in one unprivileged run.
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
-        let reasons = vec![format!("Homebrew formulae (community): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.brew_formula_many", names = names.join(", "))];
         Ok(Some(brew_many("install", &names, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via brew)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "brew")];
         Ok(brew_plan(&record.name, "uninstall", reasons))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
-        let reasons = vec![format!("Remove (via brew): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "brew", names = names.join(", "))];
         Ok(Some(brew_many("uninstall", &names, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via brew", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "brew")];
         Ok(brew_plan(&record.name, "upgrade", reasons))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
-        let reasons = vec![format!("Update (via brew): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "brew", names = names.join(", "))];
         Ok(Some(brew_many("upgrade", &names, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `brew upgrade` with no names upgrades every outdated formula (D10); user-space.
-        let reasons = vec!["Upgrade all Homebrew formulae".to_string()];
+        let reasons = vec![crate::t!("reason.brew_upgrade_all")];
         let argv = vec![BIN.to_string(), "upgrade".to_string()];
         Ok(Some(command_plan(ID, "all formulae", argv, false, reasons)))
     }

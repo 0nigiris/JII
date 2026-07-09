@@ -98,12 +98,12 @@ impl Provider for Snap {
         if classic {
             argv.push("--classic".to_string());
         }
-        let mut reasons = vec!["Snap Store (community)".to_string()];
+        let mut reasons = vec![crate::t!("reason.snap_store")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
         if classic {
-            reasons.push("Classic confinement — full system access (--classic)".to_string());
+            reasons.push(crate::t!("reason.snap_classic"));
         }
         Ok(command_plan(ID, &candidate.name, argv, true, reasons))
     }
@@ -118,35 +118,35 @@ impl Provider for Snap {
             return Ok(None);
         }
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
-        let reasons = vec![format!("Snap Store (community): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.snap_store_many", names = names.join(", "))];
         Ok(Some(snap_many("install", &names, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via snap)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "snap")];
         Ok(snap_plan(&record.name, "remove", reasons))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
-        let reasons = vec![format!("Remove (via snap): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "snap", names = names.join(", "))];
         Ok(Some(snap_many("remove", &names, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Update {} via snap", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "snap")];
         Ok(snap_plan(&record.name, "refresh", reasons))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
-        let reasons = vec![format!("Update (via snap): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "snap", names = names.join(", "))];
         Ok(Some(snap_many("refresh", &names, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `snap refresh` with no names refreshes every installed snap (D10).
-        let reasons = vec!["Refresh all snaps".to_string()];
+        let reasons = vec![crate::t!("reason.snap_refresh_all")];
         let argv = vec![BIN.to_string(), "refresh".to_string()];
         Ok(Some(command_plan(ID, "all snaps", argv, true, reasons)))
     }

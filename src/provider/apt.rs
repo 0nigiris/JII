@@ -60,9 +60,9 @@ impl Provider for Apt {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["System package (apt)".to_string()];
+        let mut reasons = vec![crate::t!("reason.apt_system")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
         Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
     }
@@ -75,12 +75,12 @@ impl Provider for Apt {
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("System packages (apt): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.apt_system_many", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Remove {} (installed via apt)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "apt")];
         Ok(root_plan(&record.name, &["remove", "-y", &record.name], reasons))
     }
 
@@ -89,13 +89,13 @@ impl Provider for Apt {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["remove", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via apt): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "apt", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // apt upgrades a single package by installing its newest version in place.
-        let reasons = vec![format!("Update {} via apt", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "apt")];
         Ok(root_plan(
             &record.name,
             &["install", "--only-upgrade", "-y", &record.name],
@@ -108,13 +108,13 @@ impl Provider for Apt {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["install", "--only-upgrade", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via apt): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "apt", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `apt-get upgrade -y` upgrades every installed package (D10).
-        let reasons = vec!["Upgrade all system packages (via apt)".to_string()];
+        let reasons = vec![crate::t!("reason.upgrade_all_system", mgr = "apt")];
         Ok(Some(root_plan("system", &["upgrade", "-y"], reasons)))
     }
 

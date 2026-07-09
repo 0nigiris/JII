@@ -62,9 +62,12 @@ impl Provider for Pacman {
             .get("repo")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        let mut reasons = vec!["Official Arch package".to_string(), format!("Repository: {repo}")];
+        let mut reasons = vec![
+            crate::t!("reason.pacman_official"),
+            crate::t!("reason.repository", repo = repo),
+        ];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
         Ok(root_plan(&candidate.name, &["-S", "--noconfirm", &candidate.name], reasons))
     }
@@ -77,14 +80,14 @@ impl Provider for Pacman {
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["-S", "--noconfirm"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Official Arch packages: {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.pacman_official_many", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // -Rs also removes dependencies no longer required by anything else (the closest
         // analogue to dnf/apt cleanup); the full command is shown before it runs.
-        let reasons = vec![format!("Remove {} (installed via pacman)", record.name)];
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "pacman")];
         Ok(root_plan(&record.name, &["-Rs", "--noconfirm", &record.name], reasons))
     }
 
@@ -92,7 +95,7 @@ impl Provider for Pacman {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["-Rs", "--noconfirm"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Remove (via pacman): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.remove_many", mgr = "pacman", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -100,7 +103,7 @@ impl Provider for Pacman {
         // pacman has no isolated single-package upgrade; installing the target pulls its
         // newest version from the current sync db. (A full `-Syu` is the user's own call —
         // JII updates the packages it tracks, one target at a time.)
-        let reasons = vec![format!("Update {} via pacman", record.name)];
+        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "pacman")];
         Ok(root_plan(&record.name, &["-S", "--noconfirm", &record.name], reasons))
     }
 
@@ -108,13 +111,13 @@ impl Provider for Pacman {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["-S", "--noconfirm"];
         args.extend_from_slice(&names);
-        let reasons = vec![format!("Update (via pacman): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.update_many", mgr = "pacman", names = names.join(", "))];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `pacman -Syu --noconfirm` = sync the db and upgrade the whole system (D10).
-        let reasons = vec!["Upgrade all system packages (via pacman)".to_string()];
+        let reasons = vec![crate::t!("reason.upgrade_all_system", mgr = "pacman")];
         Ok(Some(root_plan("system", &["-Syu", "--noconfirm"], reasons)))
     }
 

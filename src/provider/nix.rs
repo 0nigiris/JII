@@ -84,11 +84,11 @@ impl Provider for Nix {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let mut reasons = vec!["Nixpkgs package (community)".to_string()];
+        let mut reasons = vec![crate::t!("reason.nix_pkg")];
         if let Some(v) = &candidate.version {
-            reasons.push(format!("Version {v}"));
+            reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        reasons.push("Installs into your Nix profile (no root)".to_string());
+        reasons.push(crate::t!("reason.nix_installs"));
         let flake = flake_ref(&candidate.name);
         let argv = nix_argv(&["profile", "install", &flake]);
         Ok(command_plan(ID, &candidate.name, argv, false, reasons))
@@ -103,13 +103,13 @@ impl Provider for Nix {
         let flakes: Vec<String> = names.iter().map(|n| flake_ref(n)).collect();
         let mut sub = vec!["profile", "install"];
         sub.extend(flakes.iter().map(|s| s.as_str()));
-        let reasons = vec![format!("Nixpkgs packages (community): {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.nix_pkg_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `nix profile remove <name>` drops the profile entry (no root).
-        let reasons = vec![format!("Remove {} from your Nix profile", record.name)];
+        let reasons = vec![crate::t!("reason.nix_remove", name = record.name.clone())];
         let argv = nix_argv(&["profile", "remove", &record.name]);
         Ok(command_plan(ID, &record.name, argv, false, reasons))
     }
@@ -118,12 +118,12 @@ impl Provider for Nix {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut sub = vec!["profile", "remove"];
         sub.extend_from_slice(&names);
-        let reasons = vec![format!("Remove from Nix profile: {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.nix_remove_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![format!("Upgrade {} in your Nix profile", record.name)];
+        let reasons = vec![crate::t!("reason.nix_upgrade_one", name = record.name.clone())];
         let argv = nix_argv(&["profile", "upgrade", &record.name]);
         Ok(command_plan(ID, &record.name, argv, false, reasons))
     }
@@ -132,14 +132,14 @@ impl Provider for Nix {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut sub = vec!["profile", "upgrade"];
         sub.extend_from_slice(&names);
-        let reasons = vec![format!("Upgrade in Nix profile: {}", names.join(", "))];
+        let reasons = vec![crate::t!("reason.nix_upgrade_many", names = names.join(", "))];
         Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `nix profile upgrade --all` upgrades every package in the user profile (D10);
         // user-space, no root (like the rest of the nix provider).
-        let reasons = vec!["Upgrade all packages in your Nix profile".to_string()];
+        let reasons = vec![crate::t!("reason.nix_upgrade_all")];
         let argv = nix_argv(&["profile", "upgrade", "--all"]);
         Ok(Some(command_plan(ID, "nix profile", argv, false, reasons)))
     }

@@ -53,24 +53,19 @@ impl JiiError {
     /// specific remedy — better to stay silent than invent one.
     pub fn remedy(&self) -> Option<String> {
         match self {
-            JiiError::UnknownSource(id) => Some(format!(
-                "'{id}' is not a source JII knows. Known sources: {}. \
-                 Fix the `priority`/`disabled` list in your config (or run `jii setup`).",
-                crate::config::KNOWN_SOURCES.join(", ")
+            JiiError::UnknownSource(id) => Some(crate::t!(
+                "remedy.unknown_source",
+                id = id.clone(),
+                known = crate::config::KNOWN_SOURCES.join(", ")
             )),
-            JiiError::Config(_) => Some(
-                "Check the config file (usually ~/.config/jii/config.toml), or run \
-                 `jii setup` to regenerate it."
-                    .to_string(),
-            ),
+            JiiError::Config(_) => Some(crate::t!("remedy.config")),
             JiiError::Io { path, source } => match source.kind() {
                 std::io::ErrorKind::NotFound => {
-                    Some(format!("{} does not exist.", path.display()))
+                    Some(crate::t!("remedy.io_not_found", path = path.display().to_string()))
                 }
-                std::io::ErrorKind::PermissionDenied => Some(format!(
-                    "Permission denied for {}. Check its ownership and permissions.",
-                    path.display()
-                )),
+                std::io::ErrorKind::PermissionDenied => {
+                    Some(crate::t!("remedy.io_denied", path = path.display().to_string()))
+                }
                 _ => None,
             },
             // `Other` wraps opaque text from many call sites; string-sniffing it would be
