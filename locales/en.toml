@@ -9,15 +9,48 @@
 [common]
 aborted = "Aborted."
 steps = "steps:"
+not_installed = "Not installed: {names}"
+no_sources_enabled = "No installation sources are enabled."
+no_usable_source = "No usable installation source found on this system."
 dry_run_unchanged = "(dry-run: nothing was changed)"
 dry_run_not_installed = "(dry-run: nothing was installed)"
 dry_run_not_updated = "(dry-run: nothing was updated)"
 dry_run_not_removed = "(dry-run: nothing was removed)"
 
+[remove]
+continue_rest = "Continue removing the rest?"
+cannot_plan = "✗ {name}: cannot plan removal ({reason})"
+nothing = "Nothing to remove."
+removed = "Removed {names}."
+prompt_one = "Remove {name}?"
+prompt_many = "Remove {count} packages?"
+
+[update]
+none = "No updatable packages."
+cannot_plan = "✗ {name}: cannot plan update ({reason})"
+all_up_to_date = "All {count} package(s) already up to date."
+some_up_to_date = "({count} already up to date)"
+updated = "Updated {names}."
+prompt_one = "Update {name}?"
+prompt_many = "Update {count} packages?"
+
 [install]
 searching = "Searching…"
+searching_for = "Searching for '{name}'..."
 not_found = "Not found: {names}"
 not_found_via = "Not found via source '{source}': {names}"
+no_exact_match = "No exact match for '{name}'. Closest: {closest}."
+already_installed = "{name} already installed via {source}{version}"
+already_installed_outdated = "{name} is already installed via {source} ({current}). Available: {available}."
+update_now = "Update now?"
+keeping = "Keeping the installed version."
+choose_header = "'{name}' is available from several sources — you choose:"
+recommended_tag = "recommended"
+continue_rest = "Continue installing the rest?"
+installed = "Installed {names}."
+also_available = "Also available:"
+and_more = "…and {count} more"
+summary = "Summary:"
 
 [doctor]
 all_good = "Nothing to set up — you're all good."

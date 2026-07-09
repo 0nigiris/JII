@@ -7,15 +7,48 @@
 [common]
 aborted = "Отменено."
 steps = "шаги:"
+not_installed = "Не установлено: {names}"
+no_sources_enabled = "Ни один источник установки не включён."
+no_usable_source = "В системе не найдено пригодного источника установки."
 dry_run_unchanged = "(dry-run: ничего не изменено)"
 dry_run_not_installed = "(dry-run: ничего не установлено)"
 dry_run_not_updated = "(dry-run: ничего не обновлено)"
 dry_run_not_removed = "(dry-run: ничего не удалено)"
 
+[remove]
+continue_rest = "Продолжить удаление остального?"
+cannot_plan = "✗ {name}: не удалось спланировать удаление ({reason})"
+nothing = "Удалять нечего."
+removed = "Удалено: {names}."
+prompt_one = "Удалить {name}?"
+prompt_many = "Удалить пакетов: {count}?"
+
+[update]
+none = "Нечего обновлять."
+cannot_plan = "✗ {name}: не удалось спланировать обновление ({reason})"
+all_up_to_date = "Все пакеты уже последней версии ({count})."
+some_up_to_date = "({count} уже актуальны)"
+updated = "Обновлено: {names}."
+prompt_one = "Обновить {name}?"
+prompt_many = "Обновить пакетов: {count}?"
+
 [install]
 searching = "Поиск…"
+searching_for = "Ищу «{name}»..."
 not_found = "Не найдено: {names}"
 not_found_via = "Не найдено через источник «{source}»: {names}"
+no_exact_match = "Точного совпадения для «{name}» нет. Ближайшее: {closest}."
+already_installed = "{name} уже установлен через {source}{version}"
+already_installed_outdated = "{name} уже установлен через {source} ({current}). Доступно: {available}."
+update_now = "Обновить сейчас?"
+keeping = "Оставляю установленную версию."
+choose_header = "«{name}» доступен из нескольких источников — выбирайте:"
+recommended_tag = "рекомендуется"
+continue_rest = "Продолжить установку остального?"
+installed = "Установлено: {names}."
+also_available = "Также доступно:"
+and_more = "…и ещё {count}"
+summary = "Сводка:"
 
 [doctor]
 all_good = "Настраивать нечего — всё в порядке."

@@ -314,7 +314,7 @@ impl Cli {
             let name = &spec.name;
             let query = Query::name(name);
             if !renderer.is_friendly() {
-                renderer.info(&format!("Searching for '{}'...", query.raw));
+                renderer.info(&crate::t!("install.searching_for", name = query.raw));
             }
             let result = engine.search(&query).await;
             self.report_source_failures(&result.failed, renderer);
@@ -335,9 +335,10 @@ impl Cli {
             // Be explicit when the best match isn't what was typed, so a broadened result
             // never silently installs a differently-named package.
             if !ranked[0].name.eq_ignore_ascii_case(name) {
-                renderer.info(&format!(
-                    "No exact match for '{name}'. Closest: {}.",
-                    ranked[0].name
+                renderer.info(&crate::t!(
+                    "install.no_exact_match",
+                    name = name,
+                    closest = ranked[0].name
                 ));
             }
 
@@ -358,25 +359,28 @@ impl Cli {
                         .as_ref()
                         .map(|v| format!(" ({v})"))
                         .unwrap_or_default();
-                    renderer.success(&format!(
-                        "{name} already installed via {}{v}",
-                        record.source_id
+                    renderer.success(&crate::t!(
+                        "install.already_installed",
+                        name = name,
+                        source = record.source_id,
+                        version = v
                     ));
                     continue;
                 }
                 // Same source, a newer version is available → offer an in-place update
                 // (which is exactly what re-installing via this source does). A real batch
                 // includes it without prompting; a single install asks once.
-                renderer.info(&format!(
-                    "{name} is already installed via {} ({}). Available: {}.",
-                    record.source_id,
-                    version_or_unknown(record.version.as_ref()),
-                    version_or_unknown(available.as_ref()),
+                renderer.info(&crate::t!(
+                    "install.already_installed_outdated",
+                    name = name,
+                    source = record.source_id,
+                    current = version_or_unknown(record.version.as_ref()),
+                    available = version_or_unknown(available.as_ref())
                 ));
                 if single && !self.global.dry_run {
                     let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
-                    if !prompt::confirm(renderer, "Update now?", true, &flags) {
-                        renderer.info("Keeping the installed version.");
+                    if !prompt::confirm(renderer, &crate::t!("install.update_now"), true, &flags) {
+                        renderer.info(&crate::t!("install.keeping"));
                         continue;
                     }
                 }
@@ -407,13 +411,13 @@ impl Cli {
                     .enumerate()
                     .map(|(i, c)| {
                         if i == 0 {
-                            format!("{}  ⭐ recommended", candidate_line(c))
+                            format!("{}  ⭐ {}", candidate_line(c), crate::t!("install.recommended_tag"))
                         } else {
                             candidate_line(c)
                         }
                     })
                     .collect();
-                let header = format!("'{name}' is available from several sources — you choose:");
+                let header = crate::t!("install.choose_header", name = name);
                 match prompt::choose(renderer, &header, &labels, 0) {
                     Some(index) => {
                         chose_interactively = true;
@@ -455,7 +459,7 @@ impl Cli {
         }
         if !not_found.is_empty() {
             let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
-            if !prompt::confirm(renderer, "Continue installing the rest?", true, &flags) {
+            if !prompt::confirm(renderer, &crate::t!("install.continue_rest"), true, &flags) {
                 renderer.info(&crate::t!("common.aborted"));
                 return Ok(());
             }
@@ -511,7 +515,7 @@ impl Cli {
 
         // 6. One escalation, one run; records are written as each plan succeeds.
         engine.install_batch(&batch, renderer).await?;
-        renderer.success(&format!("Installed {}.", installed.join(", ")));
+        renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
         Ok(())
     }
 
@@ -529,7 +533,7 @@ impl Cli {
         // just repeat the Plan below it, so we skip straight to the plan (UX #9).
         let total: usize = batch.iter().map(|bp| bp.candidates.len()).sum();
         if batch.len() > 1 || total > 1 {
-            renderer.info("Summary:");
+            renderer.info(&crate::t!("install.summary"));
             for bp in batch {
                 renderer.info(&format!("{}:", bp.plan.source_id));
                 for candidate in &bp.candidates {
@@ -587,7 +591,7 @@ impl Cli {
         // it stays a hint, not a wall. The name is shown because alternatives may now differ
         // from the recommended one (e.g. `git` → also `gitk`, `git-lfs`).
         const MAX: usize = 6;
-        renderer.info("Also available:");
+        renderer.info(&crate::t!("install.also_available"));
         for candidate in alternatives.iter().take(MAX) {
             let version = candidate
                 .version
@@ -604,7 +608,7 @@ impl Cli {
         }
         let extra = alternatives.len().saturating_sub(MAX);
         if extra > 0 {
-            renderer.info(&format!("  …and {extra} more"));
+            renderer.info(&format!("  {}", crate::t!("install.and_more", count = extra)));
         }
     }
 
@@ -688,11 +692,11 @@ impl Cli {
     /// says so plainly). Returns `true` to proceed, `false` after rendering the reason.
     async fn ensure_usable_source(&self, engine: &Engine, renderer: &Renderer) -> bool {
         if !engine.has_providers() {
-            renderer.error("No installation sources are enabled.");
+            renderer.error(&crate::t!("common.no_sources_enabled"));
             return false;
         }
         if !engine.any_source_available().await {
-            renderer.error("No usable installation source found on this system.");
+            renderer.error(&crate::t!("common.no_usable_source"));
             return false;
         }
         true
@@ -777,14 +781,14 @@ impl Cli {
             }
         }
         if !not_installed.is_empty() {
-            renderer.error(&format!("Not installed: {}", not_installed.join(", ")));
+            renderer.error(&crate::t!("common.not_installed", names = not_installed.join(", ")));
         }
         if records.is_empty() {
             return Ok(());
         }
         if !not_installed.is_empty() {
             let flags = self.prompt_flags(false);
-            if !prompt::confirm(renderer, "Continue removing the rest?", true, &flags) {
+            if !prompt::confirm(renderer, &crate::t!("remove.continue_rest"), true, &flags) {
                 renderer.info(&crate::t!("common.aborted"));
                 return Ok(());
             }
@@ -795,10 +799,10 @@ impl Cli {
             .plan_record_batch(records, crate::engine::RecordOp::Remove)
             .await?;
         for (name, reason) in &batch.unplannable {
-            renderer.warn(&format!("✗ {name}: cannot plan removal ({reason})"));
+            renderer.warn(&crate::t!("remove.cannot_plan", name = name, reason = reason));
         }
         if batch.plans.is_empty() {
-            renderer.info("Nothing to remove.");
+            renderer.info(&crate::t!("remove.nothing"));
             return Ok(());
         }
 
@@ -811,9 +815,9 @@ impl Cli {
         let names = record_batch_names(&batch.plans);
         let flags = self.prompt_flags(false);
         let question = if names.len() == 1 {
-            format!("Remove {}?", names[0])
+            crate::t!("remove.prompt_one", name = names[0])
         } else {
-            format!("Remove {} packages?", names.len())
+            crate::t!("remove.prompt_many", count = names.len())
         };
         if !prompt::confirm(renderer, &question, false, &flags) {
             renderer.info(&crate::t!("common.aborted"));
@@ -822,7 +826,7 @@ impl Cli {
 
         // 4. One escalation, one run; records cleared as each plan succeeds.
         engine.remove_batch(&batch.plans, renderer).await?;
-        renderer.success(&format!("Removed {}.", names.join(", ")));
+        renderer.success(&crate::t!("remove.removed", names = names.join(", ")));
         Ok(())
     }
 
@@ -905,7 +909,7 @@ impl Cli {
                 }
             }
             if !not_installed.is_empty() {
-                renderer.error(&format!("Not installed: {}", not_installed.join(", ")));
+                renderer.error(&crate::t!("common.not_installed", names = not_installed.join(", ")));
             }
             resolved
         };
@@ -920,9 +924,9 @@ impl Cli {
 
         if refreshed.is_empty() {
             if up_to_date > 0 {
-                renderer.success(&format!("All {up_to_date} package(s) already up to date."));
+                renderer.success(&crate::t!("update.all_up_to_date", count = up_to_date));
             } else {
-                renderer.info("No updatable packages.");
+                renderer.info(&crate::t!("update.none"));
             }
             return Ok(());
         }
@@ -932,10 +936,10 @@ impl Cli {
             .plan_record_batch(refreshed, crate::engine::RecordOp::Update)
             .await?;
         for (name, reason) in &batch.unplannable {
-            renderer.warn(&format!("✗ {name}: cannot plan update ({reason})"));
+            renderer.warn(&crate::t!("update.cannot_plan", name = name, reason = reason));
         }
         if batch.plans.is_empty() {
-            renderer.info("No updatable packages.");
+            renderer.info(&crate::t!("update.none"));
             return Ok(());
         }
 
@@ -945,7 +949,7 @@ impl Cli {
         }
         self.preview_record_batch(&batch.plans, renderer);
         if up_to_date > 0 {
-            renderer.info(&format!("({up_to_date} already up to date)"));
+            renderer.info(&crate::t!("update.some_up_to_date", count = up_to_date));
         }
 
         if self.global.dry_run {
@@ -957,9 +961,9 @@ impl Cli {
         let names = record_batch_names(&batch.plans);
         let flags = self.prompt_flags(engine.config().install.auto);
         let question = if names.len() == 1 {
-            format!("Update {}?", names[0])
+            crate::t!("update.prompt_one", name = names[0])
         } else {
-            format!("Update {} packages?", names.len())
+            crate::t!("update.prompt_many", count = names.len())
         };
         if !prompt::confirm(renderer, &question, true, &flags) {
             renderer.info(&crate::t!("common.aborted"));
@@ -967,7 +971,7 @@ impl Cli {
         }
 
         engine.update_batch(&batch.plans, renderer).await?;
-        renderer.success(&format!("Updated {}.", names.join(", ")));
+        renderer.success(&crate::t!("update.updated", names = names.join(", ")));
         Ok(())
     }
 
