@@ -470,14 +470,19 @@ impl Cli {
             let best = if offer_choice {
                 // The top (index 0) candidate is the recommendation — tag it so the menu says
                 // *which* to pick and why it's first (#4); the rest are honest alternatives.
+                let palette = renderer.palette();
                 let labels: Vec<String> = ranked
                     .iter()
                     .enumerate()
                     .map(|(i, c)| {
                         if i == 0 {
-                            format!("{}  ⭐ {}", candidate_line(c), crate::t!("install.recommended_tag"))
+                            format!(
+                                "{}  ⭐ {}",
+                                candidate_line(c, palette),
+                                crate::t!("install.recommended_tag")
+                            )
                         } else {
-                            candidate_line(c)
+                            candidate_line(c, palette)
                         }
                     })
                     .collect();
@@ -597,14 +602,15 @@ impl Cli {
         // just repeat the Plan below it, so we skip straight to the plan (UX #9).
         let total: usize = batch.iter().map(|bp| bp.candidates.len()).sum();
         if batch.len() > 1 || total > 1 {
-            renderer.info(&crate::t!("install.summary"));
+            let palette = renderer.palette();
+            renderer.heading(&crate::t!("install.summary"));
             for bp in batch {
-                renderer.info(&format!("{}:", bp.plan.source_id));
+                renderer.info(&format!("{}:", palette.source(&bp.plan.source_id)));
                 for candidate in &bp.candidates {
                     let version = candidate
                         .version
                         .as_ref()
-                        .map(|v| format!(" (v{v})"))
+                        .map(|v| format!(" {}", palette.version(&format!("(v{v})"))))
                         .unwrap_or_default();
                     renderer.info(&format!("  - {}{version}", candidate.name));
                 }
@@ -624,9 +630,10 @@ impl Cli {
         engine: &Engine,
         renderer: &Renderer,
     ) {
+        let palette = renderer.palette();
         for bp in batch {
             let sudo = if bp.plan.needs_root() {
-                crate::t!("common.needs_sudo")
+                palette.dim(&crate::t!("common.needs_sudo"))
             } else {
                 String::new()
             };
@@ -634,7 +641,7 @@ impl Cli {
                 let version = candidate
                     .version
                     .as_ref()
-                    .map(|v| format!(" ({v})"))
+                    .map(|v| format!(" {}", palette.version(&format!("({v})"))))
                     .unwrap_or_default();
                 let why = engine
                     .candidate_highlights(candidate)
@@ -646,7 +653,7 @@ impl Cli {
                     "install.preview",
                     name = candidate.name.clone(),
                     version = version,
-                    source = candidate.source_id.clone(),
+                    source = palette.source(&candidate.source_id),
                     why = why,
                     sudo = sudo
                 ));
@@ -663,24 +670,25 @@ impl Cli {
         // it stays a hint, not a wall. The name is shown because alternatives may now differ
         // from the recommended one (e.g. `git` → also `gitk`, `git-lfs`).
         const MAX: usize = 6;
-        renderer.info(&crate::t!("install.also_available"));
+        let palette = renderer.palette();
+        renderer.heading(&crate::t!("install.also_available"));
         for candidate in alternatives.iter().take(MAX) {
             let version = candidate
                 .version
                 .as_ref()
-                .map(|v| format!("v{v}, "))
+                .map(|v| format!("{}, ", palette.version(&format!("v{v}"))))
                 .unwrap_or_default();
             renderer.info(&format!(
                 "  {} — {} ({}{})",
                 candidate.name,
-                candidate.source_id,
+                palette.source(&candidate.source_id),
                 version,
-                candidate.trust.display()
+                palette.trust(candidate.trust)
             ));
         }
         let extra = alternatives.len().saturating_sub(MAX);
         if extra > 0 {
-            renderer.info(&format!("  {}", crate::t!("install.and_more", count = extra)));
+            renderer.info(&palette.dim(&format!("  {}", crate::t!("install.and_more", count = extra))));
         }
     }
 
@@ -1288,10 +1296,11 @@ impl Cli {
             renderer.json_value(&serde_json::json!(ranked));
             return Ok(());
         }
-        renderer.info(&crate::t!("search.header", name = name));
+        let palette = renderer.palette();
+        renderer.heading(&crate::t!("search.header", name = name));
         for (i, candidate) in ranked.iter().enumerate() {
-            let mark = if i == 0 { "→" } else { " " };
-            renderer.info(&format!("{mark} {}", candidate_line(candidate)));
+            let mark = if i == 0 { palette.good("→") } else { " ".to_string() };
+            renderer.info(&format!("{mark} {}", candidate_line(candidate, palette)));
         }
         Ok(())
     }
@@ -1344,15 +1353,18 @@ impl Cli {
         let best = &ranked[0];
         let info = engine.candidate_info(best).await.unwrap_or_default();
 
-        renderer.info(name);
+        let palette = renderer.palette();
+        renderer.heading(name);
         if let Some(desc) = info.description.as_ref().or(best.summary.as_ref()) {
             renderer.info(desc);
         }
         renderer.info("");
-        let row = |label: &str, value: &str| format!("  {label:<11}{value}");
+        let row = |label: &str, value: &str| {
+            format!("  {}{value}", palette.dim(&format!("{label:<11}")))
+        };
         renderer.info(&row(
             &crate::t!("info.row_source"),
-            &format!("{} ({})", best.source_id, best.trust.display()),
+            &format!("{} ({})", palette.source(&best.source_id), palette.trust(best.trust)),
         ));
         if let Some(v) = &best.version {
             renderer.info(&row(&crate::t!("info.row_version"), &v.to_string()));
@@ -1371,14 +1383,18 @@ impl Cli {
         }
         renderer.info("");
 
-        renderer.info(&crate::t!("info.available_from", count = ranked.len()));
+        renderer.heading(&crate::t!("info.available_from", count = ranked.len()));
         for candidate in &ranked {
-            renderer.info(&format!("  {}", candidate_line(candidate)));
+            renderer.info(&format!("  {}", candidate_line(candidate, palette)));
         }
-        renderer.info(&crate::t!("info.recommended", source = best.source_id.clone()));
+        renderer.info(&crate::t!(
+            "info.recommended",
+            source = palette.source(&best.source_id)
+        ));
         let highlights = engine.candidate_highlights(best);
+        let check = palette.good("✓");
         for reason in recommendation_reasons(best, highlights) {
-            renderer.info(&format!("  ✓ {reason}"));
+            renderer.info(&format!("  {check} {reason}"));
         }
         Ok(())
     }
@@ -1395,13 +1411,16 @@ impl Cli {
             renderer.json_value(&serde_json::json!(card));
             return Ok(());
         }
-        renderer.info(&card.name);
+        let palette = renderer.palette();
+        renderer.heading(&card.name);
         if let Some(desc) = &card.info.description {
             renderer.info(desc);
         }
         renderer.info("");
-        let row = |label: &str, value: &str| format!("  {label:<11}{value}");
-        renderer.info(&row(&crate::t!("info.row_source"), &card.source_id));
+        let row = |label: &str, value: &str| {
+            format!("  {}{value}", palette.dim(&format!("{label:<11}")))
+        };
+        renderer.info(&row(&crate::t!("info.row_source"), &palette.source(&card.source_id)));
         if let Some(v) = &card.version {
             renderer.info(&row(&crate::t!("info.row_version"), &v.to_string()));
         }
@@ -1436,17 +1455,23 @@ impl Cli {
             return Ok(());
         }
 
+        let palette = renderer.palette();
         let (active, inactive): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.available);
         if !active.is_empty() {
-            renderer.info(&crate::t!("sources.active"));
+            renderer.heading(&crate::t!("sources.active"));
             for e in &active {
-                renderer.info(&format!("  ✓ {:8} ({})", e.id, e.trust.display()));
+                let mark = palette.good("✓");
+                renderer.info(&format!(
+                    "  {mark} {} ({})",
+                    palette.source(&format!("{:8}", e.id)),
+                    palette.trust(e.trust)
+                ));
             }
         }
         if !inactive.is_empty() {
-            renderer.info(&crate::t!("sources.unavailable"));
+            renderer.heading(&crate::t!("sources.unavailable"));
             for e in &inactive {
-                renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.display()));
+                renderer.info(&palette.dim(&format!("  ✗ {:8} ({})", e.id, e.trust.display())));
             }
         }
         Ok(())
@@ -1474,23 +1499,24 @@ impl Cli {
             return Ok(());
         }
 
+        let palette = renderer.palette();
         let (have, missing): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.installed);
         if !have.is_empty() {
-            renderer.info(&crate::t!("providers.installed"));
+            renderer.heading(&crate::t!("providers.installed"));
             for e in &have {
-                renderer.info(&format!("  ✓ {}", e.label));
+                renderer.info(&format!("  {} {}", palette.good("✓"), e.label));
             }
         }
         if !missing.is_empty() {
             if !have.is_empty() {
                 renderer.info("");
             }
-            renderer.info(&crate::t!("providers.available"));
+            renderer.heading(&crate::t!("providers.available"));
             for e in &missing {
-                renderer.info(&format!(
+                renderer.info(&palette.dim(&format!(
                     "  ○ {}",
                     crate::t!("providers.add_hint", label = e.label, id = e.id)
-                ));
+                )));
             }
         }
         Ok(())
@@ -1750,7 +1776,12 @@ impl Cli {
             crate::t!("list.col_source"),
             crate::t!("list.col_version"),
         ];
-        for line in table_lines(&headers, &rows) {
+        let palette = renderer.palette();
+        let mut lines = table_lines(&headers, &rows).into_iter();
+        if let Some(header) = lines.next() {
+            renderer.info(&palette.heading(&header));
+        }
+        for line in lines {
             renderer.info(&line);
         }
         Ok(())
@@ -1789,16 +1820,17 @@ impl Cli {
             return Ok(());
         }
 
-        renderer.info(&crate::t!("doctor.sources_header"));
+        let palette = renderer.palette();
+        renderer.heading(&crate::t!("doctor.sources_header"));
         for d in &diagnostics {
-            let mark = if d.available { "✓" } else { "✗" };
+            let mark = if d.available { palette.good("✓") } else { palette.dim("✗") };
             let detail = match &d.detail {
-                Some(text) => format!("  ({text})"),
+                Some(text) => palette.dim(&format!("  ({text})")),
                 None => String::new(),
             };
             renderer.info(&format!(
-                "{mark} {:8}  {:12}  {} ms{detail}",
-                d.id,
+                "{mark} {}  {:12}  {} ms{detail}",
+                palette.source(&format!("{:8}", d.id)),
                 d.health.display(),
                 d.latency.as_millis()
             ));
@@ -1814,7 +1846,7 @@ impl Cli {
         let interactive = self.interactive(renderer) && !self.global.no;
 
         renderer.info("");
-        renderer.info(&crate::t!("doctor.checks_header"));
+        renderer.heading(&crate::t!("doctor.checks_header"));
         let mut warnings = 0usize;
         for c in &checks {
             if c.ok {
@@ -2118,7 +2150,12 @@ impl Cli {
             crate::t!("history.col_package"),
             crate::t!("history.col_source"),
         ];
-        for line in table_lines(&headers, &rows) {
+        let palette = renderer.palette();
+        let mut lines = table_lines(&headers, &rows).into_iter();
+        if let Some(header) = lines.next() {
+            renderer.info(&palette.heading(&header));
+        }
+        for line in lines {
             renderer.info(&line);
         }
         Ok(())
@@ -2184,7 +2221,11 @@ impl Cli {
             crate::t!("list.col_verified"),
             crate::t!("list.col_status"),
         ];
-        for line in table_lines(&headers, &rows) {
+        let mut lines = table_lines(&headers, &rows).into_iter();
+        if let Some(header) = lines.next() {
+            renderer.info(&renderer.palette().heading(&header));
+        }
+        for line in lines {
             renderer.info(&line);
         }
 
@@ -2256,22 +2297,20 @@ fn table_lines(headers: &[String], rows: &[Vec<String>]) -> Vec<String> {
 
 /// A compact one-line description of a candidate for `search`/`info`:
 /// `source  vX  trust  — summary`.
-fn candidate_line(candidate: &PackageCandidate) -> String {
+fn candidate_line(candidate: &PackageCandidate, palette: crate::ui::Palette) -> String {
+    // Pad the source id to width *before* colouring so the ANSI codes don't skew alignment.
+    let src = palette.source(&format!("{:8}", candidate.source_id));
     let version = candidate
         .version
         .as_ref()
-        .map(|v| format!("v{v}  "))
+        .map(|v| format!("{}  ", palette.version(&format!("v{v}"))))
         .unwrap_or_default();
     let summary = candidate
         .summary
         .as_deref()
-        .map(|s| format!("  — {}", one_line(s, 80)))
+        .map(|s| palette.dim(&format!("  — {}", one_line(s, 80))))
         .unwrap_or_default();
-    format!(
-        "{:8} {version}{}{summary}",
-        candidate.source_id,
-        candidate.trust.display()
-    )
+    format!("{src} {version}{}{summary}", palette.trust(candidate.trust))
 }
 
 /// Collapse a (possibly multi-line) summary to a single trimmed line, truncated to
@@ -2747,7 +2786,10 @@ mod tests {
 
     #[test]
     fn candidate_line_includes_source_version_trust() {
-        let line = candidate_line(&candidate(TrustLevel::Official, true, Some("2.0")));
+        let line = candidate_line(
+            &candidate(TrustLevel::Official, true, Some("2.0")),
+            crate::ui::Palette::plain(),
+        );
         assert!(line.contains("dnf"));
         assert!(line.contains("v2.0"));
         assert!(line.contains("official"));

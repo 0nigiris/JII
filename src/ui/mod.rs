@@ -6,7 +6,63 @@ pub mod prompt;
 use owo_colors::OwoColorize;
 
 use crate::config::{ColorChoice, OutputMode};
-use crate::model::{Action, InstallPlan};
+use crate::model::{Action, InstallPlan, TrustLevel};
+
+/// Semantic colouring for human output. Cheap (`Copy`) so it can be handed to the free
+/// rendering helpers (`candidate_line`, table builders) that don't hold a `Renderer`.
+/// Every method is a no-op when `enabled` is false (`--no-color`/`NO_COLOR`/JSON/no-TTY),
+/// so callers never branch on colour themselves — and the *plain* text is returned
+/// unchanged, keeping column widths correct for callers that pad before colouring.
+#[derive(Clone, Copy)]
+pub struct Palette {
+    enabled: bool,
+}
+
+impl Palette {
+    /// A never-colouring palette (for tests and any plain-text context).
+    #[cfg(test)]
+    pub fn plain() -> Self {
+        Palette { enabled: false }
+    }
+
+    /// A trust level in its own hue: official green, community yellow, untrusted red.
+    pub fn trust(&self, level: TrustLevel) -> String {
+        let s = level.display();
+        if !self.enabled {
+            return s;
+        }
+        match level {
+            TrustLevel::Official => s.green().to_string(),
+            TrustLevel::Community => s.yellow().to_string(),
+            TrustLevel::Untrusted => s.red().to_string(),
+        }
+    }
+
+    /// A source id (dnf, flatpak, cargo…) — cyan, so it stands out in a candidate line.
+    pub fn source(&self, s: &str) -> String {
+        if self.enabled { s.cyan().to_string() } else { s.to_string() }
+    }
+
+    /// A version string — dimmed, secondary information.
+    pub fn version(&self, s: &str) -> String {
+        if self.enabled { s.dimmed().to_string() } else { s.to_string() }
+    }
+
+    /// Dim any secondary text.
+    pub fn dim(&self, s: &str) -> String {
+        if self.enabled { s.dimmed().to_string() } else { s.to_string() }
+    }
+
+    /// Positive / recommended emphasis — green.
+    pub fn good(&self, s: &str) -> String {
+        if self.enabled { s.green().to_string() } else { s.to_string() }
+    }
+
+    /// A bold heading/line (used for table header rows).
+    pub fn heading(&self, s: &str) -> String {
+        if self.enabled { s.bold().to_string() } else { s.to_string() }
+    }
+}
 
 /// Renders output as either human-friendly text or machine-readable JSON.
 pub struct Renderer {
@@ -31,6 +87,22 @@ impl Renderer {
     /// Whether JSON output mode is active.
     pub fn is_json(&self) -> bool {
         self.json
+    }
+
+    /// The semantic colour palette for this renderer (a no-op when colour is off).
+    pub fn palette(&self) -> Palette {
+        Palette { enabled: self.color }
+    }
+
+    /// A bold section heading (falls back to plain text when colour is off / JSON).
+    pub fn heading(&self, msg: &str) {
+        if self.json {
+            self.emit_json("info", msg);
+        } else if self.color {
+            println!("{}", msg.bold());
+        } else {
+            println!("{msg}");
+        }
     }
 
     /// Whether we're in Friendly mode (short, human) — never in JSON mode, where the
@@ -104,8 +176,9 @@ impl Renderer {
             println!("{title}");
         }
 
+        let check = if self.color { "✓".green().to_string() } else { "✓".to_string() };
         for reason in &plan.reasons {
-            println!("  ✓ {reason}");
+            println!("  {check} {reason}");
         }
         if let Some(size) = plan.download_size {
             println!("  {}", crate::t!("plan.download", size = size.to_string()));
