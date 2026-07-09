@@ -49,11 +49,22 @@ Landed and pushed to `master` after the clean-VM UX waves:
   package called npm; `Engine::ecosystem_ids` (pure) + `install_inner` `route_managers` flag (loop
   guard); `jii npm:npm` still gets the registry package.
 
-**Next in this wave:** #3 nix `list_installed` (tolerant `nix profile list --json` parse; needs a
-real Nix host to verify); #9 an ADR stating the "JII cooperates with the system" principle; #10
-`docs/RELEASE_TESTPLAN.md` (per-release manual checklist); then the large **#7 i18n** (`locales/*.toml`
-+ `t!` + `--lang`/`$LC_MESSAGES`, done last to migrate settled strings once) and **#8 forge
-abstraction** (`Forge` trait so GitHub isn't hardcoded; Codeberg/Gitea/GitLab as impls).
+- **#3 nix `list_installed` (ADR-0047):** tolerant `nix profile list --json` parser (map + array
+  schemas); Nix now feeds `installed_index` and owner resolution. *Fixture-tested only — needs a real
+  Nix host to confirm the live JSON.*
+- **#9 principle (ADR-0048):** "JII cooperates with the system; it is not the centre of the world" —
+  recorded as the guiding ADR, cross-referencing the ADRs that embody it.
+- **#10 (docs/RELEASE_TESTPLAN.md):** a manual per-release checklist across every command/area.
+- **#8 forge abstraction (ADR-0049):** `Forge` trait + generic `ForgeProvider` (`provider/forge.rs`);
+  GitHub is now `GithubForge`, one forge among peers. Adding Codeberg/Gitea/GitLab = implement `Forge`
+  + register a source id. Behaviour identical (all tests moved + pass).
+
+**Only remaining in this wave: #7 localization** (the big one). Architecture agreed: `locales/en.toml`
++ `ru.toml` (keys by namespace, `include_str!`-embedded), an `i18n` module + `t!("key", arg=…)`,
+language pick `--lang` › `[ui] lang` › `$LC_MESSAGES`/`$LANG` › `en`, fallback ru→en→key, and a test
+asserting every used key exists in both files. Deliberately last so it migrates the now-settled
+strings (changed across #1/#4/#5/#6) once. ~200 `renderer.*` call sites + `#[error]` + provider reason
+strings to migrate — likely staged: framework first, then migrate area-by-area.
 
 **Still open (needs owner's hosts):** install/run the published `.rpm`/`.deb` on a live non-Fedora
 box and on real aarch64; true end-to-end self-update fires only when the *next* tag is cut.
