@@ -3,7 +3,7 @@ name = "jii"
 version = "0.1.1-beta"
 edition = "2024"
 description = "Just Install It — a smart universal package installer for Linux"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

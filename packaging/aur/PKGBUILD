@@ -11,7 +11,7 @@ pkgrel=1
 pkgdesc="A smart universal package installer for Linux — searches DNF/Flatpak/GitHub/Cargo/npm/…, ranks, installs the best, explains why"
 arch=('x86_64' 'aarch64')
 url="https://github.com/0nigiris/JII"
-license=('MIT')
+license=('GPL-3.0-or-later')
 provides=('jii')
 conflicts=('jii')
 # pkgver may not contain a hyphen; reconstruct the real tag (v0.1.0-beta) from it.

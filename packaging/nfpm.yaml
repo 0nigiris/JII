@@ -20,7 +20,7 @@ description: |
   explains why. It is not a package manager; it drives the ones you already have.
 vendor: "JII"
 homepage: "https://github.com/0nigiris/JII"
-license: "MIT"
+license: "GPL-3.0-or-later"
 contents:
   - src: ${BIN}
     dst: /usr/bin/jii

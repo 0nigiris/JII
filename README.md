@@ -11,7 +11,7 @@ machine — picks the best option, and explains *why*.
 
 [![Release](https://img.shields.io/github/v/release/0nigiris/JII?include_prereleases&sort=semver&label=release&color=blue)](https://github.com/0nigiris/JII/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/0nigiris/JII/release.yml?label=release%20build)](https://github.com/0nigiris/JII/actions)
-[![License: MIT](https://img.shields.io/github/license/0nigiris/JII?color=green)](LICENSE)
+[![License: GPL v3](https://img.shields.io/github/license/0nigiris/JII?color=green)](LICENSE)
 [![Made with Rust](https://img.shields.io/badge/Rust-edition%202024-orange?logo=rust)](https://www.rust-lang.org/)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20(x86__64%20%7C%20aarch64)-lightgrey?logo=linux)](#install)
 [![Status: Beta](https://img.shields.io/badge/status-beta-yellow)](#-status)
@@ -528,7 +528,7 @@ Bug reports and real-world feedback from non-Fedora distros are the most valuabl
 
 ## License
 
-[MIT](LICENSE) © JII contributors.
+[GNU General Public License v3.0 or later](LICENSE) © JII contributors.
 
 <div align="center">
 <br>

@@ -15,7 +15,7 @@ Version:        0.1.0~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
-License:        MIT
+License:        GPLv3+
 URL:            https://github.com/0nigiris/JII
 Source0:        %{url}/releases/download/%{_tag}/jii-%{_tag}-%{_arch}-linux.tar.gz
 
