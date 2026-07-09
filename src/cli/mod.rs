@@ -132,6 +132,15 @@ pub enum Commands {
     },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
+    /// Print a shell completion script for the given shell (bash, zsh, fish, …).
+    #[command(hide = true)]
+    Completions {
+        /// Target shell.
+        shell: clap_complete::Shell,
+    },
+    /// Print the roff man page to stdout (bundled as `jii.1` in the packages).
+    #[command(hide = true)]
+    Man,
 }
 
 /// Actions under `jii providers` (bare `jii providers` lists them).
@@ -204,6 +213,17 @@ impl Cli {
                 }
             },
             Some(Commands::Setup) => self.setup(config, &renderer, false).await,
+            Some(Commands::Completions { shell }) => {
+                let mut cmd = <Cli as clap::CommandFactory>::command();
+                clap_complete::generate(*shell, &mut cmd, "jii", &mut std::io::stdout());
+                Ok(())
+            }
+            Some(Commands::Man) => {
+                let cmd = <Cli as clap::CommandFactory>::command();
+                clap_mangen::Man::new(cmd)
+                    .render(&mut std::io::stdout())
+                    .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("man: {e}")))
+            }
         }
     }
 
@@ -2049,6 +2069,14 @@ async fn flathub_configured() -> bool {
 mod tests {
     use super::*;
     use crate::model::{PkgVersion, TrustLevel};
+
+    #[test]
+    fn cli_definition_is_valid() {
+        // clap's own validation of the whole command tree (conflicting args, bad flags,
+        // duplicate subcommands…). Cheap insurance that the CLI surface always parses.
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
 
     fn candidate(trust: TrustLevel, signed: bool, version: Option<&str>) -> PackageCandidate {
         PackageCandidate {
