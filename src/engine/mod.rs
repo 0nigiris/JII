@@ -761,6 +761,17 @@ impl Engine {
     /// [`ecosystem`](crate::provider::Provider::ecosystem) appear — base system repos
     /// (dnf/apt) and non-managers (github) are omitted. `installed` is `is_available()`
     /// (the manager's binary is present); no network probe.
+    /// The ids of every source that is an installable ecosystem manager (npm, cargo, pipx,
+    /// flatpak, snap, go, brew, nix). Pure — no `is_available` I/O — so the install path can
+    /// cheaply tell "is this name a manager?" before doing any work (#4). The full status
+    /// (installed?/bootstrap) comes from [`ecosystem_catalog`].
+    pub fn ecosystem_ids(&self) -> Vec<&'static str> {
+        self.providers
+            .iter()
+            .filter_map(|p| p.ecosystem().map(|_| p.id()))
+            .collect()
+    }
+
     pub async fn ecosystem_catalog(&self) -> Vec<EcosystemStatus> {
         let mut out = Vec::new();
         for provider in self.providers.iter() {

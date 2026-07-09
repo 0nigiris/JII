@@ -1707,3 +1707,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 **Consequences:**
 - Verified: `jii info lodash` shows description/version/homepage/repository + note; `jii lodash` gives an actionable library message. `info` no longer borrows install/search logic.
 - New `Reference` model + `Provider::reference` + `Engine::reference` + `render_reference`; npm gained `homepage`/`repository` manifest fields and `repository_url` (unit-tested). Other sources default to `None` (cargo is the obvious next `reference` implementer). 204 tests.
+
+---
+
+## ADR-0046 — A bare ecosystem-manager name installs the manager (no circular search)
+
+**Status:** Accepted (slice 4 of the post-testing UX wave).
+
+**Context:** `jii npm` searched for a *package named "npm"* — and, since the npm registry has one, offered to install `npm@12` **through npm itself** (a circular absurdity). The philosophy (#9): if a manager is missing, `jii npm` should install the *manager*; JII cooperates with the system, it doesn't hunt a package by the manager's own name.
+
+**Decision:**
+- The install path routes a **bare ecosystem-manager name** (npm, cargo, pipx, flatpak, snap, go, brew, nix) to the **bootstrap** flow — the same path as `jii providers add <m>`, now shared as `bootstrap_ecosystem`. `jii npm` on a box without npm bootstraps it; with npm present it says "Node.js (npm) is already installed — it's a package manager JII drives" (no pointless reinstall).
+- A name counts as a manager only when **unpinned** (no `:source`, no `--source`); `jii npm:npm` still installs the real registry package, `jii npm:dnf` the distro one. The escape hatch keeps the rare "I really want the package called npm" case reachable.
+- Detection is cheap: `Engine::ecosystem_ids()` is pure (no I/O), so an ordinary `jii vlc` pays only a name comparison — the `ecosystem_catalog` probe runs only when a name actually matches.
+- **Loop guard:** a bootstrap package's own name can *be* a manager id (the Fedora `pipx` package for the pipx ecosystem; `npm` for npm). Installing it must **not** re-enter routing, so `install_inner` gained a `route_managers` flag — off for bootstrap installs and for doctor's explicit package installs, on for the user-facing `jii <name>`. (The async recursion install→route→bootstrap→install is `Box::pin`-ed.)
+
+**Alternatives considered:**
+- **Only `jii providers add npm`, never `jii npm`.** Rejected: the bare, most-natural invocation should do the obviously-wanted thing (same principle as bare `update`, ADR-0034) — a user types `jii npm` to get npm.
+- **Hardcode the manager id list in the CLI.** Rejected: it would duplicate the `Ecosystem` metadata; `ecosystem_ids()` derives it from the providers, so the core never branches on a source and a new manager needs no CLI change.
+- **Route inside the public `install` wrapper (build a second engine).** Rejected: that doubles engine/registry loads on every ordinary install; routing lives in `install_inner` on its single engine, gated by the cheap id check.
+
+**Consequences:**
+- Verified on Fedora: `jii npm`/`jii cargo` → "already installed" (no reinstall); `jii pipx` (absent) → resolves the dnf `pipx` and offers it via dnf, no loop; `jii npm:npm` → the registry package; `jii vlc` unaffected. 204 tests.
+- New `Engine::ecosystem_ids`; `route_managers` + `bootstrap_ecosystem` in the CLI; `install_inner` gained a `route_managers` flag. A manager with only a `Bootstrap::Script` (brew/nix) shows its script, never runs it (trust boundary, ADR-0005).

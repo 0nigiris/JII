@@ -244,21 +244,39 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        self.install_inner(packages, config, renderer, false).await
+        self.install_inner(packages, config, renderer, false, true).await
     }
 
     /// The install flow. `assume_yes` lets a caller that already obtained consent (the
     /// `doctor` questionnaire) skip the redundant final confirmation — the trust barrier
     /// still gates untrusted sources (ADR-0006), so this only auto-confirms trusted-enough
-    /// candidates.
+    /// candidates. `route_managers` enables the bare-manager-name → bootstrap routing (#4);
+    /// it is **off** when installing a bootstrap package (whose name, e.g. `pipx`, may itself
+    /// be a manager id — routing it would loop) and for doctor's explicit package installs.
     async fn install_inner(
         &self,
         packages: &[String],
         config: Config,
         renderer: &Renderer,
         assume_yes: bool,
+        route_managers: bool,
     ) -> crate::error::Result<()> {
-        let mut engine = Engine::new(self.apply_profile(config))?;
+        let mut engine = Engine::new(self.apply_profile(config.clone()))?;
+
+        // #4: a bare ecosystem-manager name (npm, cargo, pipx, flatpak, snap, go, brew, nix)
+        // means "install that manager", not "find a package called npm" — route it to
+        // bootstrap. A pinned source (`npm:dnf` or `--source`) opts out. Runs before the
+        // usable-source gate so a fresh box can still bootstrap its very first manager.
+        let rest = if route_managers {
+            self.route_managers(&engine, packages, config, renderer).await?
+        } else {
+            packages.to_vec()
+        };
+        if rest.is_empty() {
+            return Ok(());
+        }
+        let packages: &[String] = &rest;
+
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
@@ -1414,19 +1432,73 @@ impl Cli {
             renderer.info(&format!("Known ecosystems: {}", known.join(", ")));
             return Ok(());
         };
+        self.bootstrap_ecosystem(&engine, eco, config, renderer).await
+    }
 
-        if eco.installed {
-            renderer.success(&format!("{} is already installed.", eco.label));
-            return Ok(());
+    /// Split ecosystem-manager names out of an install request and bootstrap each (#4),
+    /// returning the remaining ordinary packages. A name counts as a manager only when it is
+    /// unpinned (no `:source`, no `--source`) and matches a known ecosystem id; a cheap pure
+    /// id check means an ordinary `jii vlc` pays nothing (no catalog probe).
+    async fn route_managers(
+        &self,
+        engine: &Engine,
+        packages: &[String],
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<Vec<String>> {
+        let ids = engine.ecosystem_ids();
+        let pinned_globally = self.global.source.is_some();
+        let bare_name = |p: &str| p.split([':', '@']).next().unwrap_or(p).to_string();
+        let is_manager_name =
+            |p: &str| !pinned_globally && !p.contains(':') && ids.iter().any(|id| *id == bare_name(p));
+
+        // Common case (no manager among the names): return untouched, no catalog I/O.
+        if !packages.iter().any(|p| is_manager_name(p)) {
+            return Ok(packages.to_vec());
         }
 
+        let catalog = engine.ecosystem_catalog().await;
+        let mut rest = Vec::new();
+        for p in packages {
+            if is_manager_name(p)
+                && let Some(eco) = catalog.iter().find(|e| e.id == bare_name(p))
+            {
+                self.bootstrap_ecosystem(engine, eco, config.clone(), renderer).await?;
+            } else {
+                rest.push(p.clone());
+            }
+        }
+        Ok(rest)
+    }
+
+    /// Install (bootstrap) one ecosystem manager. Shared by `jii providers add <m>` and the
+    /// install-path routing of a bare manager name (#4). If it's already present, say so — a
+    /// manager is something JII *drives*, so re-"installing" it is a no-op worth explaining.
+    async fn bootstrap_ecosystem(
+        &self,
+        engine: &Engine,
+        eco: &crate::engine::EcosystemStatus,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        if eco.installed {
+            renderer.success(&format!(
+                "{} is already installed — it's a package manager JII drives.",
+                eco.label
+            ));
+            return Ok(());
+        }
         let label = eco.label;
-        let bootstrap = eco.bootstrap;
-        match bootstrap {
+        match eco.bootstrap {
             Bootstrap::Packages(names) => {
                 renderer.info(&format!("Looking for a package that provides {label}…"));
                 match engine.first_available_package(names).await {
-                    Some(pkg) => self.install(&[pkg], config, renderer).await,
+                    // route_managers=false: the bootstrap package's name (e.g. `pipx`) may
+                    // itself be a manager id — routing it would loop. Box::pin breaks the
+                    // async recursion cycle.
+                    Some(pkg) => {
+                        Box::pin(self.install_inner(&[pkg], config, renderer, false, false)).await
+                    }
                     None => {
                         renderer.error(&format!(
                             "Couldn't find a package for {label} in your active sources."
@@ -1790,7 +1862,7 @@ impl Cli {
     ) -> crate::error::Result<()> {
         match fix {
             Fix::Install(pkg) => {
-                self.install_inner(&[pkg.to_string()], config, renderer, true).await?;
+                self.install_inner(&[pkg.to_string()], config, renderer, true, false).await?;
             }
             Fix::Command { argv, show } => {
                 if self.global.dry_run {
@@ -1818,7 +1890,7 @@ impl Cli {
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
         if !r.packages.is_empty() {
-            self.install_inner(&r.packages, config, renderer, true).await?;
+            self.install_inner(&r.packages, config, renderer, true, false).await?;
         } else if let Some(manual) = &r.manual {
             if self.global.dry_run {
                 renderer.info(&format!("  would run:  {manual}"));
