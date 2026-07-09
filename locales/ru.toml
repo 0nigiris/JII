@@ -122,6 +122,32 @@ act_extract = "извлечь {member} из {archive} → {dest} (режим {mo
 act_remove = "удалить {path}"
 act_replace = "заменить {dest} ← {src}"
 
+[trust]
+official = "официальный"
+community = "сообщество"
+untrusted = "недоверенный"
+
+[search]
+none = "Кандидатов для «{name}» не найдено."
+header = "Кандидаты для «{name}» (лучшие сверху):"
+
+[info]
+none_found = "Информация о «{name}» в ваших источниках не найдена."
+row_source = "Источник"
+row_version = "Версия"
+row_license = "Лицензия"
+row_homepage = "Сайт"
+row_repository = "Репозиторий"
+row_author = "Автор"
+available_from = "Доступно из источников: {count}"
+recommended = "Рекомендуется: {source}"
+
+[facts]
+signed = "подпись/контрольная сумма проверяемы"
+version = "версия {version}"
+arch_mismatch = "⚠ может не подходить для этой архитектуры"
+trust_source = "источник: {trust}"
+
 [check]
 internet_ok = "Интернет доступен"
 internet_missing = "Нет подключения к интернету"

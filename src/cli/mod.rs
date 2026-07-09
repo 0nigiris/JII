@@ -1205,7 +1205,7 @@ impl Cli {
         let name = terms.join(" ");
         let ranked = self.ranked_for(&engine, &name, self.global.source.as_ref(), renderer).await;
         if ranked.is_empty() {
-            renderer.error(&format!("No candidates found for '{name}'."));
+            renderer.error(&crate::t!("search.none", name = name));
             if let Some(msg) = engine.explain_miss(&name).await {
                 renderer.info(&format!("  → {msg}"));
             }
@@ -1215,7 +1215,7 @@ impl Cli {
             renderer.json_value(&serde_json::json!(ranked));
             return Ok(());
         }
-        renderer.info(&format!("Candidates for '{name}' (best first):"));
+        renderer.info(&crate::t!("search.header", name = name));
         for (i, candidate) in ranked.iter().enumerate() {
             let mark = if i == 0 { "→" } else { " " };
             renderer.info(&format!("{mark} {}", candidate_line(candidate)));
@@ -1252,7 +1252,7 @@ impl Cli {
             if let Some(card) = engine.reference(name).await {
                 return self.render_reference(&card, renderer);
             }
-            renderer.error(&format!("No information found for '{name}' in your enabled sources."));
+            renderer.error(&crate::t!("info.none_found", name = name));
             return Ok(());
         }
         if renderer.is_json() {
@@ -1278,31 +1278,31 @@ impl Cli {
         renderer.info("");
         let row = |label: &str, value: &str| format!("  {label:<11}{value}");
         renderer.info(&row(
-            "Source",
-            &format!("{} ({})", best.source_id, best.trust.label()),
+            &crate::t!("info.row_source"),
+            &format!("{} ({})", best.source_id, best.trust.display()),
         ));
         if let Some(v) = &best.version {
-            renderer.info(&row("Version", &v.to_string()));
+            renderer.info(&row(&crate::t!("info.row_version"), &v.to_string()));
         }
         if let Some(l) = &info.license {
-            renderer.info(&row("License", l));
+            renderer.info(&row(&crate::t!("info.row_license"), l));
         }
         if let Some(h) = &info.homepage {
-            renderer.info(&row("Homepage", h));
+            renderer.info(&row(&crate::t!("info.row_homepage"), h));
         }
         if let Some(r) = &info.repository {
-            renderer.info(&row("Repository", r));
+            renderer.info(&row(&crate::t!("info.row_repository"), r));
         }
         if let Some(a) = &info.author {
-            renderer.info(&row("Author", a));
+            renderer.info(&row(&crate::t!("info.row_author"), a));
         }
         renderer.info("");
 
-        renderer.info(&format!("Available from {} source(s):", ranked.len()));
+        renderer.info(&crate::t!("info.available_from", count = ranked.len()));
         for candidate in &ranked {
             renderer.info(&format!("  {}", candidate_line(candidate)));
         }
-        renderer.info(&format!("Recommended: {}", best.source_id));
+        renderer.info(&crate::t!("info.recommended", source = best.source_id.clone()));
         let highlights = engine.candidate_highlights(best);
         for reason in recommendation_reasons(best, highlights) {
             renderer.info(&format!("  ✓ {reason}"));
@@ -1328,15 +1328,15 @@ impl Cli {
         }
         renderer.info("");
         let row = |label: &str, value: &str| format!("  {label:<11}{value}");
-        renderer.info(&row("Source", &card.source_id));
+        renderer.info(&row(&crate::t!("info.row_source"), &card.source_id));
         if let Some(v) = &card.version {
-            renderer.info(&row("Version", &v.to_string()));
+            renderer.info(&row(&crate::t!("info.row_version"), &v.to_string()));
         }
         if let Some(h) = &card.info.homepage {
-            renderer.info(&row("Homepage", h));
+            renderer.info(&row(&crate::t!("info.row_homepage"), h));
         }
         if let Some(r) = &card.info.repository {
-            renderer.info(&row("Repository", r));
+            renderer.info(&row(&crate::t!("info.row_repository"), r));
         }
         if let Some(note) = &card.note {
             renderer.info("");
@@ -2181,7 +2181,7 @@ fn candidate_line(candidate: &PackageCandidate) -> String {
     format!(
         "{:8} {version}{}{summary}",
         candidate.source_id,
-        candidate.trust.label()
+        candidate.trust.display()
     )
 }
 
@@ -2203,13 +2203,13 @@ fn one_line(text: &str, max: usize) -> String {
 fn model_facts(candidate: &PackageCandidate) -> Vec<String> {
     let mut facts = Vec::new();
     if candidate.signed {
-        facts.push("signature/checksum verifiable".to_string());
+        facts.push(crate::t!("facts.signed"));
     }
     if let Some(version) = &candidate.version {
-        facts.push(format!("version {version}"));
+        facts.push(crate::t!("facts.version", version = version.clone()));
     }
     if !candidate.arch_ok {
-        facts.push("⚠ may not match this architecture".to_string());
+        facts.push(crate::t!("facts.arch_mismatch"));
     }
     facts
 }
@@ -2221,7 +2221,7 @@ fn model_facts(candidate: &PackageCandidate) -> Vec<String> {
 /// (ADR-0004 holds in the UI). This is the lightweight read-only rationale for `jii info`.
 fn recommendation_reasons(candidate: &PackageCandidate, highlights: Vec<String>) -> Vec<String> {
     let mut reasons = if highlights.is_empty() {
-        vec![format!("{} source", candidate.trust.label())]
+        vec![crate::t!("facts.trust_source", trust = candidate.trust.display())]
     } else {
         highlights
     };

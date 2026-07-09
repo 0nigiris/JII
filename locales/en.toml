@@ -124,6 +124,32 @@ act_extract = "extract {member} from {archive} → {dest} (mode {mode})"
 act_remove = "remove {path}"
 act_replace = "replace {dest} ← {src}"
 
+[trust]
+official = "official"
+community = "community"
+untrusted = "untrusted"
+
+[search]
+none = "No candidates found for '{name}'."
+header = "Candidates for '{name}' (best first):"
+
+[info]
+none_found = "No information found for '{name}' in your enabled sources."
+row_source = "Source"
+row_version = "Version"
+row_license = "License"
+row_homepage = "Homepage"
+row_repository = "Repository"
+row_author = "Author"
+available_from = "Available from {count} source(s):"
+recommended = "Recommended: {source}"
+
+[facts]
+signed = "signature/checksum verifiable"
+version = "version {version}"
+arch_mismatch = "⚠ may not match this architecture"
+trust_source = "{trust} source"
+
 [check]
 internet_ok = "Internet is reachable"
 internet_missing = "No internet connection"

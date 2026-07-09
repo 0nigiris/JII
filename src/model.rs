@@ -165,12 +165,22 @@ pub enum TrustLevel {
 }
 
 impl TrustLevel {
-    /// Lowercase human label, e.g. for prompts and `why`.
+    /// Stable lowercase identifier for JSON output and config — never translated.
     pub fn label(&self) -> &'static str {
         match self {
             TrustLevel::Official => "official",
             TrustLevel::Community => "community",
             TrustLevel::Untrusted => "untrusted",
+        }
+    }
+
+    /// Localized human label for prompts and previews (the identifier `label()` is kept
+    /// stable for machine output; this one is translated).
+    pub fn display(&self) -> String {
+        match self {
+            TrustLevel::Official => crate::t!("trust.official"),
+            TrustLevel::Community => crate::t!("trust.community"),
+            TrustLevel::Untrusted => crate::t!("trust.untrusted"),
         }
     }
 }
