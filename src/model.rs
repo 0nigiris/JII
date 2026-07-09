@@ -297,7 +297,7 @@ pub struct InstalledRecord {
     /// How the artifact was verified at install time, as a [`Verification`] label
     /// (e.g. `"sha256"`, `"unverified"`). `None` means the install ran through a
     /// package manager that verifies itself (dnf/copr GPG, flatpak signatures).
-    /// Recorded so `jii audit` can report provenance faithfully.
+    /// Recorded so `jii list --audit` can report provenance faithfully.
     #[serde(default)]
     pub verification: Option<String>,
 }

@@ -488,8 +488,7 @@ locale = "auto"
 | `jii setup` | first-run wizard: output mode + optional system check |
 | `jii history` | installation history |
 | `jii undo` | undo last install / remove / update |
-| `jii audit` | signatures, sha256, GPG, sigstore, source, trust |
-| `jii list` | what JII installed (from the registry) |
+| `jii list [--audit]` | what JII installed (from the registry); `--audit` is the security view: signatures, sha256, GPG, sigstore, source, trust, concerns (#5, folded-in former `jii audit`) |
 | `jii providers [add <name>]` | show the ecosystem managers (npm, cargo, brew, Flatpak…) and which are installed; `add` bootstraps a missing one via `Provider::ecosystem` metadata + the normal install path — script-installed managers (brew, nix) are shown, never run (ADR-0036) |
 | `jii config <get\|set\|edit>` | manage configuration |
 

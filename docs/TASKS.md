@@ -347,9 +347,10 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             capability. Friendly install: "Also available" prints just before the recommendation line
             (mildly backwards; reordering would restructure the preview flow). Update debt: a
             bulk-updated tracked package can show a stale version in `jii list`.
-- [~] **UX-WAVE 2 — clean-VM feedback (ACTIVE, owner-set 2026-07-06).** Precedes cutting Beta by
-      owner decision; product/UX polish over architecture. Agreed order **①→②→③→④** with
-      `recommend` folding into doctor and `list`+`audit` merging. See AI_CONTEXT "Current task".
+- [x] **UX-WAVE 2 — clean-VM feedback (COMPLETE 2026-07-09, owner-set 2026-07-06).** Preceded cutting
+      Beta by owner decision; product/UX polish over architecture. Agreed order **①→②→③→④** with
+      `recommend` folding into doctor and `list`+`audit` merging — **all landed and pushed.** See
+      AI_CONTEXT "Current task". Next: Beta prep resumes (BETA_ROADMAP.md).
       - [x] **① arrow-key TUI choosers** (`dialoguer` Select — setup + source chooser + multi-owner
             remove; ↑↓/Enter/Esc; pty-verified). Plus #3/#10/#12/#13 crisp-output polish, #6 `-d`
             alias. #9 diagnosed as by-design; #11 already shipped in U7.
@@ -384,7 +385,10 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             fully (`dnf5 info` + pure tested `parse_info`); github gives a cheap repo+author card; other
             sources degrade gracefully. `--json` → `{candidates, recommended, info}`. 185 tests.
             **Follow-ups:** richer cargo/npm/flatpak cards + GitHub repo-metadata fetch (description/license).
-      - [ ] **list + audit merge** — `jii list`, security via `jii list --audit` (#5).
+      - [x] **list + audit merge** (ADR-0038). `jii list` gained `--audit`: bare = plain
+            NAME/SOURCE/VERSION; `--audit` = the security view (trust/verification/concerns). Standalone
+            `jii audit` **removed** (rendering → private `audit_view`; engine `audit()` + model untouched).
+            185 tests, live-verified.
       - **Note:** this unfreezes `doctor --fix` (was in the frozen backlog) by explicit owner
         reprioritisation; the rest of the freeze list stays frozen.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are

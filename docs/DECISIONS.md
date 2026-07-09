@@ -1504,3 +1504,22 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - Adding a card for another source = implement `describe` on its provider; the rest is free. The required trait surface is unchanged.
 - `jii info`'s JSON shape changed from an array to an object — acceptable now (no external consumers; the object is the correct shape for a card), noted for anyone scripting against it.
 - **Follow-ups:** richer cargo/npm cards (their registry manifests carry homepage/repository/license/author — capture at search or a small extra fetch), the GitHub repo-metadata fetch (description/license), and flatpak AppStream metadata. **Debt:** dnf's `License`/`Vendor` are whatever the RPM declares (e.g. Fedora's `LicenseRef-Callaway-…` SPDX-ish strings) — shown verbatim, not normalized.
+
+---
+
+## ADR-0038 — `audit` folds into `jii list --audit`; the standalone command is removed
+
+**Status:** Accepted 2026-07-09. UX-wave 2 item #5 (the last of the wave). A command-surface merge; no engine/model change (the engine's `audit()` and the `AuditEntry` model are untouched).
+
+**Context:** VM-feedback #5 — `jii list` (what JII installed) and `jii audit` (the same installs, with trust/verification/concerns) are **two views of one dataset**: the install ledger. Two top-level commands for one ledger is more surface than the feature needs, and a user browsing "what did I install" is exactly who wants the security view one flag away.
+
+**Decision:** `jii list` gains a `--audit` flag: bare `jii list` prints the plain NAME/SOURCE/VERSION table; `jii list --audit` prints the security table (NAME/SOURCE/TRUST/VERIFIED/STATUS + a "N need attention" summary). The **standalone `jii audit` command is removed.** The rendering moved verbatim into a private `audit_view(&engine, renderer)` helper; the engine's `audit()` computation and `AuditEntry`/`AuditConcern`/`AuditVerification` model are unchanged. Same fold-a-command-into-a-flag pattern as ADR-0035 (`recommend`→`doctor`).
+
+**Alternatives considered:**
+- **Keep `jii audit` as an alias.** Rejected: the ask was to consolidate the surface, and `--audit` reads naturally as "the audit view of my list". (An alias also keeps the redundant top-level command in `--help`.)
+- **Make audit a separate `--security`/`--concerns` flag name.** Rejected: `--audit` matches the prior command name, so muscle memory and docs carry over cleanly.
+
+**Consequences:**
+- One fewer top-level command; `jii audit` now falls through to installing a package literally named `audit` (consistent with any non-command word). Docs (README, ARCHITECTURE) and in-code comments updated to `jii list --audit`.
+- The `--audit` JSON keeps the former `audit` array shape (per-install rows) — no consumer breakage for the security view; bare `jii list` keeps its own records array.
+- **UX-wave 2 is complete** with this merge (①→④ + the two folds #2/#14 and #5). Beta prep resumes next.

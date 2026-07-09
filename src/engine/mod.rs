@@ -103,7 +103,7 @@ pub struct SourceHealth {
     pub detail: Option<String>,
 }
 
-/// One row of `jii audit`: where an installed package came from, its trust, how it
+/// One row of `jii list --audit`: where an installed package came from, its trust, how it
 /// was verified, and any concerns worth attention.
 pub struct AuditEntry {
     pub name: String,

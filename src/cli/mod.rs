@@ -112,10 +112,14 @@ pub enum Commands {
         #[arg(long)]
         fix: bool,
     },
-    /// Audit installed software: source, trust, verification and concerns.
-    Audit,
-    /// List software installed via JII.
-    List,
+    /// List software installed via JII. Add `--audit` for the security view (source,
+    /// trust, verification, concerns).
+    List {
+        /// Show a security audit instead of the plain list: source, trust, artifact
+        /// verification, and any concerns per install.
+        #[arg(long)]
+        audit: bool,
+    },
     /// Show installation history.
     History,
     /// List installation sources (providers) and whether each is usable here.
@@ -183,11 +187,10 @@ impl Cli {
             // Implemented in Phase 2.
             Some(Commands::Remove { packages }) => self.remove(packages, config, &renderer).await,
             Some(Commands::How { package }) => self.how(package, config, &renderer),
-            Some(Commands::List) => self.list(config, &renderer),
+            Some(Commands::List { audit }) => self.list(*audit, config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
 
             Some(Commands::Doctor { fix }) => self.doctor(*fix, config, &renderer).await,
-            Some(Commands::Audit) => self.audit(config, &renderer),
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
 
@@ -1328,8 +1331,13 @@ impl Cli {
     }
 
     /// List software installed via jii.
-    fn list(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+    fn list(&self, audit: bool, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
+        // `jii list --audit` is the security view (#5): the same ledger, but with trust,
+        // verification, and concerns per install. Folded in from the former `jii audit`.
+        if audit {
+            return self.audit_view(&engine, renderer);
+        }
         let items = engine.registry().installed();
 
         if renderer.is_json() {
@@ -1566,8 +1574,10 @@ impl Cli {
 
     /// Audit installed software: where each came from, its trust, how it was
     /// verified, and anything that needs attention.
-    fn audit(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
-        let engine = Engine::new(config)?;
+    /// The security view behind `jii list --audit` (#5): provenance, trust, artifact
+    /// verification and concerns per install. Registry-based and fast — no live provider
+    /// calls (the engine's `audit` reads the ledger).
+    fn audit_view(&self, engine: &Engine, renderer: &Renderer) -> crate::error::Result<()> {
         let entries = engine.audit();
 
         if renderer.is_json() {

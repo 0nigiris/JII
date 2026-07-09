@@ -91,9 +91,8 @@ jii providers add   bootstrap a missing manager (e.g. `jii providers add npm`)
 jii how <name>      explain how JII would install (or did install) it
 jii doctor          source health + system checks + curated suggestions
 jii doctor --fix    offer to fix what it can (install git/curl, add Flathub)
-jii audit           verify signatures & trust
 jii history         installation history
-jii list            what JII installed
+jii list            what JII installed (add --audit for signatures, trust & concerns)
 jii setup           re-run the first-run wizard (output mode, optional doctor)
 ```
 

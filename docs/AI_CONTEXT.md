@@ -365,8 +365,19 @@ the basic card (name/summary/version/trust/source degrade gracefully). `--json` 
 dnf card, jqlang/jq github card, ripgrep:cargo sparse card, JSON). **Debt:** dnf License/Vendor shown
 verbatim (RPM's SPDX-ish strings); cargo/npm/flatpak richer cards + the GitHub repo-metadata fetch are
 follow-ups.
-**Next: list+audit merge** — `jii list` with security via `jii list --audit` (#5); then UX-wave 2 is complete
-and Beta prep resumes.
+**list+audit merged (ADR-0038).** `jii list` gained a `--audit` flag: bare = the plain NAME/SOURCE/VERSION
+table; `--audit` = the security view (trust/verification/concerns + "N need attention"). The **standalone
+`jii audit` command is removed** (rendering moved to a private `audit_view` helper; the engine `audit()`
+computation + `AuditEntry` model untouched). Same fold-a-command-into-a-flag pattern as ADR-0035. 185 tests,
+clippy clean; live-verified (`list`, `list --audit`, and that `jii audit` now falls through to install).
+
+**✅ UX-WAVE 2 COMPLETE** — all agreed items landed and pushed: ① arrow-key TUI choosers, ② doctor-as-
+system-helper (+`--fix`, +folded recommend, ADR-0035), ③ providers/marketplace (ADR-0036), ④ info app-card
+(ADR-0037), and the list+audit merge (ADR-0038), plus the earlier small fixes (#3/#6/#10/#12/#13). **Next:
+Beta prep resumes** (see BETA_ROADMAP.md): integration tests → clean-VM verification on Arch/Ubuntu/Debian/
+openSUSE (the one blocker needing the owner's real hosts) → README/logo/screenshots/asciinema → cut Beta by
+pushing a `v*` tag. The `cli/mod.rs` split into `cli/commands/*` (now ~1900 lines) is the queued structural
+cleanup, best done before more feature work.
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
