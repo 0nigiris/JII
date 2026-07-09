@@ -373,7 +373,14 @@ clippy clean; live-verified (`list`, `list --audit`, and that `jii audit` now fa
 
 **✅ UX-WAVE 2 COMPLETE** — all agreed items landed and pushed: ① arrow-key TUI choosers, ② doctor-as-
 system-helper (+`--fix`, +folded recommend, ADR-0035), ③ providers/marketplace (ADR-0036), ④ info app-card
-(ADR-0037), and the list+audit merge (ADR-0038), plus the earlier small fixes (#3/#6/#10/#12/#13). **Next:
+(ADR-0037), and the list+audit merge (ADR-0038), plus the earlier small fixes (#3/#6/#10/#12/#13).
+
+**#9 follow-up landed (the last loose thread).** A library name (`serde`, `lodash`) used to read as a bare
+"not found"; now an optional `Provider::explain_miss` (default `None`, ADR-0022; recorded under ADR-0023)
+lets cargo/npm explain "'X' is a library — nothing to install as a program." The engine asks only on a total
+miss, gated on `is_available`; the message renders under the miss in install/info/search. 185 tests (signal
+already covered by the `library_only_*_yields_no_candidate` tests), clippy clean, live-verified (lodash/serde
+explained; a truly-unknown name stays a plain miss; real programs unaffected). **Next:
 Beta prep resumes** (see BETA_ROADMAP.md): integration tests → clean-VM verification on Arch/Ubuntu/Debian/
 openSUSE (the one blocker needing the owner's real hosts) → README/logo/screenshots/asciinema → cut Beta by
 pushing a `v*` tag. The `cli/mod.rs` split into `cli/commands/*` (now ~1900 lines) is the queued structural

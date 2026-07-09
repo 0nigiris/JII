@@ -801,6 +801,13 @@ previewable plan that the tool declines does not.
   rejects it clearly at install. Documented as a known, accepted limitation.
 - If PyPI/Go ever expose reliable entry-point metadata, the provider can add a filter
   with no core change — the rule is "filter when reliable", not "never filter".
+- **Follow-up landed 2026-07-09 (#9):** the cargo/npm filter used to make a library name (`serde`,
+  `lodash`) read as a bare "not found". An optional `Provider::explain_miss(&query) -> Option<String>`
+  (default `None`, ADR-0022 growth) now lets those two sources say *why*: on a **total** search miss the
+  engine (`explain_miss`, gated on `is_available`) asks each source, and cargo/npm re-check the registry —
+  if the exact name exists but ships no executable, they return "'X' is a library — nothing to install as a
+  program." Rendered under the miss in install/info/search. Off the hot path (miss-only), no core knowledge
+  of the source, and the decision keys on the already-tested `candidate(...).is_none()` signal.
 
 ---
 

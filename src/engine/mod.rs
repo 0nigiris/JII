@@ -698,6 +698,24 @@ impl Engine {
         None
     }
 
+    /// On a total search miss, ask each **available** source to explain why an exact name
+    /// might exist yet not be installable — e.g. an npm/cargo library that ships no program
+    /// (#9). Returns the first explanation offered, else `None`. Off the hot path: called only
+    /// when nothing was found, and gated on `is_available` so JII never probes a registry for
+    /// an ecosystem the user doesn't even have. The core learns nothing source-specific — the
+    /// message comes wholesale from the provider (ADR-0004).
+    pub async fn explain_miss(&self, name: &str) -> Option<String> {
+        let query = crate::model::Query::name(name);
+        for provider in self.providers.iter() {
+            if provider.is_available().await
+                && let Some(msg) = provider.explain_miss(&query).await
+            {
+                return Some(msg);
+            }
+        }
+        None
+    }
+
     /// Probe each source's live health (backs `jii doctor`). Each provider reports
     /// raw facts (`reachable`, `rate_limited`, a human `detail`); the engine maps
     /// them — together with the measured latency — to a [`Health`] category. Network

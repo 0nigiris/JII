@@ -353,7 +353,11 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
       AI_CONTEXT "Current task". Next: Beta prep resumes (BETA_ROADMAP.md).
       - [x] **① arrow-key TUI choosers** (`dialoguer` Select — setup + source chooser + multi-owner
             remove; ↑↓/Enter/Esc; pty-verified). Plus #3/#10/#12/#13 crisp-output polish, #6 `-d`
-            alias. #9 diagnosed as by-design; #11 already shipped in U7.
+            alias. #11 already shipped in U7.
+      - [x] **#9 helpful "it's a library" message** (2026-07-09, follow-up to ADR-0023). Optional
+            `Provider::explain_miss` (ADR-0022 growth); cargo/npm explain that a bin-less name (`serde`,
+            `lodash`) is a library, not a program. Engine asks only on a total miss, gated on `is_available`;
+            shown under the miss in install/info/search. 185 tests, live-verified.
       - [x] **② doctor-as-system-helper.** (all three slices landed — ADR-0035)
             - [x] *Slice 1 — read-only diagnostics.* Added checks: internet reachability (critical),
                   git/curl presence (advice → `jii git`/`jii curl`), `~/.cargo/bin` on PATH

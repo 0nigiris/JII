@@ -364,6 +364,13 @@ impl Cli {
                 None => String::new(),
             };
             renderer.error(&format!("Not found{via}: {}", not_found.join(", ")));
+            // #9: a name that "isn't found" is often a *library* (npm/cargo ship no CLI, so
+            // they offer no candidate). Explain that instead of leaving the user puzzled.
+            for name in &not_found {
+                if let Some(msg) = engine.explain_miss(name).await {
+                    renderer.info(&format!("  → {msg}"));
+                }
+            }
         }
         if chosen.is_empty() {
             return Ok(());
@@ -991,6 +998,9 @@ impl Cli {
         let ranked = self.ranked_for(&engine, &name, self.global.source.as_ref(), renderer).await;
         if ranked.is_empty() {
             renderer.error(&format!("No candidates found for '{name}'."));
+            if let Some(msg) = engine.explain_miss(&name).await {
+                renderer.info(&format!("  → {msg}"));
+            }
             return Ok(());
         }
         if renderer.is_json() {
@@ -1029,6 +1039,9 @@ impl Cli {
         let ranked = self.ranked_for(&engine, name, pkg_source, renderer).await;
         if ranked.is_empty() {
             renderer.error(&format!("'{name}' is not available from any enabled source."));
+            if let Some(msg) = engine.explain_miss(name).await {
+                renderer.info(&format!("  → {msg}"));
+            }
             return Ok(());
         }
         if renderer.is_json() {

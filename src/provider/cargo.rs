@@ -78,6 +78,19 @@ impl Provider for Cargo {
         Ok(candidate(&body).into_iter().collect())
     }
 
+    async fn explain_miss(&self, query: &Query) -> Option<String> {
+        // The crate exists on crates.io but `search` offered nothing → it ships no binary,
+        // i.e. it's a library, not an installable program (#9).
+        let name = query.raw.trim();
+        let url = format!("{API}/crates/{name}");
+        let body = get_json_opt::<CrateResponse>(ID, &url).await.ok()??;
+        candidate(&body).is_none().then(|| {
+            format!(
+                "'{name}' is a Rust library on crates.io — it ships no executable, so there's nothing to install as a program."
+            )
+        })
+    }
+
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
         let mut reasons = vec!["crates.io (Rust community registry)".to_string()];
         if let Some(v) = &candidate.version {

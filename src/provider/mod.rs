@@ -140,6 +140,18 @@ pub trait Provider: Send + Sync {
         Vec::new()
     }
 
+    /// When a search for `query` yields **no candidate from this source**, optionally explain
+    /// *why an exact name that exists still isn't installable* — e.g. a crates.io/npm library
+    /// that ships no executable (JII installs programs, not libraries). Default `None`. The
+    /// engine calls this **only on a total miss** (no source produced a candidate), so it is
+    /// off the hot path and may do one lookup. ADR-0022 optional-method growth: it turns a bare
+    /// "not found" into a helpful "that's a library, not a program" (#9) with no core knowledge
+    /// of the source.
+    async fn explain_miss(&self, query: &Query) -> Option<String> {
+        let _ = query;
+        None
+    }
+
     /// Rich human metadata for `jii info`'s **app card** (#4): description, homepage,
     /// repository, license, author. Default `None` — a source that can't cheaply describe a
     /// candidate opts out and the card degrades to the basics it already has (version, trust,

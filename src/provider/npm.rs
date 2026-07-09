@@ -72,6 +72,19 @@ impl Provider for Npm {
         Ok(candidate(&manifest).into_iter().collect())
     }
 
+    async fn explain_miss(&self, query: &Query) -> Option<String> {
+        // The package exists in the registry but `search` offered nothing → its manifest
+        // declares no `bin`, i.e. it's a library, not a CLI program (#9).
+        let name = query.raw.trim();
+        let url = format!("{REGISTRY}/{name}/latest");
+        let manifest = get_json_opt::<Manifest>(ID, &url).await.ok()??;
+        candidate(&manifest).is_none().then(|| {
+            format!(
+                "'{name}' is an npm library — its package declares no command-line program, so there's nothing to install."
+            )
+        })
+    }
+
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
         let prefix = user_prefix()?;
         let mut reasons = vec!["npm registry (community)".to_string()];
