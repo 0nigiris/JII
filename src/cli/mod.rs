@@ -2315,45 +2315,37 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
 
     // Network: the one failure that silently breaks most sources, so it leads.
     checks.push(if f.internet {
-        SystemCheck::pass("Internet is reachable")
+        SystemCheck::pass(crate::t!("check.internet_ok"))
     } else {
         SystemCheck::warn(
-            "No internet connection",
-            "Most sources (GitHub, Flatpak, cargo, npm…) need the network. Check your \
-             connection or proxy settings.",
+            crate::t!("check.internet_missing"),
+            crate::t!("check.internet_advice"),
         )
         .critical()
     });
 
     // Common tools JII and its sources lean on — and which JII can itself install.
     checks.push(if f.git {
-        SystemCheck::pass("git is installed")
+        SystemCheck::pass(crate::t!("check.git_ok"))
     } else {
-        SystemCheck::warn(
-            "git is not installed",
-            "Some installs (cargo git dependencies, source builds) need it. Add it with:  jii git",
-        )
-        .fixable(Fix::Install("git"))
+        SystemCheck::warn(crate::t!("check.git_missing"), crate::t!("check.git_advice"))
+            .fixable(Fix::Install("git"))
     });
     checks.push(if f.curl {
-        SystemCheck::pass("curl is installed")
+        SystemCheck::pass(crate::t!("check.curl_ok"))
     } else {
-        SystemCheck::warn(
-            "curl is not installed",
-            "Handy for scripts and manual downloads. Add it with:  jii curl",
-        )
-        .fixable(Fix::Install("curl"))
+        SystemCheck::warn(crate::t!("check.curl_missing"), crate::t!("check.curl_advice"))
+            .fixable(Fix::Install("curl"))
     });
 
     // ~/.local/bin on PATH — user-space installs land there.
     let local = f.local_bin.display();
     checks.push(if f.local_bin_on_path {
-        SystemCheck::pass(format!("{local} is on your PATH"))
+        SystemCheck::pass(crate::t!("check.path_ok", dir = local))
     } else {
         SystemCheck::warn(
-            format!("{local} is not on your PATH"),
-            "User-space installs (cargo, npm, pipx, go, GitHub binaries) land there, so their \
-             commands won't be found.",
+            crate::t!("check.path_missing", dir = local),
+            crate::t!("check.local_path_advice"),
         )
         .fixable(Fix::PathExport { dir: f.local_bin.clone() })
     });
@@ -2362,11 +2354,11 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
     if f.cargo_bin_relevant {
         let cargo = f.cargo_bin.display();
         checks.push(if f.cargo_bin_on_path {
-            SystemCheck::pass(format!("{cargo} is on your PATH"))
+            SystemCheck::pass(crate::t!("check.path_ok", dir = cargo))
         } else {
             SystemCheck::warn(
-                format!("{cargo} is not on your PATH"),
-                "Cargo installs binaries there, so their commands won't be found.",
+                crate::t!("check.path_missing", dir = cargo),
+                crate::t!("check.cargo_path_advice"),
             )
             .fixable(Fix::PathExport { dir: f.cargo_bin.clone() })
         });
@@ -2375,12 +2367,11 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
     // Flathub — only meaningful when Flatpak is installed.
     if f.flatpak {
         checks.push(if f.flathub {
-            SystemCheck::pass("Flathub remote is configured")
+            SystemCheck::pass(crate::t!("check.flathub_ok"))
         } else {
             SystemCheck::warn(
-                "Flatpak is installed but the Flathub remote is missing",
-                "Most Flatpak apps live on Flathub. Add it with:  flatpak remote-add \
-                 --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo",
+                crate::t!("check.flathub_missing"),
+                crate::t!("check.flathub_advice"),
             )
             .fixable(Fix::Command {
                 argv: vec![
@@ -2399,14 +2390,11 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
 
     // GitHub token — a rate-limit papercut, never a blocker.
     checks.push(if f.token_set {
-        SystemCheck::pass(format!("{} is set — GitHub requests aren't rate-limited", f.token_env))
+        SystemCheck::pass(crate::t!("check.token_ok", env = f.token_env))
     } else {
         SystemCheck::warn(
-            format!("{} is not set — GitHub is limited to ~60 requests/hour", f.token_env),
-            format!(
-                "Optional: export {}=<a GitHub token> to lift the anonymous rate limit.",
-                f.token_env
-            ),
+            crate::t!("check.token_missing", env = f.token_env),
+            crate::t!("check.token_advice", env = f.token_env),
         )
     });
 
