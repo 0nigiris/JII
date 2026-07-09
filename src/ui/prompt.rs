@@ -48,7 +48,11 @@ pub fn confirm_install_batch(
     if flags.no {
         return false;
     }
-    let question = if count == 1 { "Install?" } else { "Install all?" };
+    let question = if count == 1 {
+        crate::t!("prompt.install_one")
+    } else {
+        crate::t!("prompt.install_all")
+    };
 
     let auto_ok = least_trusted <= config.install.default_yes_max_trust;
     if !auto_ok {
@@ -56,19 +60,19 @@ pub fn confirm_install_batch(
         if (flags.auto || flags.yes) && config.trust.allow_untrusted_auto {
             return true;
         }
-        renderer.warn(&format!(
-            "This install includes a less-trusted source ({}) — explicit confirmation required.",
-            least_trusted.label(),
+        renderer.warn(&crate::t!(
+            "prompt.less_trusted",
+            level = least_trusted.label()
         ));
         // Default to "no" when a less-trusted source is involved.
-        return ask(renderer, question, false);
+        return ask(renderer, &question, false);
     }
 
     // Trusted enough: --auto or --yes skip the prompt.
     if flags.auto || flags.yes {
         return true;
     }
-    ask(renderer, question, config.install.default_yes)
+    ask(renderer, &question, config.install.default_yes)
 }
 
 /// Present a menu of `options` (display lines, best first) and let the user pick one

@@ -103,6 +103,25 @@ tried = "Пробовал: {names}"
 script_only = "{label} нет в репозиториях вашего дистрибутива — он ставится своим скриптом."
 script_wont_run = "JII не будет запускать установочный скрипт за вас. Чтобы установить, выполните:"
 
+[prompt]
+install_one = "Установить?"
+install_all = "Установить всё?"
+less_trusted = "В установку входит менее доверенный источник ({level}) — нужно явное подтверждение."
+
+[plan]
+title = "План: {name} (через {source})"
+download = "загрузка: {size} байт"
+privileges = "привилегии: {level}"
+priv_root = "нужен root"
+priv_user = "пользователь"
+actions_none = "действия: (нет)"
+actions = "действия:"
+act_download = "загрузить {url} → {dest} [{verify}]"
+act_place = "разместить → {dest} (режим {mode})"
+act_extract = "извлечь {member} из {archive} → {dest} (режим {mode})"
+act_remove = "удалить {path}"
+act_replace = "заменить {dest} ← {src}"
+
 [check]
 internet_ok = "Интернет доступен"
 internet_missing = "Нет подключения к интернету"

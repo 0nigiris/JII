@@ -93,7 +93,11 @@ impl Renderer {
             return;
         }
 
-        let title = format!("Plan: {} (via {})", plan.candidate_ref, plan.source_id);
+        let title = crate::t!(
+            "plan.title",
+            name = plan.candidate_ref.clone(),
+            source = plan.source_id.clone()
+        );
         if self.color {
             println!("{}", title.bold());
         } else {
@@ -104,16 +108,18 @@ impl Renderer {
             println!("  ✓ {reason}");
         }
         if let Some(size) = plan.download_size {
-            println!("  download: {} bytes", size);
+            println!("  {}", crate::t!("plan.download", size = size.to_string()));
         }
-        println!(
-            "  privileges: {}",
-            if plan.needs_root() { "root required" } else { "user" }
-        );
-        if plan.actions.is_empty() {
-            println!("  actions: (none)");
+        let level = if plan.needs_root() {
+            crate::t!("plan.priv_root")
         } else {
-            println!("  actions:");
+            crate::t!("plan.priv_user")
+        };
+        println!("  {}", crate::t!("plan.privileges", level = level));
+        if plan.actions.is_empty() {
+            println!("  {}", crate::t!("plan.actions_none"));
+        } else {
+            println!("  {}", crate::t!("plan.actions"));
             for action in &plan.actions {
                 println!("    {}", describe_action(action));
             }
@@ -134,21 +140,32 @@ pub fn describe_action(action: &Action) -> String {
             let marker = if *needs_root { "#" } else { "$" };
             format!("{marker} {}", argv.join(" "))
         }
-        Action::Download { url, dest, verify } => {
-            format!("download {url} → {} [{}]", dest.display(), verify.label())
-        }
-        Action::Place { dest, mode, .. } => {
-            format!("place → {} (mode {mode:o})", dest.display())
-        }
-        Action::Extract { archive, member, dest, mode } => format!(
-            "extract {member} from {} → {} (mode {mode:o})",
-            archive.display(),
-            dest.display()
+        Action::Download { url, dest, verify } => crate::t!(
+            "plan.act_download",
+            url = url.clone(),
+            dest = dest.display().to_string(),
+            verify = verify.label().to_string()
         ),
-        Action::RemoveFile { path } => format!("remove {}", path.display()),
-        Action::Replace { src, dest } => {
-            format!("replace {} ← {}", dest.display(), src.display())
+        Action::Place { dest, mode, .. } => crate::t!(
+            "plan.act_place",
+            dest = dest.display().to_string(),
+            mode = format!("{mode:o}")
+        ),
+        Action::Extract { archive, member, dest, mode } => crate::t!(
+            "plan.act_extract",
+            member = member.clone(),
+            archive = archive.display().to_string(),
+            dest = dest.display().to_string(),
+            mode = format!("{mode:o}")
+        ),
+        Action::RemoveFile { path } => {
+            crate::t!("plan.act_remove", path = path.display().to_string())
         }
+        Action::Replace { src, dest } => crate::t!(
+            "plan.act_replace",
+            dest = dest.display().to_string(),
+            src = src.display().to_string()
+        ),
     }
 }
 

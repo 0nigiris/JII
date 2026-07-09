@@ -105,6 +105,25 @@ tried = "Tried: {names}"
 script_only = "{label} isn't in your distro's repositories — it installs via its own script."
 script_wont_run = "JII won't run an installer script for you. To install it, run:"
 
+[prompt]
+install_one = "Install?"
+install_all = "Install all?"
+less_trusted = "This install includes a less-trusted source ({level}) — explicit confirmation required."
+
+[plan]
+title = "Plan: {name} (via {source})"
+download = "download: {size} bytes"
+privileges = "privileges: {level}"
+priv_root = "root required"
+priv_user = "user"
+actions_none = "actions: (none)"
+actions = "actions:"
+act_download = "download {url} → {dest} [{verify}]"
+act_place = "place → {dest} (mode {mode})"
+act_extract = "extract {member} from {archive} → {dest} (mode {mode})"
+act_remove = "remove {path}"
+act_replace = "replace {dest} ← {src}"
+
 [check]
 internet_ok = "Internet is reachable"
 internet_missing = "No internet connection"
