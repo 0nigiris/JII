@@ -148,9 +148,9 @@ $ yay -S jii-bin        # once published — see packaging/README.md
 If you prefer to place it yourself:
 
 ```console
-$ tar -xzf jii-v0.1.1-beta-x86_64-linux.tar.gz
-$ sha256sum -c jii-v0.1.1-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
-$ install -Dm755 jii-v0.1.1-beta-x86_64-linux/jii ~/.local/bin/jii
+$ tar -xzf jii-v0.1.2-beta-x86_64-linux.tar.gz
+$ sha256sum -c jii-v0.1.2-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
+$ install -Dm755 jii-v0.1.2-beta-x86_64-linux/jii ~/.local/bin/jii
 ```
 
 ### Build from source
