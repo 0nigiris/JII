@@ -1713,7 +1713,7 @@ impl Cli {
             return Ok(());
         }
 
-        renderer.info("Sources:");
+        renderer.info(&crate::t!("doctor.sources_header"));
         for d in &diagnostics {
             let mark = if d.available { "✓" } else { "✗" };
             let detail = match &d.detail {
@@ -1738,7 +1738,7 @@ impl Cli {
         let interactive = self.interactive(renderer) && !self.global.no;
 
         renderer.info("");
-        renderer.info("System checks:");
+        renderer.info(&crate::t!("doctor.checks_header"));
         let mut warnings = 0usize;
         for c in &checks {
             if c.ok {
@@ -1761,10 +1761,9 @@ impl Cli {
         }
         renderer.info("");
         if warnings == 0 {
-            renderer.success("Everything looks good.");
+            renderer.success(&crate::t!("doctor.all_looks_good"));
         } else {
-            let plural = if warnings == 1 { "" } else { "s" };
-            renderer.info(&format!("{warnings} thing{plural} to look at above."));
+            renderer.info(&crate::t!("doctor.things_to_look", count = warnings));
         }
 
         if interactive {
@@ -1776,7 +1775,7 @@ impl Cli {
             self.list_suggestions(renderer);
             if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
                 renderer.info("");
-                renderer.info("Run `jii doctor` in a terminal to set these up interactively.");
+                renderer.info(&crate::t!("doctor.run_interactive"));
             }
         }
         Ok(())
@@ -1823,14 +1822,14 @@ impl Cli {
 
         let flags = self.prompt_flags(config.install.auto);
         renderer.info("");
-        renderer.info("Let's set up what's missing — y to do it, Enter to skip:");
+        renderer.info(&crate::t!("doctor.setup_intro"));
 
         // A) Fixable system checks.
         for (check, fix) in fixes {
             let question = match fix {
-                Fix::Install(pkg) => format!("Install {pkg}?"),
-                Fix::PathExport { dir } => format!("Add {} to your PATH?", dir.display()),
-                Fix::Command { .. } => format!("{} — fix it now?", check.label),
+                Fix::Install(pkg) => crate::t!("doctor.q_install", pkg = pkg),
+                Fix::PathExport { dir } => crate::t!("doctor.q_add_path", dir = dir.display()),
+                Fix::Command { .. } => crate::t!("doctor.q_fix", label = check.label),
             };
             if !prompt::confirm(renderer, &format!("  {question}"), false, &flags) {
                 continue;
@@ -1849,7 +1848,8 @@ impl Cli {
             if let Some(note) = &r.note {
                 renderer.info(&format!("        note: {note}"));
             }
-            if !prompt::confirm(renderer, &format!("    Set up {}?", r.title), false, &flags) {
+            let question = crate::t!("doctor.q_setup", title = r.title);
+            if !prompt::confirm(renderer, &format!("    {question}"), false, &flags) {
                 continue;
             }
             self.apply_suggestion(r, config.clone(), renderer).await?;
@@ -1872,12 +1872,12 @@ impl Cli {
             }
             Fix::Command { argv, show } => {
                 if self.global.dry_run {
-                    renderer.info(&format!("  would run:  {show}"));
+                    renderer.info(&format!("  {}", crate::t!("doctor.would_run", cmd = show)));
                 } else {
-                    renderer.info(&format!("  runs:  {show}"));
+                    renderer.info(&format!("  {}", crate::t!("doctor.runs", cmd = show)));
                     match run_plain_command(argv).await {
-                        Ok(()) => renderer.success("  Done."),
-                        Err(e) => renderer.error(&format!("  Failed: {e}")),
+                        Ok(()) => renderer.success(&format!("  {}", crate::t!("doctor.done"))),
+                        Err(e) => renderer.error(&format!("  {}", crate::t!("doctor.failed", error = e))),
                     }
                 }
             }
@@ -1899,12 +1899,12 @@ impl Cli {
             self.install_inner(&r.packages, config, renderer, true, false).await?;
         } else if let Some(manual) = &r.manual {
             if self.global.dry_run {
-                renderer.info(&format!("  would run:  {manual}"));
+                renderer.info(&format!("  {}", crate::t!("doctor.would_run", cmd = manual)));
             } else {
-                renderer.info(&format!("  runs:  {manual}"));
+                renderer.info(&format!("  {}", crate::t!("doctor.runs", cmd = manual)));
                 match run_shell_command(manual).await {
-                    Ok(()) => renderer.success("  Done."),
-                    Err(e) => renderer.error(&format!("  Failed: {e}")),
+                    Ok(()) => renderer.success(&format!("  {}", crate::t!("doctor.done"))),
+                    Err(e) => renderer.error(&format!("  {}", crate::t!("doctor.failed", error = e))),
                 }
             }
         }
@@ -1917,7 +1917,7 @@ impl Cli {
     /// and honors `--dry-run`.
     fn apply_path_export(&self, dir: &std::path::Path, renderer: &Renderer) {
         let Some(base) = directories::BaseDirs::new() else {
-            renderer.error("  Can't resolve your home directory — add it to PATH manually.");
+            renderer.error(&format!("  {}", crate::t!("doctor.no_home")));
             return;
         };
         let shell = std::env::var("SHELL")
@@ -1933,7 +1933,10 @@ impl Cli {
         let rc_path = base.home_dir().join(rc_rel);
 
         if self.global.dry_run {
-            renderer.info(&format!("  would add to {}:  {line}", rc_path.display()));
+            renderer.info(&format!(
+                "  {}",
+                crate::t!("doctor.would_add", file = rc_path.display(), line = line)
+            ));
             return;
         }
         // Idempotent: if the rc already references this dir, don't add a second line.
@@ -1941,8 +1944,8 @@ impl Cli {
             && existing.contains(&dir_str)
         {
             renderer.info(&format!(
-                "  {} already references {dir_str} — nothing to do.",
-                rc_path.display()
+                "  {}",
+                crate::t!("doctor.already_on_path", file = rc_path.display(), dir = dir_str)
             ));
             return;
         }
@@ -1953,15 +1956,21 @@ impl Cli {
             Ok(mut file) => {
                 use std::io::Write;
                 if let Err(e) = writeln!(file, "\n# Added by jii — put {dir_str} on PATH\n{line}") {
-                    renderer.error(&format!("  Couldn't update {}: {e}", rc_path.display()));
+                    renderer.error(&format!(
+                        "  {}",
+                        crate::t!("doctor.couldnt_update", file = rc_path.display(), error = e)
+                    ));
                     return;
                 }
                 renderer.success(&format!(
-                    "  Added to {rc}. Run `source {rc}` or open a new terminal.",
-                    rc = rc_path.display()
+                    "  {}",
+                    crate::t!("doctor.added_to_path", file = rc_path.display())
                 ));
             }
-            Err(e) => renderer.error(&format!("  Couldn't write {}: {e}", rc_path.display())),
+            Err(e) => renderer.error(&format!(
+                "  {}",
+                crate::t!("doctor.couldnt_write", file = rc_path.display(), error = e)
+            )),
         }
     }
 
@@ -1980,7 +1989,7 @@ impl Cli {
         }
 
         renderer.info("");
-        renderer.info("Suggestions for your system:");
+        renderer.info(&crate::t!("doctor.suggestions_header"));
         let mut last_category: Option<&str> = None;
         for r in &entries {
             if last_category != Some(r.category.as_str()) {
@@ -1999,7 +2008,7 @@ impl Cli {
                 renderer.info(&format!("        note: {note}"));
             }
         }
-        renderer.info("Informational — run `jii doctor` in a terminal to set these up.");
+        renderer.info(&crate::t!("doctor.suggestions_info"));
     }
 
     /// Show installation history, newest first.
