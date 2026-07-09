@@ -1817,5 +1817,34 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 
 **Consequences:**
 - New `src/i18n.rs` (+ `t!` macro, `#[macro_export]`), `locales/en.toml`/`ru.toml`, `--lang` global flag; `[ui] locale` config (already existed, default `"auto"`) now drives language.
-- Until migration completes, code has a **mix** of `t!` and literals — a temporary, tracked state (the end goal is zero literals). The parity test guards the locale files; a lint/scan for stray literals is a possible later guard.
-- 216 tests (incl. parity, normalise, interpolation, fallback). Verified: `--lang ru` and `LC_MESSAGES=ru_RU.UTF-8` both switch the migrated strings; English is the default.
+- **Migration COMPLETE (2026-07-10):** zero user-facing string literals remain in Rust code (verified by sweep). The only English left in code is the low-level `#[error(...)]` Display prefixes (the technical cause line — thiserror derives them at compile time; the user-facing `remedy()` guidance *is* localized). `label()` methods (`TrustLevel`/`Health`/`Verification`) are kept as **stable JSON identifiers**; a parallel `display()` (calling `t!`) serves the human UI. The parity test guards the locale files; a lint/scan for stray literals is a possible later guard.
+- 216 tests (incl. parity, normalise, interpolation, fallback). Verified: `--lang ru` and `LC_MESSAGES=ru_RU.UTF-8` both switch every string; English is the default.
+
+## ADR-0051 — First-run setup runs before ANY command, then the command proceeds
+
+**Status:** Accepted (2026-07-10).
+
+**Context:** The onboarding wizard (ADR: U5/DW) only fired on a bare `jii`. A new user whose
+first-ever invocation was a task — `jii fastfetch`, `jii search foo` — skipped onboarding
+entirely (mode never chosen, doctor never offered). The owner wants the wizard to greet the
+**first use of JII for anything**, then run the command the user actually typed.
+
+**Decision:** Hoist the first-run check to the top of `Cli::run`, before command dispatch. When
+`config.is_first_run() && interactive`, and the invocation is an *onboardable task*
+(`onboarding_task_summary()` returns `Some`), JII: (1) tells the user up-front which command
+will run after the optional setup, (2) runs the wizard, (3) reloads the saved config, (4)
+rebuilds the renderer (the wizard may have changed the output mode), then (5) falls through to
+the normal dispatch, which runs the original command. Excluded (return `None`, no pre-wizard):
+`setup` (it *is* the wizard), `doctor` (runs its own setup — would double), `uninstall`, and the
+hidden `completions`/`man`; bare `jii` keeps its dedicated welcome arm. Non-interactive / `--json`
+/ piped first runs never trigger it (no TTY), so scripts are unaffected.
+
+**Alternatives considered:** (a) keep onboarding bare-`jii`-only — rejected, misses the common
+first-use path. (b) Run the command first, then offer setup — rejected: setup should shape how
+the command behaves (mode, PATH), so it must come first.
+
+**Consequences:** `run()` reloads config via `Config::load()` after the wizard (falls back to the
+in-memory config if the reload fails). New pure helper `onboarding_task_summary()` (echoes
+`jii <args>`); `renderer_for()` extracted so the renderer can be rebuilt. Verified under a pty:
+`jii fastfetch` on a fresh `XDG_CONFIG_HOME` → first-use notice → wizard → "▶ Now running: jii
+fastfetch" → the install runs. 216 tests green, clippy clean.

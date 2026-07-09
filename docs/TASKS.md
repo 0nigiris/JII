@@ -409,6 +409,35 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             185 tests, live-verified.
       - **Note:** this unfreezes `doctor --fix` (was in the frozen backlog) by explicit owner
         reprioritisation; the rest of the freeze list stays frozen.
+- [x] **POST-TESTING UX WAVE — 10-point owner audit (COMPLETE 2026-07-10).** After more dogfooding the
+      owner filed 10 points (analyse → architecture → implement). All landed as ADRs, each green + pushed:
+      - [x] **#1 doctor analyses system state** (ADR-0043). `Engine::installed_index` gathers installed once;
+            doctor drops already-satisfied suggestions (no offering an installed VLC). Catalog `check` field
+            for non-obvious identities (Flatpak app-id, repo-release pkg).
+      - [x] **#2 search speed** (ADR-0044). Per-source failure **circuit breaker** in the disk cache
+            (`network.failure_cooldown_secs`, default 120) — a timing-out source (COPR) is skipped. ~5s→~1.1s.
+      - [x] **#3 nix `list_installed`** (ADR-0047). Tolerant `nix profile list --json` parser (map+array
+            schemas). *Fixture-tested only — needs a real Nix host to confirm live JSON.*
+      - [x] **#4 bare manager name → bootstrap** (ADR-0046). `jii npm` installs the npm *manager*, not a
+            package called npm; `Engine::ecosystem_ids` + `install_inner` `route_managers` loop guard.
+      - [x] **#5 library messaging** (folded into ADR-0045). `serde`/`lodash` explain "it's a library, not a
+            program" — philosophy KEPT (programs, not libraries), only the wording clarified.
+      - [x] **#6 info ≠ install** (ADR-0045). `Provider::reference`/`Engine::reference` + `Reference` model;
+            `jii info lodash` shows a real card + library note, using no install logic.
+      - [x] **#7 localization** (ADR-0050). **Zero user-facing string literals left in Rust code** — all in
+            `locales/en.toml`/`ru.toml`, `t!("key", arg=…)`, en fallback, parity test, `--lang`. `label()`
+            kept as stable JSON id; parallel localized `display()`. `#[error]` prefixes stay English by
+            design. 216 tests, live-verified in Russian across every command.
+      - [x] **#8 forge abstraction** (ADR-0049). `Forge` trait + generic `ForgeProvider`; GitHub is
+            `GithubForge`, one forge among peers. Adding Codeberg/Gitea/GitLab = implement `Forge`.
+      - [x] **#9 principle** (ADR-0048). "JII cooperates with the system; it is not the centre of the world."
+      - [x] **#10 release test plan** (docs/RELEASE_TESTPLAN.md). Manual per-release checklist.
+      - [x] **First-run setup before ANY command** (ADR-0051). The onboarding wizard now greets the first
+            *interactive* use of JII for any task (`jii fastfetch`), announces which command runs after the
+            optional setup, then continues with it. pty-verified. 216 tests.
+      - **Next (owner-chosen order):** ① smart GitHub by-name search (top-5 + "show more" + typo tolerance —
+            the deferred T5 repo chooser, now concrete, its own ADR); ② colour polish + mouse-click selection.
+            GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

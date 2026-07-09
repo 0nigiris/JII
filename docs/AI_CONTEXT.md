@@ -8,11 +8,41 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-09_
+_Last updated: 2026-07-10_
 
 ---
 
-## Most recent work (2026-07-09) — read this first
+## Most recent work (2026-07-10) — read this first
+
+**#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
+(ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
+string lives in `locales/en.toml` / `ru.toml`, keyed by namespace, looked up via `t!("key",
+arg=…)`. English is source-of-truth + fallback; a parity test asserts en/ru have identical
+key sets. Language resolves `--lang` › `[ui] locale` › `$LC_MESSAGES`/`$LANG` › `en`.
+Migrated in staged commits (all green, pushed): plan preview + prompts; info/search rationale
++ `TrustLevel::display()`/`Health::display()` (JSON keeps the stable `label()`); every
+provider reason string (shared `[reason]` table with `{mgr}`/`{name}` placeholders) incl. the
+non-Fedora providers; setup wizard, list/history/audit, system-update, parse errors; self-plan
+reasons; error remedies. The low-level `#[error]` Display prefixes stay English by design (the
+technical cause line, not user guidance). **216 tests green, clippy clean.** Live-verified
+Russian across install/search/info/list/history/doctor/preview.
+
+**New behaviour — first-run setup before ANY command.** The onboarding wizard used to fire only
+on a bare `jii`. Now the very first *interactive* use of JII for any task (`jii fastfetch`,
+`jii search …`) announces up-front which command will run, runs the wizard, reloads the saved
+config, then continues with the original invocation. setup/doctor/uninstall + hidden plumbing
+are excluded. Verified under a pty (declining prompts → command still runs).
+
+**Next up (owner-requested, chosen order):** ① smart GitHub by-name search — free-text
+`jii exteragram` → top-5 repos with a "show more" (infinite pagination) + typo tolerance
+(`exeteragram`→`exteragram`); needs the GitHub Search API in the forge/github provider (its own
+ADR — this is the deferred T5 repo chooser, now scoped concretely). ② color polish + mouse-click
+selection. GUI (Steam + KDE Discover + GNOME Software blend) is **explicitly parked** until the
+CLI is fully polished — do not start it.
+
+---
+
+## Prior work (2026-07-09) — read this first
 
 Landed and pushed to `master` after the clean-VM UX waves:
 
@@ -59,12 +89,9 @@ Landed and pushed to `master` after the clean-VM UX waves:
   GitHub is now `GithubForge`, one forge among peers. Adding Codeberg/Gitea/GitLab = implement `Forge`
   + register a source id. Behaviour identical (all tests moved + pass).
 
-**Only remaining in this wave: #7 localization** (the big one). Architecture agreed: `locales/en.toml`
-+ `ru.toml` (keys by namespace, `include_str!`-embedded), an `i18n` module + `t!("key", arg=…)`,
-language pick `--lang` › `[ui] lang` › `$LC_MESSAGES`/`$LANG` › `en`, fallback ru→en→key, and a test
-asserting every used key exists in both files. Deliberately last so it migrates the now-settled
-strings (changed across #1/#4/#5/#6) once. ~200 `renderer.*` call sites + `#[error]` + provider reason
-strings to migrate — likely staged: framework first, then migrate area-by-area.
+**#7 localization — DONE (2026-07-10).** See the 2026-07-10 "Most recent work" section at the top:
+the whole post-testing UX wave is now complete. The forge abstraction (ADR-0049) means the next
+task (GitHub by-name search) extends `GithubForge`/`ForgeProvider`, not a hardcoded exception.
 
 **Still open (needs owner's hosts):** install/run the published `.rpm`/`.deb` on a live non-Fedora
 box and on real aarch64; true end-to-end self-update fires only when the *next* tag is cut.
