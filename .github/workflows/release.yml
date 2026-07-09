@@ -97,8 +97,12 @@ jobs:
           set -euxo pipefail
           tag="${GITHUB_REF_NAME}"
           export VERSION="${tag#v}" # package version has no leading 'v'
-          nfpm package -f packaging/nfpm.yaml -p deb -t .
-          nfpm package -f packaging/nfpm.yaml -p rpm -t .
+          # Render the template ourselves so we don't depend on nfpm's own env expansion
+          # (it left ${BIN} unexpanded). Only these three vars are substituted.
+          envsubst '${NFPM_ARCH} ${VERSION} ${BIN}' < packaging/nfpm.yaml > nfpm.generated.yaml
+          cat nfpm.generated.yaml
+          nfpm package -f nfpm.generated.yaml -p deb -t .
+          nfpm package -f nfpm.generated.yaml -p rpm -t .
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
