@@ -80,9 +80,9 @@ $ sudo apt install ./jii_*.deb      # Debian / Ubuntu
 **Manual tarball** — if you prefer to place it yourself:
 
 ```console
-$ tar -xzf jii-v0.1.0-beta-x86_64-linux.tar.gz
-$ sha256sum -c jii-v0.1.0-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
-$ install -Dm755 jii-v0.1.0-beta-x86_64-linux/jii ~/.local/bin/jii
+$ tar -xzf jii-v0.1.1-beta-x86_64-linux.tar.gz
+$ sha256sum -c jii-v0.1.1-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
+$ install -Dm755 jii-v0.1.1-beta-x86_64-linux/jii ~/.local/bin/jii
 ```
 
 **Build from source** (needs a recent Rust toolchain):
