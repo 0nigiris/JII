@@ -35,6 +35,26 @@ Landed and pushed to `master` after the clean-VM UX waves:
 - **Relicensed MIT → GPL-3.0-or-later** (LICENSE = canonical GPLv3; Cargo/README/packaging updated).
 - **README** fully rewritten into a detailed, badged landing page.
 
+**Post-testing UX wave (in progress, 4 slices landed — each an ADR, all green + pushed):**
+- **#1 doctor analyses system state (ADR-0043):** `Engine::installed_index` gathers installed once;
+  doctor skips already-done suggestions (no more offering an installed VLC). Catalog `check` field
+  for non-obvious identities (Flatpak app-id, repo release pkg).
+- **#2 search speed (ADR-0044):** per-source failure **circuit breaker** in the disk cache — a
+  timing-out source (COPR) is skipped for `network.failure_cooldown_secs` (120). First search ~5s →
+  repeats ~1.1s.
+- **#6 info ≠ install (ADR-0045):** `Provider::reference`/`Engine::reference` + `Reference` model;
+  `jii info lodash` shows a real card + a clear library note (shared `library_note` also fixes the
+  install message, #5). Philosophy unchanged: programs, not libraries.
+- **#4 bare manager name → bootstrap (ADR-0046):** `jii npm` installs/notes the npm *manager*, not a
+  package called npm; `Engine::ecosystem_ids` (pure) + `install_inner` `route_managers` flag (loop
+  guard); `jii npm:npm` still gets the registry package.
+
+**Next in this wave:** #3 nix `list_installed` (tolerant `nix profile list --json` parse; needs a
+real Nix host to verify); #9 an ADR stating the "JII cooperates with the system" principle; #10
+`docs/RELEASE_TESTPLAN.md` (per-release manual checklist); then the large **#7 i18n** (`locales/*.toml`
++ `t!` + `--lang`/`$LC_MESSAGES`, done last to migrate settled strings once) and **#8 forge
+abstraction** (`Forge` trait so GitHub isn't hardcoded; Codeberg/Gitea/GitLab as impls).
+
 **Still open (needs owner's hosts):** install/run the published `.rpm`/`.deb` on a live non-Fedora
 box and on real aarch64; true end-to-end self-update fires only when the *next* tag is cut.
 
