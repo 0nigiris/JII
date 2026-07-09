@@ -162,6 +162,16 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// An **informational** card for `jii info` resolved from a name, even when the package
+    /// is not an installable program (ADR-0045) — e.g. an npm/cargo library. This is what
+    /// separates `info` (show) from `search`/`install` (act): a source may describe something
+    /// it would never offer to install. Default `None`. Off the hot path — the engine calls
+    /// it only for `jii info`, and only when the normal (installable) resolve found nothing.
+    async fn reference(&self, query: &Query) -> Option<crate::model::Reference> {
+        let _ = query;
+        None
+    }
+
     /// If this source is an installable *ecosystem* manager (npm, cargo, brew, flatpak…),
     /// describe it for `jii providers` and for bootstrapping a missing manager (#7/#8).
     /// Default `None`: base system repos (dnf/copr/apt/pacman/zypper) and non-manager

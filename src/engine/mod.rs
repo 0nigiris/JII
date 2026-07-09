@@ -725,6 +725,23 @@ impl Engine {
         }
     }
 
+    /// An informational card for `jii info` resolved from a **name**, for the case where the
+    /// normal (installable) resolve found nothing — e.g. an npm/cargo library (ADR-0045).
+    /// Asks each **available** source and returns the first card offered, so `info` can show
+    /// what a package *is* without the install path's "nothing to install". `None` if no
+    /// source recognises the name.
+    pub async fn reference(&self, name: &str) -> Option<crate::model::Reference> {
+        let query = Query::name(name);
+        for provider in self.providers.iter() {
+            if provider.is_available().await
+                && let Some(card) = provider.reference(&query).await
+            {
+                return Some(card);
+            }
+        }
+        None
+    }
+
     /// List the enabled providers with their trust and live availability (backs
     /// `jii sources`). Availability only — no network health probe (that is `doctor`).
     pub async fn source_catalog(&self) -> Vec<SourceEntry> {

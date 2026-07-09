@@ -1684,3 +1684,26 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - Verified on Fedora: first search 5.07 s (pays COPR once, marks it), every subsequent search **~1.1 s** (~4.5× faster) until the cooldown lapses.
 - A source that's slow/down contributes nothing for up to `failure_cooldown_secs` even if it recovers early — acceptable; stale cache still serves its last-known results, and `jii sources`/`doctor` probe it directly.
 - New `network.failure_cooldown_secs` config; `Cache` gains `recently_failed`/`mark_failure`/`clear_failure` (unit-tested); `search_one` consults and updates the breaker. The first search of a session still pays one timeout — the future early-return work (above) would address that.
+
+---
+
+## ADR-0045 — `info` is a *show*, separate from `install`/`search` (informational reference)
+
+**Status:** Accepted (slice 3 of the post-testing UX wave).
+
+**Context:** `jii info lodash` answered with install phrasing — effectively "nothing to install" — because `info` reused the install-oriented resolve (which filters to installable *programs*) and, on a miss, the install-path `explain_miss`. But `info` should *show information*, `search` should *search*, `install` should *install* — the commands must be logically separated (#6), and a library like lodash is real and describable even though JII won't install it as a program (#5).
+
+**Decision:**
+- New optional `Provider::reference(query) -> Option<Reference>` (ADR-0022 growth, default `None`): an **informational** card resolved from a name, **independent of installability**. npm implements it from the registry manifest (description, homepage, cleaned repository URL, version) plus a `note` when the package is a library.
+- `Engine::reference(name)` asks each available source and returns the first card; `jii info` calls it **only when the installable resolve found nothing**, then renders it with `render_reference` — name, description, links, and the clarifying note — with **no install phrasing**. A true unknown now reads "No information found for '{name}'", not "nothing to install".
+- The library explanation is one shared, actionable message (`library_note`): "`lodash` is an npm library — a code dependency, not a runnable program … run `npm install lodash`." Used by both the install-path `explain_miss` (#5) and the info `reference` note, so the wording is consistent.
+- The "JII installs *programs*, not libraries" philosophy is unchanged (owner-confirmed) — only the messaging and the info/install separation change.
+
+**Alternatives considered:**
+- **Make `jii lodash` install libraries (a `--lib` mode).** Rejected by the owner — keep programs-only; fix the *experience* (clear message + real `info`).
+- **Reuse `describe(candidate)` for info.** Rejected: it needs a `PackageCandidate`, which a library never produces (search filters it out); `reference` resolves from the bare name.
+- **Only reword `explain_miss`.** Rejected as insufficient: `info` would still be install-framed and show nothing about the package; the point is `info` shows *what it is*.
+
+**Consequences:**
+- Verified: `jii info lodash` shows description/version/homepage/repository + note; `jii lodash` gives an actionable library message. `info` no longer borrows install/search logic.
+- New `Reference` model + `Provider::reference` + `Engine::reference` + `render_reference`; npm gained `homepage`/`repository` manifest fields and `repository_url` (unit-tested). Other sources default to `None` (cargo is the obvious next `reference` implementer). 204 tests.

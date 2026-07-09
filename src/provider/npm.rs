@@ -18,7 +18,8 @@ use serde_json::json;
 use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, Reference,
+    TrustLevel,
 };
 
 const ID: &str = "npm";
@@ -74,14 +75,36 @@ impl Provider for Npm {
 
     async fn explain_miss(&self, query: &Query) -> Option<String> {
         // The package exists in the registry but `search` offered nothing → its manifest
-        // declares no `bin`, i.e. it's a library, not a CLI program (#9).
+        // declares no `bin`, i.e. it's a library, not a CLI program (#5/#9).
         let name = query.raw.trim();
         let url = format!("{REGISTRY}/{name}/latest");
         let manifest = get_json_opt::<Manifest>(ID, &url).await.ok()??;
-        candidate(&manifest).is_none().then(|| {
-            format!(
-                "'{name}' is an npm library — its package declares no command-line program, so there's nothing to install."
-            )
+        candidate(&manifest).is_none().then(|| library_note(name))
+    }
+
+    async fn reference(&self, query: &Query) -> Option<Reference> {
+        // `jii info` on an npm name: return a card even for a library (ADR-0045), so
+        // `jii info lodash` shows what it is instead of an install-flavoured miss.
+        let name = query.raw.trim();
+        let url = format!("{REGISTRY}/{name}/latest");
+        let manifest = get_json_opt::<Manifest>(ID, &url).await.ok()??;
+        let is_library = !has_bin(manifest.bin.as_ref());
+        Some(Reference {
+            name: manifest.name.clone(),
+            source_id: ID.to_string(),
+            info: PackageInfo {
+                description: manifest.description.clone().filter(|d| !d.is_empty()),
+                homepage: manifest.homepage.clone().filter(|h| !h.is_empty()),
+                repository: manifest.repository_url(),
+                license: None,
+                author: None,
+            },
+            note: is_library.then(|| library_note(name)),
+            version: manifest
+                .version
+                .clone()
+                .filter(|v| !v.is_empty())
+                .map(PkgVersion::new),
         })
     }
 
@@ -177,6 +200,36 @@ struct Manifest {
     /// `bin` may be an object `{ "cmd": "path" }` or a bare string; absent for a library.
     #[serde(default)]
     bin: Option<serde_json::Value>,
+    /// Project homepage, when declared.
+    #[serde(default)]
+    homepage: Option<String>,
+    /// `repository` may be a `{ "type", "url" }` object or a bare string.
+    #[serde(default)]
+    repository: Option<serde_json::Value>,
+}
+
+impl Manifest {
+    /// A clean repository URL from the `repository` field (object `url` or bare string),
+    /// stripping npm's `git+` prefix and trailing `.git`.
+    fn repository_url(&self) -> Option<String> {
+        let raw = match self.repository.as_ref()? {
+            serde_json::Value::String(s) => s.clone(),
+            serde_json::Value::Object(map) => map.get("url")?.as_str()?.to_string(),
+            _ => return None,
+        };
+        let cleaned = raw.trim_start_matches("git+").trim_end_matches(".git");
+        (!cleaned.is_empty()).then(|| cleaned.to_string())
+    }
+}
+
+/// The shared "this is a library, not a program" explanation (#5): used by both the
+/// install-path `explain_miss` and the `info`-path `reference` note, so the wording stays
+/// consistent and actionable.
+fn library_note(name: &str) -> String {
+    format!(
+        "'{name}' is an npm library — a code dependency, not a runnable program. JII installs \
+         programs, so there's nothing to install; to use it in a project run `npm install {name}`."
+    )
 }
 
 /// `npm ls -g --json` document (only the top-level dependency map).
@@ -342,6 +395,28 @@ mod tests {
             }
             other => panic!("expected run, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn repository_url_cleans_object_and_string_forms() {
+        // Object form with npm's git+ prefix and .git suffix.
+        let m = manifest(
+            r#"{"name":"x","repository":{"type":"git","url":"git+https://github.com/a/b.git"}}"#,
+        );
+        assert_eq!(m.repository_url().as_deref(), Some("https://github.com/a/b"));
+        // Bare-string form.
+        let m = manifest(r#"{"name":"x","repository":"https://gitlab.com/a/b"}"#);
+        assert_eq!(m.repository_url().as_deref(), Some("https://gitlab.com/a/b"));
+        // Absent → None.
+        let m = manifest(r#"{"name":"x"}"#);
+        assert_eq!(m.repository_url(), None);
+    }
+
+    #[test]
+    fn library_note_is_actionable() {
+        let note = library_note("lodash");
+        assert!(note.contains("library"));
+        assert!(note.contains("npm install lodash")); // tells the user what to actually do
     }
 
     #[test]

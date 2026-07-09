@@ -269,6 +269,26 @@ impl PackageInfo {
     }
 }
 
+/// An **informational** card for `jii info` resolved from a name, independent of whether the
+/// package is an installable program (ADR-0045). This is how `info` (show) is separated from
+/// `install`/`search` (act): a source can describe something it wouldn't offer to install —
+/// e.g. an npm/cargo *library* — so `jii info lodash` shows what it is instead of an
+/// install-flavoured "nothing to install".
+#[derive(Debug, Serialize)]
+pub struct Reference {
+    /// The resolved package name (as the source spells it).
+    pub name: String,
+    /// The source that supplied this card (e.g. `npm`).
+    pub source_id: String,
+    /// The metadata card (description, homepage, …); may be sparse.
+    pub info: PackageInfo,
+    /// A one-line note about the package's nature, e.g. "npm library — a code dependency,
+    /// not a runnable program". Present when the source has something clarifying to say.
+    pub note: Option<String>,
+    /// The package's version, when the source knows it cheaply.
+    pub version: Option<PkgVersion>,
+}
+
 /// One action in a plan. Each variant has a single, clear responsibility; the plan
 /// executor dispatches to a focused handler per variant. Providers describe actions
 /// but never execute them.

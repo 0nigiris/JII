@@ -1218,10 +1218,13 @@ impl Cli {
         let pkg_source = spec.source.as_ref().or(self.global.source.as_ref());
         let ranked = self.ranked_for(&engine, name, pkg_source, renderer).await;
         if ranked.is_empty() {
-            renderer.error(&format!("'{name}' is not available from any enabled source."));
-            if let Some(msg) = engine.explain_miss(name).await {
-                renderer.info(&format!("  → {msg}"));
+            // Nothing installable — but `info` *shows*, it doesn't install (#6). Look for an
+            // informational card by name (ADR-0045): an npm/cargo library, for instance, is
+            // real and describable even though JII wouldn't install it as a program.
+            if let Some(card) = engine.reference(name).await {
+                return self.render_reference(&card, renderer);
             }
+            renderer.error(&format!("No information found for '{name}' in your enabled sources."));
             return Ok(());
         }
         if renderer.is_json() {
@@ -1275,6 +1278,41 @@ impl Cli {
         let highlights = engine.candidate_highlights(best);
         for reason in recommendation_reasons(best, highlights) {
             renderer.info(&format!("  ✓ {reason}"));
+        }
+        Ok(())
+    }
+
+    /// Render an informational `Reference` card (ADR-0045): `jii info` for a name that isn't
+    /// an installable program (e.g. an npm library). Shows what it is — description, links,
+    /// and a clarifying note — with **no install phrasing**, keeping `info` purely a "show".
+    fn render_reference(
+        &self,
+        card: &crate::model::Reference,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        if renderer.is_json() {
+            renderer.json_value(&serde_json::json!(card));
+            return Ok(());
+        }
+        renderer.info(&card.name);
+        if let Some(desc) = &card.info.description {
+            renderer.info(desc);
+        }
+        renderer.info("");
+        let row = |label: &str, value: &str| format!("  {label:<11}{value}");
+        renderer.info(&row("Source", &card.source_id));
+        if let Some(v) = &card.version {
+            renderer.info(&row("Version", &v.to_string()));
+        }
+        if let Some(h) = &card.info.homepage {
+            renderer.info(&row("Homepage", h));
+        }
+        if let Some(r) = &card.info.repository {
+            renderer.info(&row("Repository", r));
+        }
+        if let Some(note) = &card.note {
+            renderer.info("");
+            renderer.info(&format!("ℹ {note}"));
         }
         Ok(())
     }
