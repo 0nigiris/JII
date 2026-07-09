@@ -160,6 +160,7 @@ script_only = "{label} isn't in your distro's repositories — it installs via i
 script_wont_run = "JII won't run an installer script for you. To install it, run:"
 
 [prompt]
+menu_hint = "↑/↓ move · Enter select · click to pick · Esc cancel"
 install_one = "Install?"
 install_all = "Install all?"
 less_trusted = "This install includes a less-trusted source ({level}) — explicit confirmation required."
