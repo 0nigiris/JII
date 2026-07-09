@@ -9,6 +9,7 @@ use clap::{Parser, Subcommand};
 use crate::config::{ColorChoice, Config, Profile};
 use crate::engine::Engine;
 use crate::model::{InstalledRecord, PackageCandidate, PackageSpec, Query};
+use crate::provider::Bootstrap;
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
@@ -119,8 +120,24 @@ pub enum Commands {
     History,
     /// List installation sources (providers) and whether each is usable here.
     Sources,
+    /// Manage the ecosystem managers themselves (npm, cargo, brew, Flatpak…): show what
+    /// is installed and bootstrap a missing one.
+    Providers {
+        #[command(subcommand)]
+        action: Option<ProvidersAction>,
+    },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
+}
+
+/// Actions under `jii providers` (bare `jii providers` lists them).
+#[derive(Debug, Subcommand)]
+pub enum ProvidersAction {
+    /// Bootstrap a missing ecosystem manager, e.g. `jii providers add npm`.
+    Add {
+        /// The ecosystem id (npm, cargo, go, pipx, flatpak, snap, brew, nix).
+        name: String,
+    },
 }
 
 impl Cli {
@@ -177,6 +194,12 @@ impl Cli {
             Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
             Some(Commands::Sources) => self.sources(config, &renderer).await,
+            Some(Commands::Providers { action }) => match action {
+                None => self.providers(config, &renderer).await,
+                Some(ProvidersAction::Add { name }) => {
+                    self.providers_add(name, config, &renderer).await
+                }
+            },
             Some(Commands::Setup) => self.setup(config, &renderer, false).await,
         }
     }
@@ -1057,6 +1080,102 @@ impl Cli {
             }
         }
         Ok(())
+    }
+
+    /// `jii providers` — the ecosystem *marketplace* view (#7): which language/app managers
+    /// (npm, cargo, brew, Flatpak…) are installed on this host, and how to bootstrap the
+    /// missing ones. Read-only; base system repos (dnf/apt) and non-managers (github) don't
+    /// appear — you don't install those, they *are* the system.
+    async fn providers(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        let engine = Engine::new(config)?;
+        let catalog = engine.ecosystem_catalog().await;
+
+        if renderer.is_json() {
+            let rows: Vec<_> = catalog
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "id": e.id, "label": e.label, "binary": e.binary,
+                        "trust": e.trust.label(), "installed": e.installed,
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        let (have, missing): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.installed);
+        if !have.is_empty() {
+            renderer.info("Installed ecosystems:");
+            for e in &have {
+                renderer.info(&format!("  ✓ {}", e.label));
+            }
+        }
+        if !missing.is_empty() {
+            if !have.is_empty() {
+                renderer.info("");
+            }
+            renderer.info("Available to install:");
+            for e in &missing {
+                renderer.info(&format!("  ○ {} — jii providers add {}", e.label, e.id));
+            }
+        }
+        Ok(())
+    }
+
+    /// `jii providers add <name>` — bootstrap a missing ecosystem manager (#8). Two honest
+    /// paths, no magic: a manager that lives in the distro repos (npm, cargo, go, pipx,
+    /// flatpak, snap) is resolved cross-distro (`nodejs-npm` on Fedora, `npm` elsewhere) and
+    /// handed to the **normal install path** — so it gets the same preview → confirm →
+    /// execute → record flow as any package (the doctor `--fix` pattern). A manager that
+    /// bootstraps via its own upstream script (Homebrew, Nix) is **shown, never run** — JII
+    /// does not pipe an installer into your shell (ADR-0005/0006 trust boundary).
+    async fn providers_add(
+        &self,
+        name: &str,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let engine = Engine::new(config.clone())?;
+        let catalog = engine.ecosystem_catalog().await;
+
+        let Some(eco) = catalog.iter().find(|e| e.id == name) else {
+            renderer.error(&format!("Unknown ecosystem: {name}"));
+            let known: Vec<_> = catalog.iter().map(|e| e.id).collect();
+            renderer.info(&format!("Known ecosystems: {}", known.join(", ")));
+            return Ok(());
+        };
+
+        if eco.installed {
+            renderer.success(&format!("{} is already installed.", eco.label));
+            return Ok(());
+        }
+
+        let label = eco.label;
+        let bootstrap = eco.bootstrap;
+        match bootstrap {
+            Bootstrap::Packages(names) => {
+                renderer.info(&format!("Looking for a package that provides {label}…"));
+                match engine.first_available_package(names).await {
+                    Some(pkg) => self.install(&[pkg], config, renderer).await,
+                    None => {
+                        renderer.error(&format!(
+                            "Couldn't find a package for {label} in your active sources."
+                        ));
+                        renderer.info(&format!("Tried: {}", names.join(", ")));
+                        Ok(())
+                    }
+                }
+            }
+            Bootstrap::Script(cmd) => {
+                renderer.info(&format!(
+                    "{label} isn't in your distro's repositories — it installs via its own script."
+                ));
+                renderer.info("JII won't run an installer script for you. To install it, run:");
+                renderer.info(&format!("  {cmd}"));
+                Ok(())
+            }
+        }
     }
 
     /// The first-run wizard (and `jii setup`). Warm, short, jargon-free — written for someone

@@ -17,7 +17,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use super::{Provider, command_plan, run_capture_lax, which};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, run_capture_lax, which};
 use crate::error::Result;
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
@@ -52,6 +52,15 @@ impl Provider for Nix {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Nix",
+            binary: BIN,
+            // Nix bootstraps via its own multi-user installer, not a distro package.
+            bootstrap: Bootstrap::Script("sh <(curl -L https://nixos.org/nix/install) --daemon"),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

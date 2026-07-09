@@ -138,6 +138,42 @@ pub trait Provider: Send + Sync {
         let _ = candidate;
         Vec::new()
     }
+
+    /// If this source is an installable *ecosystem* manager (npm, cargo, brew, flatpak…),
+    /// describe it for `jii providers` and for bootstrapping a missing manager (#7/#8).
+    /// Default `None`: base system repos (dnf/copr/apt/pacman/zypper) and non-manager
+    /// sources (github) are things JII *drives*, never *installs*. Pure metadata, no I/O —
+    /// the same optional-method growth as `highlights`/`plan_update_all` (ADR-0022); the
+    /// engine aggregates it and never branches on the source id.
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        None
+    }
+}
+
+/// How JII bootstraps a missing ecosystem manager (see [`Ecosystem`]). Holds only
+/// `'static` metadata, so it is cheap to copy out of a catalog row.
+#[derive(Debug, Clone, Copy)]
+pub enum Bootstrap {
+    /// Install one of these packages through JII's own install path — the **first that
+    /// resolves** on this host wins (npm is `nodejs-npm` on Fedora, `npm` on Debian/Arch;
+    /// go is `golang` on Fedora, `golang-go` on Debian). Cross-distro is handled by JII's
+    /// own search, not a distro branch here.
+    Packages(&'static [&'static str]),
+    /// Bootstrapped by an upstream installer script JII will **show, never run** — piping
+    /// a script into a shell is exactly the trust boundary JII refuses to cross (ADR-0005/0006).
+    Script(&'static str),
+}
+
+/// An installable *ecosystem* manager (npm, cargo, brew, flatpak…), surfaced by
+/// `jii providers`. Returned by [`Provider::ecosystem`]; base system repos and
+/// non-managers return `None`. Pure metadata — no I/O, no per-host branching.
+pub struct Ecosystem {
+    /// Human label, e.g. "Node.js (npm)".
+    pub label: &'static str,
+    /// The command that proves the manager is present.
+    pub binary: &'static str,
+    /// How JII bootstraps it when it is missing.
+    pub bootstrap: Bootstrap,
 }
 
 /// A raw health probe of a source (mapped to a `Health` category by the engine).
@@ -395,5 +431,38 @@ mod tests {
         assert_eq!(recs.len(), 1);
         assert_eq!(recs[0].name, "valid");
         assert_eq!(recs[0].source_id, "flatpak");
+    }
+
+    #[test]
+    fn ecosystems_declare_bootstrap_and_base_repos_do_not() {
+        // Base system repos are the system, not something JII installs → no ecosystem.
+        assert!(dnf::Dnf::new().ecosystem().is_none());
+        assert!(
+            github::Github::new("GITHUB_TOKEN".into(), "x86_64")
+                .ecosystem()
+                .is_none()
+        );
+
+        // Every ecosystem manager declares a non-empty binary and a usable bootstrap.
+        let ecos: Vec<(&str, Option<Ecosystem>)> = vec![
+            ("npm", npm::Npm::new().ecosystem()),
+            ("cargo", cargo::Cargo::new().ecosystem()),
+            ("pipx", pipx::Pipx::new().ecosystem()),
+            ("go", go::Go::new().ecosystem()),
+            ("flatpak", flatpak::Flatpak::new().ecosystem()),
+            ("snap", snap::Snap::new().ecosystem()),
+            ("brew", homebrew::Homebrew::new().ecosystem()),
+            ("nix", nix::Nix::new().ecosystem()),
+        ];
+        for (id, eco) in ecos {
+            let eco = eco.unwrap_or_else(|| panic!("{id} should declare an ecosystem"));
+            assert!(!eco.binary.is_empty(), "{id} has an empty binary");
+            match eco.bootstrap {
+                Bootstrap::Packages(names) => {
+                    assert!(!names.is_empty(), "{id} declares no bootstrap packages")
+                }
+                Bootstrap::Script(cmd) => assert!(!cmd.is_empty(), "{id} declares an empty script"),
+            }
+        }
     }
 }

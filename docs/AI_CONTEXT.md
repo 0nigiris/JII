@@ -8,7 +8,7 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-06_
+_Last updated: 2026-07-09_
 
 ---
 
@@ -338,9 +338,22 @@ apply-by-id path are removed** — applying is now just running the shown comman
 runtime (uniqueness invariant moved to `title`; slug kept in the TOML as an authoring anchor).
 Catalog data subsystem (ADR-0033) untouched; only its presentation moved. 183 tests, clippy clean,
 live-verified. **② doctor is now complete.**
-**Next: ③ providers/marketplace** — manage the ecosystems themselves (install/remove/update
-npm/cargo/brew/snap/nix + bootstrap a missing manager, #7 + #8). Then ④ info app-card, and the
-list+audit merge.
+
+**③ providers/marketplace landed (ADR-0036).** New read-only **`jii providers`** lists the installable
+*ecosystem* managers (npm, cargo, brew, Flatpak, snap, pipx, go, nix) with their presence on this host
+(installed vs available); base repos (dnf/apt) and non-managers (github) are absent — you don't install
+those. Ecosystem-ness is **provider metadata**: an optional `Provider::ecosystem() -> Option<Ecosystem>`
+(default `None`, ADR-0022 growth) declaring a `label`, `binary`, and a `Bootstrap`. **`jii providers add
+<name>`** bootstraps a missing manager: `Bootstrap::Packages(&[…])` is an **ordered cross-distro
+candidate list** (`nodejs-npm`→`npm`; `golang`→`go`→`golang-go`) resolved by `Engine::first_available_package`
+(first that searches non-empty wins — JII's own search does the per-distro work, no source branch) then
+handed to the **normal install path** (preview→confirm→execute→record, the `doctor --fix` reuse pattern);
+`Bootstrap::Script(cmd)` (brew, nix) is **shown, never run** (trust boundary, ADR-0005/0006). Already-
+installed / unknown-ecosystem answer clearly. 184 tests, clippy clean; live-verified on Fedora (providers
+list + JSON; add already-installed/unknown/script/packages-dry-run → pipx resolved to dnf `pipx` with full
+preview). **Debt:** the `Packages` candidate lists are hand-curated, unverified on clean non-Fedora VMs (T7).
+**Next: ④ info app-card** (description/GitHub/site/license/author — needs provider-supplied metadata),
+then the list+audit merge (`jii list` / `jii list --audit`).
 
 **Superseded — BETA-READINESS FEATURE FREEZE (2026-07-06).** Was: freeze features, drive to Beta
 (CI ✓ already present; release workflow + install docs landed — see [BETA_ROADMAP.md](BETA_ROADMAP.md)).
@@ -526,7 +539,8 @@ None.
 
 ## Test status
 
-`cargo test` — **177 passing, 0 failing**. U7 coverage: dnf/flatpak `plan_update_all` (whole-system
+`cargo test` — **184 passing, 0 failing**. ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`
+(every ecosystem manager declares a non-empty binary + a usable `Bootstrap`; dnf/github declare none). U7 coverage: dnf/flatpak `plan_update_all` (whole-system
 upgrade, root vs user). U6 coverage: `error::remedy` (unknown-source lists the
 known ones, Io branches on `ErrorKind`, opaque errors invent nothing), `cli::system_checks` (PATH +
 token pass/fail + advice + env-name), `recommend` (embedded catalog parses, ids unique, empty-distros

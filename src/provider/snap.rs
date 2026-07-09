@@ -14,7 +14,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, command_plan, http_client, nonempty_lines, run_capture, which};
+use super::{
+    Bootstrap, Ecosystem, Provider, command_plan, http_client, nonempty_lines, run_capture, which,
+};
 use crate::error::{JiiError, Result};
 use crate::model::{
     InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -52,6 +54,14 @@ impl Provider for Snap {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Snap",
+            binary: BIN,
+            bootstrap: Bootstrap::Packages(&["snapd"]),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

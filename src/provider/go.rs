@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
 
-use super::{Provider, command_plan, get_json_opt, run_capture};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, run_capture};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -60,6 +60,14 @@ impl Provider for Go {
     async fn is_available(&self) -> bool {
         // `go` uses `go version` (not `--version`), so the shared `which` doesn't fit.
         run_capture(&[BIN, "version"]).await.is_ok()
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Go",
+            binary: BIN,
+            bootstrap: Bootstrap::Packages(&["golang", "go", "golang-go"]),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

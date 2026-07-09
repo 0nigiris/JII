@@ -11,7 +11,7 @@
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::{Provider, nonempty_lines, parse_installed_records, run_capture, which};
+use super::{Bootstrap, Ecosystem, Provider, nonempty_lines, parse_installed_records, run_capture, which};
 use crate::error::Result;
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -55,6 +55,14 @@ impl Provider for Flatpak {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Flatpak",
+            binary: BIN,
+            bootstrap: Bootstrap::Packages(&["flatpak"]),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

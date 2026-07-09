@@ -81,6 +81,18 @@ pub struct SourceEntry {
     pub available: bool,
 }
 
+/// One row of `jii providers`: an installable *ecosystem* manager (npm, cargo, brew,
+/// flatpak…), whether it is present on this host, and how to bootstrap it if not.
+/// Built from each provider's [`ecosystem`](crate::provider::Provider::ecosystem) metadata.
+pub struct EcosystemStatus {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub binary: &'static str,
+    pub trust: TrustLevel,
+    pub installed: bool,
+    pub bootstrap: crate::provider::Bootstrap,
+}
+
 /// Diagnostic for one source, produced by `diagnose` (backs `jii doctor`).
 pub struct SourceHealth {
     pub id: String,
@@ -633,6 +645,44 @@ impl Engine {
             });
         }
         out
+    }
+
+    /// List the installable *ecosystem* managers (npm, cargo, brew, flatpak…) with their
+    /// presence on this host (backs `jii providers`). Only providers that declare an
+    /// [`ecosystem`](crate::provider::Provider::ecosystem) appear — base system repos
+    /// (dnf/apt) and non-managers (github) are omitted. `installed` is `is_available()`
+    /// (the manager's binary is present); no network probe.
+    pub async fn ecosystem_catalog(&self) -> Vec<EcosystemStatus> {
+        let mut out = Vec::new();
+        for provider in self.providers.iter() {
+            if let Some(eco) = provider.ecosystem() {
+                out.push(EcosystemStatus {
+                    id: provider.id(),
+                    label: eco.label,
+                    binary: eco.binary,
+                    trust: provider.trust(),
+                    installed: provider.is_available().await,
+                    bootstrap: eco.bootstrap,
+                });
+            }
+        }
+        out
+    }
+
+    /// Return the first of `names` that resolves to ≥1 candidate on this host, searched in
+    /// order — the cross-distro bootstrap resolver for a missing ecosystem manager (npm is
+    /// `nodejs-npm` on Fedora, `npm` on Debian/Arch). `None` if none resolve, so the caller
+    /// can fall back to an honest "couldn't find it" instead of guessing. JII's own search
+    /// does the per-distro work; no distro branch here (ADR-0004/0029).
+    pub async fn first_available_package(&self, names: &[&str]) -> Option<String> {
+        for name in names {
+            let query = crate::model::Query::name(*name);
+            let ranked = self.rank(self.search(&query).await.candidates);
+            if !ranked.is_empty() {
+                return Some((*name).to_string());
+            }
+        }
+        None
     }
 
     /// Probe each source's live health (backs `jii doctor`). Each provider reports

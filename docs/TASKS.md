@@ -369,8 +369,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   standalone `jii recommend` + apply-by-id **removed** — apply by running the shown
                   command. `Recommendation.id` dropped from runtime (uniqueness moved to `title`).
                   **② doctor complete.** 183 tests.
-      - [ ] **③ providers/marketplace** — manage ecosystems (install/remove/update npm/cargo/brew/
-            snap/nix) + bootstrap a missing manager (#7 + #8).
+      - [x] **③ providers/marketplace** (ADR-0036). `jii providers` lists the ecosystem managers
+            (npm/cargo/brew/flatpak/snap/pipx/go/nix) with installed-vs-available status; `jii providers
+            add <name>` bootstraps a missing one. Ecosystem-ness is optional `Provider::ecosystem`
+            metadata (ADR-0022 growth); `Bootstrap::Packages(&[…])` is an ordered cross-distro candidate
+            list resolved by `Engine::first_available_package` → the normal install path; `Bootstrap::Script`
+            (brew/nix) is shown, never run (trust boundary). 184 tests, live-verified on Fedora.
+            **Note:** install/remove/update of a manager beyond `add` (e.g. `providers remove`) deferred
+            as a follow-up to keep the slice small.
       - [ ] **④ info app-card** — split search/info; info shows description/GitHub/site/license/author
             (#4; needs provider-supplied metadata).
       - [ ] **list + audit merge** — `jii list`, security via `jii list --audit` (#5).

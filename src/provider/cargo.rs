@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, command_plan, get_json_opt, run_capture, which};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, run_capture, which};
 use crate::error::Result;
 use crate::model::{
     InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -60,6 +60,14 @@ impl Provider for Cargo {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Rust (cargo)",
+            binary: BIN,
+            bootstrap: Bootstrap::Packages(&["cargo", "rust"]),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

@@ -86,6 +86,8 @@ jii update [<name>] named: update that package; bare: update the whole system
 jii search <query>  show ranked candidates without installing
 jii info <name>     sources, versions, trust, and the recommendation + why
 jii sources         list providers and whether each is usable here
+jii providers       show ecosystem managers (npm, cargo, brew, Flatpak…) + what's installed
+jii providers add   bootstrap a missing manager (e.g. `jii providers add npm`)
 jii how <name>      explain how JII would install (or did install) it
 jii doctor          source health + system checks + curated suggestions
 jii doctor --fix    offer to fix what it can (install git/curl, add Flathub)

@@ -1453,3 +1453,30 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 - The command surface shrinks by one (`recommend` gone); help and docs updated (README, ARCHITECTURE command table).
 - The catalog subsystem (ADR-0033) is untouched as *data*; only its presentation moved. `manual` entries are still shown, never run.
 - **Follow-ups (unchanged from ADR-0033):** interactive multi-pick, skipping already-satisfied entries, a real repo-enable capability. **Debt:** the Fedora catalog entries are still unverified on a clean VM (T7).
+
+---
+
+## ADR-0036 — `jii providers`: the ecosystem *marketplace*; bootstrap a missing manager via optional `Provider::ecosystem`
+
+**Status:** Accepted 2026-07-09. Lands in UX-wave 2 (owner-set, clean-VM feedback) as item ③ of the agreed order ①→④. Pure ADR-0022 optional-method growth — no change to the `Provider` trait's required surface, the model, or the executor.
+
+**Context:** Two VM-feedback points (#7, #8). JII installs *packages* through managers (npm, cargo, brew, Flatpak…), but never let you see or manage **the managers themselves**: which ecosystems exist on this host, and — when one is missing — how to get it. #8 was concrete: `jii <some-npm-tool>` on a box without npm found nothing, with no hint that the fix is "install Node.js/npm first". The managers are exactly the kind of thing JII should install *for* you.
+
+**Decision:**
+- **A new read-only surface `jii providers`** lists the installable *ecosystem* managers with their presence on this host (installed vs available-to-install) — base system repos (dnf/copr/apt/pacman/zypper) and non-managers (github) are deliberately absent: you don't install those, they *are* the system.
+- **Ecosystem-ness is provider metadata, not a core list.** A new **optional** `Provider::ecosystem() -> Option<Ecosystem>` (default `None`) lets a manager declare a human `label`, its `binary`, and a `Bootstrap`. The engine's `ecosystem_catalog()` aggregates whoever declares one and never branches on the source id (ADR-0004). This is the same optional-method growth pattern as `highlights`/`plan_update_all` (ADR-0022) — adding an ecosystem is a per-provider edit, not a core change.
+- **`Bootstrap` has exactly two honest shapes:**
+  - `Bootstrap::Packages(&[names])` — the manager lives in a distro repo (npm, cargo, go, pipx, flatpak, snap). The names are an **ordered cross-distro candidate list** (npm is `nodejs-npm` on Fedora, `npm` on Debian/Arch; go is `golang`/`golang-go`/`go`). `Engine::first_available_package` searches them in order and returns the first that resolves — JII's own search does the per-distro work, **no distro branch** (ADR-0004/0029).
+  - `Bootstrap::Script(cmd)` — the manager bootstraps via its own upstream installer (Homebrew, Nix). JII **shows the command, never runs it**: piping an installer script into a shell is precisely the trust boundary JII refuses to cross (ADR-0005/0006).
+- **`jii providers add <name>`** bootstraps a missing manager. For `Packages`, the resolved package is handed to the **normal install path** (`self.install`) — so bootstrapping a manager gets the same preview → confirm → execute → record flow as any package (the `doctor --fix` reuse pattern, ADR-0035). For `Script`, the command is shown with an explicit "JII won't run this for you". Already-installed and unknown-ecosystem cases answer clearly.
+
+**Alternatives considered:**
+- **Hardcode the ecosystem list + per-distro package names in the CLI.** Rejected: that is exactly the source-branching the architecture forbids, and it would rot per distro. Metadata on the provider + JII's own search keeps it declarative.
+- **Auto-run the Homebrew/Nix installer scripts.** Rejected: `curl … | sh` is the canonical untrusted action; JII shows it and stops (ADR-0005/0006).
+- **Fold this into `doctor`.** Rejected: `doctor` diagnoses *JII's own* health and offers small fixes (git/curl/Flathub); managing the whole ecosystem marketplace is a distinct, browsable surface. (Flatpak/Snap appear in both — `doctor` cares about the Flathub *remote*, `providers` about the manager's presence.)
+- **A generic `jii install <manager>` special-case.** Rejected: install operates on packages; a manager isn't a package in the ledger sense, and `providers` gives the discoverable listing `install` can't.
+
+**Consequences:**
+- Adding a future ecosystem = implement `ecosystem()` on its provider; the listing and bootstrap come for free. The trait's required surface is unchanged.
+- `Bootstrap::Packages` correctness depends on the candidate name lists; they are hand-curated and **unverified on clean non-Fedora VMs** (T7 debt, same class as the recommend catalog). A wrong/missing name degrades gracefully to an honest "couldn't find a package for X".
+- **Follow-ups:** `jii providers remove <name>` (uninstall a manager) and richer per-ecosystem detail (version, count of packages JII installed through it) are natural next slices, deferred to keep this one small.

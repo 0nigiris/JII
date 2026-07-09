@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Provider, command_plan, get_json_opt, which};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
     InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -53,6 +53,14 @@ impl Provider for Npm {
 
     async fn is_available(&self) -> bool {
         which(BIN).await
+    }
+
+    fn ecosystem(&self) -> Option<Ecosystem> {
+        Some(Ecosystem {
+            label: "Node.js (npm)",
+            binary: BIN,
+            bootstrap: Bootstrap::Packages(&["nodejs-npm", "npm"]),
+        })
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
