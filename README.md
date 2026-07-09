@@ -246,6 +246,7 @@ jii uninstall        remove JII itself (same as jii remove jii)
 | `--json` | Emit machine-readable JSON |
 | `-v`, `--verbose` | Full detail: per-source failures, the complete plan (repeatable) |
 | `--no-color` | Disable ANSI colors |
+| `--lang <l>` | UI language (`en`, `ru`); overrides config + `$LC_MESSAGES` |
 
 ---
 
@@ -412,6 +413,7 @@ default_yes_max_trust = "community"   # …but only at/above this trust; below i
 
 [ui]
 mode = "friendly"                     # friendly (default) | advanced
+locale = "auto"                       # "auto" (detect from $LANG/$LC_MESSAGES) | "en" | "ru"
 
 [trust]
 allow_untrusted_auto = false          # auto mode never auto-installs untrusted (keep false)

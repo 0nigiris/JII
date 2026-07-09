@@ -1794,3 +1794,28 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 **Consequences:**
 - `provider/forge.rs` holds the trait + `ForgeProvider` + all shared logic and tests; `github.rs` holds only `GithubForge` + GitHub JSON/rate-limit + its own tests. 210 tests green, clippy clean; `jii jqlang/jq` verified unchanged.
 - Codeberg/Gitea/GitLab are now a well-scoped follow-up (implement `Forge` + wire the source id), not a rewrite. No live non-GitHub forge ships yet — the abstraction is in place and proven by GitHub riding on it.
+
+---
+
+## ADR-0050 — Localization: keys in code, strings in `locales/*.toml` (i18n framework)
+
+**Status:** Accepted (slice 1 of #7 — the framework; string migration follows incrementally).
+
+**Context:** All UI text (≈200 `renderer.*` calls + `#[error]` + provider reasons) was hardcoded in Rust. The owner wants multi-language support (English + Russian to start) with **no user-facing strings in the code** — code holds logic, text lives separately — and automatic language selection via `$LANG`/`$LC_MESSAGES` overridable by config/flag.
+
+**Decision:**
+- **Strings live in `locales/en.toml` / `locales/ru.toml`**, namespaced tables referenced by dotted key (`install.searching`, `error.unknown_source`). Files are **`include_str!`-embedded** at build time (single-binary constraint) and flattened to `dotted.key → value` at load.
+- **`t!` macro** is the only call-site API: `t!("common.aborted")` and `t!("install.not_found", names = list)` (named `{placeholder}` interpolation). It expands to `i18n::tr`/`tr_args` — no formatting logic leaks to callers.
+- **Language resolution (once, in `main` after config load):** `--lang` › config `[ui] locale` (unless `"auto"`) › `$LC_ALL`/`$LC_MESSAGES`/`$LANG` › English. Normalisation maps `ru_RU.UTF-8`→`ru`, `C`/`POSIX`/unshipped→`en`.
+- **English is the source of truth and the fallback.** Lookup is active-lang → English → the raw key; a missing/renamed key never panics, it degrades. A **parity test** asserts `en` and `ru` have identical key sets, so no translation is silently missing.
+- **Migration is incremental** (each area a commit) until zero hardcoded user-facing strings remain — the framework ships first (proven by migrating `common.aborted`, `install.searching`/`not_found`, `doctor.all_good` end-to-end), then CLI → errors → providers.
+
+**Alternatives considered:**
+- **A heavy i18n crate (`fluent`, `gettext`).** Rejected: `fluent` pulls a dependency tree and an ICU-ish syntax; JII's needs (two languages, `{name}` interpolation, TOML we already parse) are met by ~150 lines with no new heavy dep — matches the single-crate, minimal-surface constraints.
+- **Runtime-loaded locale files from disk.** Rejected for the default: the binary must be self-contained (`include_str!`); a disk override dir is a possible future addition.
+- **Enum of message variants instead of string keys.** Rejected: an exhaustive enum for ~200 messages is heavier to author/read than namespaced TOML, and gives no real safety over the parity test + fallback.
+
+**Consequences:**
+- New `src/i18n.rs` (+ `t!` macro, `#[macro_export]`), `locales/en.toml`/`ru.toml`, `--lang` global flag; `[ui] locale` config (already existed, default `"auto"`) now drives language.
+- Until migration completes, code has a **mix** of `t!` and literals — a temporary, tracked state (the end goal is zero literals). The parity test guards the locale files; a lint/scan for stray literals is a possible later guard.
+- 216 tests (incl. parity, normalise, interpolation, fallback). Verified: `--lang ru` and `LC_MESSAGES=ru_RU.UTF-8` both switch the migrated strings; English is the default.

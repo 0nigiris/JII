@@ -1,0 +1,18 @@
+# JII UI strings — English (source of truth + fallback).
+#
+# Keys are namespaced tables; the code references them by dotted path
+# (e.g. `install.searching`). Placeholders are `{name}` and are filled by the
+# call site via `t!("key", name = value)`. Every key here MUST also exist in
+# every other locale (a test enforces parity) — English is what other files
+# are translated from.
+
+[common]
+aborted = "Aborted."
+
+[install]
+searching = "Searching…"
+not_found = "Not found: {names}"
+not_found_via = "Not found via source '{source}': {names}"
+
+[doctor]
+all_good = "Nothing to set up — you're all good."

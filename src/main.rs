@@ -9,6 +9,7 @@ mod config;
 mod engine;
 mod error;
 mod exec;
+mod i18n;
 mod model;
 mod platform;
 mod privilege;
@@ -34,6 +35,9 @@ async fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+
+    // Resolve the UI language once, before anything renders: --lang › config › env › English.
+    crate::i18n::init(cli.global.lang.as_deref(), &config.ui.locale);
 
     match cli.run(config).await {
         Ok(()) => std::process::ExitCode::SUCCESS,

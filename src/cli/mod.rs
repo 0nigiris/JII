@@ -67,6 +67,11 @@ pub struct GlobalArgs {
     /// Disable colored output.
     #[arg(long, global = true)]
     pub no_color: bool,
+
+    /// UI language, e.g. `en` or `ru`. Overrides the config `[ui] locale` and
+    /// `$LC_MESSAGES`/`$LANG`.
+    #[arg(long, value_name = "LANG", global = true)]
+    pub lang: Option<String>,
 }
 
 /// Sub-commands. See `docs/ARCHITECTURE.md` §13.
@@ -300,7 +305,7 @@ impl Cli {
         let mut chose_interactively = false;
         // A single lively "Searching…" in Friendly; Advanced narrates each package below.
         if renderer.is_friendly() {
-            renderer.info("Searching…");
+            renderer.info(&crate::t!("install.searching"));
         }
         for spec in &specs {
             // A per-package `:source` (ADR-0031) pins the provider and, like `--source`,
@@ -415,7 +420,7 @@ impl Cli {
                         ranked.remove(index)
                     }
                     None => {
-                        renderer.info("Aborted.");
+                        renderer.info(&crate::t!("common.aborted"));
                         return Ok(());
                     }
                 }
@@ -431,11 +436,12 @@ impl Cli {
 
         // 2. Report misses. If nothing resolved, stop; otherwise offer to continue.
         if !not_found.is_empty() {
-            let via = match &self.global.source {
-                Some(source) => format!(" via source '{source}'"),
-                None => String::new(),
+            let names = not_found.join(", ");
+            let msg = match &self.global.source {
+                Some(source) => crate::t!("install.not_found_via", source = source, names = names),
+                None => crate::t!("install.not_found", names = names),
             };
-            renderer.error(&format!("Not found{via}: {}", not_found.join(", ")));
+            renderer.error(&msg);
             // #9: a name that "isn't found" is often a *library* (npm/cargo ship no CLI, so
             // they offer no candidate). Explain that instead of leaving the user puzzled.
             for name in &not_found {
@@ -450,7 +456,7 @@ impl Cli {
         if !not_found.is_empty() {
             let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
             if !prompt::confirm(renderer, "Continue installing the rest?", true, &flags) {
-                renderer.info("Aborted.");
+                renderer.info(&crate::t!("common.aborted"));
                 return Ok(());
             }
         }
@@ -499,7 +505,7 @@ impl Cli {
                 &flags,
             )
         {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
 
@@ -763,7 +769,7 @@ impl Cli {
                         Some(index) if index == owners.len() => records.extend(owners),
                         Some(index) => records.push(owners.swap_remove(index)),
                         None => {
-                            renderer.info("Aborted.");
+                            renderer.info(&crate::t!("common.aborted"));
                             return Ok(());
                         }
                     }
@@ -779,7 +785,7 @@ impl Cli {
         if !not_installed.is_empty() {
             let flags = self.prompt_flags(false);
             if !prompt::confirm(renderer, "Continue removing the rest?", true, &flags) {
-                renderer.info("Aborted.");
+                renderer.info(&crate::t!("common.aborted"));
                 return Ok(());
             }
         }
@@ -810,7 +816,7 @@ impl Cli {
             format!("Remove {} packages?", names.len())
         };
         if !prompt::confirm(renderer, &question, false, &flags) {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
 
@@ -956,7 +962,7 @@ impl Cli {
             format!("Update {} packages?", names.len())
         };
         if !prompt::confirm(renderer, &question, true, &flags) {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
 
@@ -1005,7 +1011,7 @@ impl Cli {
         }
         let flags = self.prompt_flags(engine.config().install.auto);
         if !prompt::confirm(renderer, "Update JII now?", true, &flags) {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
         engine.run_self_plan(&plan, renderer).await?;
@@ -1030,7 +1036,7 @@ impl Cli {
         }
         let flags = self.prompt_flags(engine.config().install.auto);
         if !prompt::confirm(renderer, "Remove JII?", false, &flags) {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
         engine.run_self_plan(&plan, renderer).await?;
@@ -1115,7 +1121,7 @@ impl Cli {
 
         let flags = self.prompt_flags(engine.config().install.auto);
         if !prompt::confirm(renderer, "Update your system now?", true, &flags) {
-            renderer.info("Aborted.");
+            renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
 
@@ -1811,7 +1817,7 @@ impl Cli {
 
         if fixes.is_empty() && suggestions.is_empty() {
             renderer.info("");
-            renderer.success("Nothing to set up — you're all good.");
+            renderer.success(&crate::t!("doctor.all_good"));
             return Ok(());
         }
 
