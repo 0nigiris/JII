@@ -14,6 +14,49 @@ dry_run_unchanged = "(dry-run: ничего не изменено)"
 dry_run_not_installed = "(dry-run: ничего не установлено)"
 dry_run_not_updated = "(dry-run: ничего не обновлено)"
 dry_run_not_removed = "(dry-run: ничего не удалено)"
+needs_sudo = "  [нужен sudo]"
+usage_hint = "Использование: jii <пакет…>  (см. `jii --help`)"
+unknown = "неизвестно"
+note = "примечание: {note}"
+
+[list]
+empty = "Через jii пока ничего не установлено."
+col_name = "НАЗВАНИЕ"
+col_source = "ИСТОЧНИК"
+col_version = "ВЕРСИЯ"
+col_trust = "ДОВЕРИЕ"
+col_verified = "ПРОВЕРКА"
+col_status = "СТАТУС"
+status_ok = "ок"
+
+[action]
+installed = "установлен"
+removed = "удалён"
+updated = "обновлён"
+
+[audit]
+need_attention = "{flagged} из {total} требуют внимания."
+all_fine = "Все установки ({total}) в порядке."
+
+[history]
+empty = "Истории пока нет."
+col_when = "КОГДА"
+col_action = "ДЕЙСТВИЕ"
+col_package = "ПАКЕТ"
+col_source = "ИСТОЧНИК"
+
+[how]
+no_record = "«{package}» не устанавливался через jii (нет записи). Попробуйте `jii {package}`."
+installed_on = "Установлено через {source} — {date}"
+version_line = "Версия {version}"
+trust_line = "Доверие к источнику: {trust}"
+run = "выполните: {cmd}"
+
+[health]
+healthy = "здоров"
+slow = "медленно"
+offline = "офлайн"
+rate_limited = "лимит запросов"
 
 [remove]
 continue_rest = "Продолжить удаление остального?"
@@ -31,6 +74,11 @@ some_up_to_date = "({count} уже актуальны)"
 updated = "Обновлено: {names}."
 prompt_one = "Обновить {name}?"
 prompt_many = "Обновить пакетов: {count}?"
+nothing_to_update = "Обновлять нечего."
+sys_via = "Обновление системы через: {sources}"
+tracked_up_to_date = "({count} отслеживаемых пакетов уже актуальны)"
+prompt_system = "Обновить систему сейчас?"
+complete = "Обновление системы завершено."
 
 [install]
 searching = "Поиск…"
@@ -49,6 +97,7 @@ installed = "Установлено: {names}."
 also_available = "Также доступно:"
 and_more = "…и ещё {count}"
 summary = "Сводка:"
+preview = "Установить {name}{version} через {source}{why}{sudo}"
 
 [doctor]
 all_good = "Настраивать нечего — всё в порядке."
@@ -121,6 +170,25 @@ act_place = "разместить → {dest} (режим {mode})"
 act_extract = "извлечь {member} из {archive} → {dest} (режим {mode})"
 act_remove = "удалить {path}"
 act_replace = "заменить {dest} ← {src}"
+priv_root_shown = "привилегии: нужен root (точная команда показана выше)"
+
+[setup]
+welcome = "Добро пожаловать в JII 👋"
+intro1 = "JII ставит Linux-софт за вас: ищет по источникам, которые у вас уже есть"
+intro2 = "(dnf, Flatpak, …), выбирает лучший и объясняет почему."
+confirm_spend = "Потратить 30 секунд на настройку?"
+declined = "Без проблем — попробуйте `jii firefox`, чтобы что-нибудь установить, или `jii setup` в любой момент."
+couldnt_save = "Не удалось сохранить настройки: {error}"
+detail_q = "Насколько подробно JII должен рассказывать?"
+detail_friendly = "Дружелюбно — короткий, ясный вывод (рекомендуется)"
+detail_advanced = "Подробно — полная детализация, обоснование источников, диагностика"
+run_doctor_q = "Запустить быструю проверку и настройку системы (jii doctor) сейчас?"
+complete = "Настройка завершена."
+
+[parse]
+invalid = "Некорректный пакет «{raw}»: {reason}"
+unknown_source = "Неизвестный источник «{source}» в «{name}:{source}». Известные источники: {known}."
+pin_unsupported = "Закрепление версии/канала (@{pin}) пока не поддерживается — появится вместе с выбором версий. Пока используйте «{name}» без части «@»."
 
 [trust]
 official = "официальный"

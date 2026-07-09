@@ -23,12 +23,12 @@ pub enum Action {
 }
 
 impl Action {
-    /// A human-readable past-tense verb for history output.
-    pub fn label(&self) -> &'static str {
+    /// A localized past-tense verb for history output.
+    pub fn display(&self) -> String {
         match self {
-            Action::Install => "installed",
-            Action::Remove => "removed",
-            Action::Update => "updated",
+            Action::Install => crate::t!("action.installed"),
+            Action::Remove => crate::t!("action.removed"),
+            Action::Update => crate::t!("action.updated"),
         }
     }
 }

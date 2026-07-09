@@ -16,6 +16,49 @@ dry_run_unchanged = "(dry-run: nothing was changed)"
 dry_run_not_installed = "(dry-run: nothing was installed)"
 dry_run_not_updated = "(dry-run: nothing was updated)"
 dry_run_not_removed = "(dry-run: nothing was removed)"
+needs_sudo = "  [needs sudo]"
+usage_hint = "Usage: jii <package…>  (try `jii --help`)"
+unknown = "unknown"
+note = "note: {note}"
+
+[list]
+empty = "Nothing installed via jii yet."
+col_name = "NAME"
+col_source = "SOURCE"
+col_version = "VERSION"
+col_trust = "TRUST"
+col_verified = "VERIFIED"
+col_status = "STATUS"
+status_ok = "ok"
+
+[action]
+installed = "installed"
+removed = "removed"
+updated = "updated"
+
+[audit]
+need_attention = "{flagged} of {total} need attention."
+all_fine = "All {total} install(s) look fine."
+
+[history]
+empty = "No history yet."
+col_when = "WHEN"
+col_action = "ACTION"
+col_package = "PACKAGE"
+col_source = "SOURCE"
+
+[how]
+no_record = "'{package}' was not installed by jii (no record). Try `jii {package}`."
+installed_on = "Installed via {source} on {date}"
+version_line = "Version {version}"
+trust_line = "Source trust: {trust}"
+run = "run: {cmd}"
+
+[health]
+healthy = "healthy"
+slow = "slow"
+offline = "offline"
+rate_limited = "rate-limited"
 
 [remove]
 continue_rest = "Continue removing the rest?"
@@ -33,6 +76,11 @@ some_up_to_date = "({count} already up to date)"
 updated = "Updated {names}."
 prompt_one = "Update {name}?"
 prompt_many = "Update {count} packages?"
+nothing_to_update = "Nothing to update."
+sys_via = "System update via: {sources}"
+tracked_up_to_date = "({count} tracked package(s) already up to date)"
+prompt_system = "Update your system now?"
+complete = "System update complete."
 
 [install]
 searching = "Searching…"
@@ -51,6 +99,7 @@ installed = "Installed {names}."
 also_available = "Also available:"
 and_more = "…and {count} more"
 summary = "Summary:"
+preview = "Install {name}{version} via {source}{why}{sudo}"
 
 [doctor]
 all_good = "Nothing to set up — you're all good."
@@ -123,6 +172,25 @@ act_place = "place → {dest} (mode {mode})"
 act_extract = "extract {member} from {archive} → {dest} (mode {mode})"
 act_remove = "remove {path}"
 act_replace = "replace {dest} ← {src}"
+priv_root_shown = "privileges: root required (the exact command is shown above)"
+
+[setup]
+welcome = "Welcome to JII 👋"
+intro1 = "JII installs Linux software for you: it searches the sources you already"
+intro2 = "have (dnf, Flatpak, …), picks the best one, and tells you why."
+confirm_spend = "Spend 30 seconds setting it up?"
+declined = "No problem — try `jii firefox` to install something, or `jii setup` anytime."
+couldnt_save = "Could not save settings: {error}"
+detail_q = "How much should JII tell you?"
+detail_friendly = "Friendly — short, clear output (recommended)"
+detail_advanced = "Advanced — full detail, source rationale, diagnostics"
+run_doctor_q = "Run a quick system check and setup (jii doctor) now?"
+complete = "Setup complete."
+
+[parse]
+invalid = "Invalid package '{raw}': {reason}"
+unknown_source = "Unknown source '{source}' in '{name}:{source}'. Known sources: {known}."
+pin_unsupported = "Version/channel pinning (@{pin}) isn't supported yet — it's coming with the version chooser. Use '{name}' without the '@' part for now."
 
 [trust]
 official = "official"

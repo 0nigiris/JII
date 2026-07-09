@@ -195,7 +195,7 @@ impl Cli {
                     if config.is_first_run() && self.interactive(&renderer) {
                         self.setup(config, &renderer, true).await
                     } else {
-                        renderer.info("Usage: jii <package…>  (try `jii --help`)");
+                        renderer.info(&crate::t!("common.usage_hint"));
                         Ok(())
                     }
                 } else {
@@ -561,7 +561,11 @@ impl Cli {
         renderer: &Renderer,
     ) {
         for bp in batch {
-            let sudo = if bp.plan.needs_root() { "  [needs sudo]" } else { "" };
+            let sudo = if bp.plan.needs_root() {
+                crate::t!("common.needs_sudo")
+            } else {
+                String::new()
+            };
             for candidate in &bp.candidates {
                 let version = candidate
                     .version
@@ -574,9 +578,13 @@ impl Cli {
                     .next()
                     .map(|h| format!(" — {h}"))
                     .unwrap_or_default();
-                renderer.info(&format!(
-                    "Install {}{version} via {}{why}{sudo}",
-                    candidate.name, candidate.source_id
+                renderer.info(&crate::t!(
+                    "install.preview",
+                    name = candidate.name.clone(),
+                    version = version,
+                    source = candidate.source_id.clone(),
+                    why = why,
+                    sudo = sudo
                 ));
             }
         }
@@ -603,7 +611,7 @@ impl Cli {
                 candidate.name,
                 candidate.source_id,
                 version,
-                candidate.trust.label()
+                candidate.trust.display()
             ));
         }
         let extra = alternatives.len().saturating_sub(MAX);
@@ -643,7 +651,7 @@ impl Cli {
             match PackageSpec::parse(raw) {
                 Ok(spec) => specs.push(spec),
                 Err(reason) => {
-                    renderer.error(&format!("Invalid package '{raw}': {reason}"));
+                    renderer.error(&crate::t!("parse.invalid", raw = raw.clone(), reason = reason));
                     return None;
                 }
             }
@@ -655,20 +663,21 @@ impl Cli {
             if let Some(source) = &spec.source
                 && !crate::config::KNOWN_SOURCES.contains(&source.as_str())
             {
-                renderer.error(&format!(
-                    "Unknown source '{source}' in '{}:{source}'. Known sources: {}.",
-                    spec.name,
-                    crate::config::KNOWN_SOURCES.join(", ")
+                renderer.error(&crate::t!(
+                    "parse.unknown_source",
+                    source = source.clone(),
+                    name = spec.name.clone(),
+                    known = crate::config::KNOWN_SOURCES.join(", ")
                 ));
                 return None;
             }
         }
         if let Some(spec) = specs.iter().find(|s| s.reference.is_some()) {
             let r = spec.reference.as_deref().unwrap_or("");
-            renderer.error(&format!(
-                "Version/channel pinning ('@{r}') isn't supported yet — it's coming with the \
-                 version chooser. Use '{}' without the '@' part for now.",
-                spec.name
+            renderer.error(&crate::t!(
+                "parse.pin_unsupported",
+                pin = r,
+                name = spec.name.clone()
             ));
             return None;
         }
@@ -1058,7 +1067,7 @@ impl Cli {
             renderer.info(&format!("    {}", crate::ui::describe_action(action)));
         }
         if plan.needs_root() {
-            renderer.info("  privileges: root required (the exact command is shown above)");
+            renderer.info(&format!("  {}", crate::t!("plan.priv_root_shown")));
         }
     }
 
@@ -1087,22 +1096,22 @@ impl Cli {
             .plan_record_batch(refreshed, crate::engine::RecordOp::Update)
             .await?;
         for (name, reason) in &fallback.unplannable {
-            renderer.warn(&format!("✗ {name}: cannot plan update ({reason})"));
+            renderer.warn(&crate::t!("update.cannot_plan", name = name.clone(), reason = reason.clone()));
         }
 
         if system.plans.is_empty() && fallback.plans.is_empty() {
-            renderer.info("Nothing to update.");
+            renderer.info(&crate::t!("update.nothing_to_update"));
             return Ok(());
         }
 
         // Preview: the bulk managers, then any per-record fallbacks + version transitions.
         if !system.plans.is_empty() {
-            renderer.info(&format!("System update via: {}", system.sources.join(", ")));
+            renderer.info(&crate::t!("update.sys_via", sources = system.sources.join(", ")));
         }
         if renderer.is_friendly() && !self.global.dry_run {
             for plan in &system.plans {
                 let why = plan.reasons.first().cloned().unwrap_or_default();
-                let sudo = if plan.needs_root() { "  [needs sudo]" } else { "" };
+                let sudo = if plan.needs_root() { crate::t!("common.needs_sudo") } else { String::new() };
                 renderer.info(&format!("  {why}{sudo}"));
             }
         } else {
@@ -1115,7 +1124,7 @@ impl Cli {
         }
         self.preview_record_batch(&fallback.plans, renderer);
         if up_to_date > 0 {
-            renderer.info(&format!("({up_to_date} tracked package(s) already up to date)"));
+            renderer.info(&crate::t!("update.tracked_up_to_date", count = up_to_date));
         }
 
         if self.global.dry_run {
@@ -1124,7 +1133,7 @@ impl Cli {
         }
 
         let flags = self.prompt_flags(engine.config().install.auto);
-        if !prompt::confirm(renderer, "Update your system now?", true, &flags) {
+        if !prompt::confirm(renderer, &crate::t!("update.prompt_system"), true, &flags) {
             renderer.info(&crate::t!("common.aborted"));
             return Ok(());
         }
@@ -1132,7 +1141,7 @@ impl Cli {
         engine
             .run_system_update(&system.plans, &fallback.plans, renderer)
             .await?;
-        renderer.success("System update complete.");
+        renderer.success(&crate::t!("update.complete"));
         Ok(())
     }
 
@@ -1367,13 +1376,13 @@ impl Cli {
         if !active.is_empty() {
             renderer.info(&crate::t!("sources.active"));
             for e in &active {
-                renderer.info(&format!("  ✓ {:8} ({})", e.id, e.trust.label()));
+                renderer.info(&format!("  ✓ {:8} ({})", e.id, e.trust.display()));
             }
         }
         if !inactive.is_empty() {
             renderer.info(&crate::t!("sources.unavailable"));
             for e in &inactive {
-                renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.label()));
+                renderer.info(&format!("  ✗ {:8} ({})", e.id, e.trust.display()));
             }
         }
         Ok(())
@@ -1540,17 +1549,17 @@ impl Cli {
         let flags = self.prompt_flags(false);
 
         if first_run {
-            renderer.info("Welcome to JII 👋");
+            renderer.info(&crate::t!("setup.welcome"));
             renderer.info("");
-            renderer.info("JII installs Linux software for you: it searches the sources you already");
-            renderer.info("have (dnf, Flatpak, …), picks the best one, and tells you why.");
+            renderer.info(&crate::t!("setup.intro1"));
+            renderer.info(&crate::t!("setup.intro2"));
             renderer.info("");
-            if !prompt::confirm(renderer, "Spend 30 seconds setting it up?", true, &flags) {
+            if !prompt::confirm(renderer, &crate::t!("setup.confirm_spend"), true, &flags) {
                 config.meta.first_run_completed = true;
                 if let Err(e) = config.save() {
-                    renderer.warn(&format!("Could not save settings: {e}"));
+                    renderer.warn(&crate::t!("setup.couldnt_save", error = e));
                 }
-                renderer.info("No problem — try `jii firefox` to install something, or `jii setup` anytime.");
+                renderer.info(&crate::t!("setup.declined"));
                 return Ok(());
             }
         }
@@ -1559,10 +1568,10 @@ impl Cli {
         renderer.info("");
         let mode = match prompt::choose(
             renderer,
-            "How much should JII tell you?",
+            &crate::t!("setup.detail_q"),
             &[
-                "Friendly — short, clear output (recommended)".to_string(),
-                "Advanced — full detail, source rationale, diagnostics".to_string(),
+                crate::t!("setup.detail_friendly"),
+                crate::t!("setup.detail_advanced"),
             ],
             0,
         ) {
@@ -1574,7 +1583,7 @@ impl Cli {
         // Step 2 — optional system check + setup. `doctor` is interactive: it diagnoses,
         // then offers to set up what's missing (each item a separate yes/no — the user stays
         // in control, and can skip every one with Enter).
-        if prompt::confirm(renderer, "Run a quick system check and setup (jii doctor) now?", true, &flags) {
+        if prompt::confirm(renderer, &crate::t!("setup.run_doctor_q"), true, &flags) {
             renderer.info("");
             self.doctor(config.clone(), renderer).await?;
         }
@@ -1582,11 +1591,11 @@ impl Cli {
         // Persist the choices and mark the wizard done.
         config.meta.first_run_completed = true;
         if let Err(e) = config.save() {
-            renderer.warn(&format!("Could not save settings: {e}"));
+            renderer.warn(&crate::t!("setup.couldnt_save", error = e));
         }
 
         renderer.info("");
-        renderer.success("Setup complete.");
+        renderer.success(&crate::t!("setup.complete"));
         Ok(())
     }
 
@@ -1620,27 +1629,25 @@ impl Cli {
         let engine = Engine::new(config)?;
         match engine.registry().get(package) {
             None => {
-                renderer.warn(&format!(
-                    "'{package}' was not installed by jii (no record). Try `jii {package}`."
-                ));
+                renderer.warn(&crate::t!("how.no_record", package = package));
             }
             Some(record) => {
                 let trust = engine
                     .source_trust(&record.source_id)
-                    .map(|t| t.label())
-                    .unwrap_or("unknown");
+                    .map(|t| t.display())
+                    .unwrap_or_else(|| crate::t!("common.unknown"));
                 let version = record
                     .version
                     .as_ref()
                     .map(|v| v.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-                renderer.info(&format!(
-                    "Installed via {} on {}",
-                    record.source_id,
-                    record.installed_at.format("%Y-%m-%d %H:%M")
+                    .unwrap_or_else(|| crate::t!("common.unknown"));
+                renderer.info(&crate::t!(
+                    "how.installed_on",
+                    source = record.source_id.clone(),
+                    date = record.installed_at.format("%Y-%m-%d %H:%M").to_string()
                 ));
-                renderer.info(&format!("  ✓ Version {version}"));
-                renderer.info(&format!("  ✓ Source trust: {trust}"));
+                renderer.info(&format!("  ✓ {}", crate::t!("how.version_line", version = version)));
+                renderer.info(&format!("  ✓ {}", crate::t!("how.trust_line", trust = trust)));
             }
         }
         Ok(())
@@ -1661,7 +1668,7 @@ impl Cli {
             return Ok(());
         }
         if items.is_empty() {
-            renderer.info("Nothing installed via jii yet.");
+            renderer.info(&crate::t!("list.empty"));
             return Ok(());
         }
         let rows: Vec<Vec<String>> = items
@@ -1674,7 +1681,12 @@ impl Cli {
                 ]
             })
             .collect();
-        for line in table_lines(&["NAME", "SOURCE", "VERSION"], &rows) {
+        let headers = [
+            crate::t!("list.col_name"),
+            crate::t!("list.col_source"),
+            crate::t!("list.col_version"),
+        ];
+        for line in table_lines(&headers, &rows) {
             renderer.info(&line);
         }
         Ok(())
@@ -1723,7 +1735,7 @@ impl Cli {
             renderer.info(&format!(
                 "{mark} {:8}  {:12}  {} ms{detail}",
                 d.id,
-                d.health.label(),
+                d.health.display(),
                 d.latency.as_millis()
             ));
         }
@@ -1846,7 +1858,7 @@ impl Cli {
             }
             renderer.info(&format!("    {} — {}", r.title, r.why));
             if let Some(note) = &r.note {
-                renderer.info(&format!("        note: {note}"));
+                renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
             }
             let question = crate::t!("doctor.q_setup", title = r.title);
             if !prompt::confirm(renderer, &format!("    {question}"), false, &flags) {
@@ -1999,13 +2011,13 @@ impl Cli {
             let how = if !r.packages.is_empty() {
                 format!("jii {}", r.packages.join(" "))
             } else if let Some(manual) = &r.manual {
-                format!("run: {manual}")
+                crate::t!("how.run", cmd = manual)
             } else {
                 String::new()
             };
             renderer.info(&format!("    {} — {}  ·  {}", r.title, r.why, how));
             if let Some(note) = &r.note {
-                renderer.info(&format!("        note: {note}"));
+                renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
             }
         }
         renderer.info(&crate::t!("doctor.suggestions_info"));
@@ -2021,7 +2033,7 @@ impl Cli {
             return Ok(());
         }
         if events.is_empty() {
-            renderer.info("No history yet.");
+            renderer.info(&crate::t!("history.empty"));
             return Ok(());
         }
         let rows: Vec<Vec<String>> = events
@@ -2030,13 +2042,19 @@ impl Cli {
             .map(|event| {
                 vec![
                     event.at.format("%Y-%m-%d %H:%M").to_string(),
-                    event.action.label().to_string(),
+                    event.action.display(),
                     event.name.clone(),
                     event.source_id.clone(),
                 ]
             })
             .collect();
-        for line in table_lines(&["WHEN", "ACTION", "PACKAGE", "SOURCE"], &rows) {
+        let headers = [
+            crate::t!("history.col_when"),
+            crate::t!("history.col_action"),
+            crate::t!("history.col_package"),
+            crate::t!("history.col_source"),
+        ];
+        for line in table_lines(&headers, &rows) {
             renderer.info(&line);
         }
         Ok(())
@@ -2070,7 +2088,7 @@ impl Cli {
         }
 
         if entries.is_empty() {
-            renderer.info("Nothing installed via jii yet.");
+            renderer.info(&crate::t!("list.empty"));
             return Ok(());
         }
 
@@ -2078,9 +2096,9 @@ impl Cli {
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|e| {
-                let trust = e.trust.map_or("unknown", |t| t.label());
+                let trust = e.trust.map_or_else(|| crate::t!("common.unknown"), |t| t.display());
                 let status = if e.concerns.is_empty() {
-                    "ok".to_string()
+                    crate::t!("list.status_ok")
                 } else {
                     flagged += 1;
                     let reasons: Vec<&str> = e.concerns.iter().map(|c| c.message()).collect();
@@ -2089,20 +2107,27 @@ impl Cli {
                 vec![
                     e.name.clone(),
                     e.source_id.clone(),
-                    trust.to_string(),
+                    trust,
                     e.verification.label().to_string(),
                     status,
                 ]
             })
             .collect();
-        for line in table_lines(&["NAME", "SOURCE", "TRUST", "VERIFIED", "STATUS"], &rows) {
+        let headers = [
+            crate::t!("list.col_name"),
+            crate::t!("list.col_source"),
+            crate::t!("list.col_trust"),
+            crate::t!("list.col_verified"),
+            crate::t!("list.col_status"),
+        ];
+        for line in table_lines(&headers, &rows) {
             renderer.info(&line);
         }
 
         if flagged > 0 {
-            renderer.warn(&format!("{flagged} of {} need attention.", entries.len()));
+            renderer.warn(&crate::t!("audit.need_attention", flagged = flagged, total = entries.len()));
         } else {
-            renderer.success(&format!("All {} install(s) look fine.", entries.len()));
+            renderer.success(&crate::t!("audit.all_fine", total = entries.len()));
         }
         Ok(())
     }
@@ -2128,14 +2153,14 @@ fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
 
 /// Render an optional version, or `unknown` when a source doesn't report one.
 fn version_or_unknown(version: Option<&crate::model::PkgVersion>) -> String {
-    version.map(|v| v.to_string()).unwrap_or_else(|| "unknown".to_string())
+    version.map(|v| v.to_string()).unwrap_or_else(|| crate::t!("common.unknown"))
 }
 
 /// Render an aligned text table: a header row then one line per data row, each
 /// column padded to the widest cell in that column (the final column is left
 /// unpadded so trailing content never carries stray spaces). Widths are computed
 /// from the data so long names don't break alignment. Returns the rendered lines.
-fn table_lines(headers: &[&str], rows: &[Vec<String>]) -> Vec<String> {
+fn table_lines(headers: &[String], rows: &[Vec<String>]) -> Vec<String> {
     let cols = headers.len();
     let mut widths: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
     for row in rows {
@@ -2159,7 +2184,7 @@ fn table_lines(headers: &[&str], rows: &[Vec<String>]) -> Vec<String> {
         }
         line
     };
-    let header_cells: Vec<String> = headers.iter().map(|h| h.to_string()).collect();
+    let header_cells: Vec<String> = headers.to_vec();
     let mut out = vec![render(&header_cells)];
     out.extend(rows.iter().map(|r| render(r)));
     out
@@ -2573,7 +2598,10 @@ mod tests {
             vec!["fastfetch".into(), "dnf".into(), "2.21".into()],
             vec!["x".into(), "flatpak".into(), "1.0".into()],
         ];
-        let lines = table_lines(&["NAME", "SOURCE", "VERSION"], &rows);
+        let lines = table_lines(
+            &["NAME".to_string(), "SOURCE".to_string(), "VERSION".to_string()],
+            &rows,
+        );
         // Header + one line per row.
         assert_eq!(lines.len(), 3);
         // NAME column is as wide as "fastfetch" (9); each row's SOURCE column starts
@@ -2590,7 +2618,7 @@ mod tests {
     fn table_header_widens_when_it_is_the_longest_cell() {
         // A header longer than any datum still sets the column width.
         let rows = vec![vec!["a".into(), "b".into()]];
-        let lines = table_lines(&["PACKAGE", "SRC"], &rows);
+        let lines = table_lines(&["PACKAGE".to_string(), "SRC".to_string()], &rows);
         assert!(lines[1].starts_with("a      ")); // padded to len("PACKAGE") == 7
         assert_eq!(lines[1].find('b'), Some("PACKAGE".len() + 2));
     }
@@ -2598,9 +2626,10 @@ mod tests {
     #[test]
     fn action_labels_are_human_readable_past_tense() {
         use crate::registry::Action;
-        assert_eq!(Action::Install.label(), "installed");
-        assert_eq!(Action::Remove.label(), "removed");
-        assert_eq!(Action::Update.label(), "updated");
+        // Default locale (English) in the test binary.
+        assert_eq!(Action::Install.display(), "installed");
+        assert_eq!(Action::Remove.display(), "removed");
+        assert_eq!(Action::Update.display(), "updated");
     }
 
     #[test]

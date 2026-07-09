@@ -195,13 +195,23 @@ pub enum Health {
 }
 
 impl Health {
-    /// Lowercase human label for display.
+    /// Stable lowercase identifier for JSON output — never translated.
     pub fn label(&self) -> &'static str {
         match self {
             Health::Healthy => "healthy",
             Health::Slow => "slow",
             Health::Offline => "offline",
             Health::RateLimited => "rate-limited",
+        }
+    }
+
+    /// Localized human label for the `doctor` sources table.
+    pub fn display(&self) -> String {
+        match self {
+            Health::Healthy => crate::t!("health.healthy"),
+            Health::Slow => crate::t!("health.slow"),
+            Health::Offline => crate::t!("health.offline"),
+            Health::RateLimited => crate::t!("health.rate_limited"),
         }
     }
 }
