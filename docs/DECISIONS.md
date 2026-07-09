@@ -1751,3 +1751,23 @@ Rendered in `main.rs::report` (not the `Renderer`) because the highest-value cas
 **Consequences:**
 - Fixture-tested on both schemas + garbage; **needs a real Nix host to confirm** the live JSON matches (open risk — flagged in AI_CONTEXT). Pure helpers (`parse_profile_list`, `element_name`, `store_name`, `store_version`) are unit-tested.
 - Nix now participates in `installed_index` (so `doctor` and cross-source "already installed" see Nix packages) and in remove/update owner resolution.
+
+---
+
+## ADR-0048 — Principle: JII cooperates with the system; it is not the centre of the world
+
+**Status:** Accepted (guiding principle — the owner's #9; cross-references the ADRs that embody it).
+
+**Context:** In real use, JII kept behaving as if only *it* mattered — `doctor` read out a canned list instead of inspecting the machine, `jii npm` searched for a package named npm instead of installing the manager, `jii info` spoke in install terms. The owner stated the principle plainly: **`jii update` means update the whole system; `jii remove` means remove the program however it was installed; `jii doctor` means analyse the whole system.** JII sits *on top of* the tools the user already has and cooperates with them — it does not live beside them.
+
+**Decision (the principle, and how each command honours it):**
+- **Read real system state, don't assume jii-only.** JII inspects what's actually installed across every source (`Engine::installed_index`, each provider's `list_installed`, incl. Nix now) rather than trusting only its own registry. `doctor` offers only what's genuinely missing (ADR-0043); "already installed" checks span sources.
+- **The bare verb does the whole-system thing.** `jii update` upgrades every manager's packages *and* JII itself (ADR-0034/0040); `jii remove <x>` removes via whatever source owns it, chooser on multi-owner (UX #11); `jii doctor` diagnoses the host, not a script.
+- **Install the manager, not a package named after it.** `jii npm` bootstraps/【notes】the npm manager (ADR-0046) — no circular "npm via npm".
+- **Commands stay in their lane.** `info` shows, `search` searches, `install` installs (ADR-0045).
+- **Cooperate, don't clobber.** Privileged steps only (never fully root, `privilege.rs`); packaged installs go through the native manager so the package DB stays consistent; self-update respects how JII was installed (ADR-0040). Third-party scripts (brew/nix bootstrap) are shown, never run (ADR-0005).
+- **The core never branches on the source.** Distro/source knowledge lives in providers and data (ADR-0004/0029/0033), so "cooperation" is uniform, not a pile of `if fedora`.
+
+**Consequences:**
+- This ADR is the lens for future features: before adding behaviour, ask "does this cooperate with the system the user already has, or does it assume JII is the centre?" New commands/providers must read real state and keep verbs in their lane.
+- No code of its own — it records the principle and points at ADR-0034/0040/0043/0045/0046/0047 as its concrete expressions.

@@ -502,6 +502,7 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 - [**docs/DECISIONS.md**](docs/DECISIONS.md) — ADRs: *why* the architecture is the way it is.
 - [**docs/ROADMAP.md**](docs/ROADMAP.md) — phased delivery plan.
 - [**docs/TASKS.md**](docs/TASKS.md) — actionable checklist.
+- [**docs/RELEASE_TESTPLAN.md**](docs/RELEASE_TESTPLAN.md) — manual pre-release checklist across every command.
 - [**packaging/**](packaging/README.md) — how the `.rpm` / `.deb` / AUR / COPR artifacts are built.
 
 ### Tech
