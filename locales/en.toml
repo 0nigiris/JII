@@ -195,6 +195,13 @@ complete = "Setup complete."
 first_use = "Looks like this is your first time using JII — a quick setup first."
 will_run_after = "After the (optional) setup, this will run:  {cmd}"
 now_running = "▶ Now running:  {cmd}"
+gh_header = "GitHub access token (optional, but recommended)"
+gh_benefit = "JII installs release binaries from GitHub and searches repos there. Without a token GitHub limits anonymous requests to about 60 per hour — enough to hit a wall mid-install; a token raises that to 5000/hour, so search and install stay fast and reliable."
+gh_already = "{env} is already set — you're all set, nothing to do."
+gh_step_create = "1. Create a token → https://github.com/settings/tokens  ('Generate new token (classic)'). No scopes are needed to read public repositories — leave every box unchecked."
+gh_step_export = "2. Add it to your shell profile (~/.bashrc, or ~/.zshrc for zsh):"
+gh_step_reload = "3. Open a new terminal (or run `source ~/.bashrc`). Verify any time with `jii doctor`."
+gh_never = "JII only reads this token to talk to GitHub; it is never stored, logged, or sent anywhere else."
 
 [parse]
 invalid = "Invalid package '{raw}': {reason}"

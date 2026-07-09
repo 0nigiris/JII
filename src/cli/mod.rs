@@ -1678,6 +1678,11 @@ impl Cli {
             self.doctor(config.clone(), renderer).await?;
         }
 
+        // Step 3 — explain the optional GitHub token (biggest single reliability win for the
+        // GitHub source). Informational: JII never creates or stores a token for you.
+        renderer.info("");
+        self.github_token_help(&config, renderer);
+
         // Persist the choices and mark the wizard done.
         config.meta.first_run_completed = true;
         if let Err(e) = config.save() {
@@ -1687,6 +1692,28 @@ impl Cli {
         renderer.info("");
         renderer.success(&crate::t!("setup.complete"));
         Ok(())
+    }
+
+    /// Explain the optional GitHub token: what it buys you (a 60→5000 requests/hour lift) and
+    /// exactly how to create + export it. Read-only guidance — JII never mints or stores a
+    /// token. If one is already present in the environment, we just confirm it.
+    fn github_token_help(&self, config: &Config, renderer: &Renderer) {
+        let palette = renderer.palette();
+        let env = &config.network.github_token_env;
+        renderer.heading(&crate::t!("setup.gh_header"));
+        renderer.info(&crate::t!("setup.gh_benefit"));
+
+        if std::env::var(env).is_ok_and(|v| !v.is_empty()) {
+            renderer.success(&crate::t!("setup.gh_already", env = env.clone()));
+            return;
+        }
+
+        renderer.info("");
+        renderer.info(&crate::t!("setup.gh_step_create"));
+        renderer.info(&crate::t!("setup.gh_step_export"));
+        renderer.info(&palette.dim(&format!("   export {env}=\"ghp_your_token_here\"")));
+        renderer.info(&crate::t!("setup.gh_step_reload"));
+        renderer.info(&palette.dim(&crate::t!("setup.gh_never")));
     }
 
     /// Search + rank a name across enabled sources, printing any source failures (a source
