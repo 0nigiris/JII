@@ -439,9 +439,15 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             versions/secondary dimmed, ✓/→ green, bold headings/table headers), colour-gated + alignment-safe.
             Candidate chooser reimplemented on **crossterm** with **mouse** (hover/click/scroll) + keys;
             dialoguer dropped. 216 tests, pty + pipe verified.
-      - **Next (owner-chosen order):** ① smart GitHub by-name search (top-5 + "show more" + typo tolerance —
-            the deferred T5 repo chooser, now concrete, its own ADR). GUI (Steam/KDE Discover/GNOME Software
-            blend) is **parked** until the CLI is fully polished.
+      - [x] **GitHub by-name search** (ADR-0053). A bare name that misses normal sources opens an
+            interactive **repo picker** (GitHub `/search/repositories` → `owner/repo — desc ★stars`, a
+            "↓ Show more" that pages forever); picking resolves the release into the normal install flow
+            (untrusted → confirmed). Optional forge capability, no core source-branch. 218 tests, pty+pipe
+            verified. Typo tolerance = GitHub's own matching (local edit-distance fallback = open refinement).
+      - [x] **Setup GitHub-token help.** Setup wizard now explains the token (rate-limit benefit + create +
+            export), mitigating the tighter search rate limit.
+      - **Next (owner to steer):** typo-tolerance refinement for GitHub search; richer info cards; more
+            polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

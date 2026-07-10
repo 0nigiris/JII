@@ -12,6 +12,7 @@ use serde::Deserialize;
 use super::Probe;
 use super::forge::{Forge, ForgeAsset, Release};
 use crate::error::{JiiError, Result};
+use crate::model::RepoHit;
 
 const API: &str = "https://api.github.com";
 
@@ -67,6 +68,75 @@ impl Forge for GithubForge {
             Err(_) => Probe::unreachable(),
         }
     }
+
+    async fn search_repos(
+        &self,
+        client: &reqwest::Client,
+        query: &str,
+        per_page: u32,
+        page: u32,
+        token: Option<&str>,
+    ) -> Result<Vec<RepoHit>> {
+        // GitHub's repo search: relevance-ranked ("best match") by default, which is what we
+        // want for "find the repo I mean by name". `page` is 1-based.
+        let url = format!("{API}/search/repositories");
+        let mut req = client
+            .get(&url)
+            .header("Accept", "application/vnd.github+json")
+            .query(&[
+                ("q", query),
+                ("per_page", &per_page.to_string()),
+                ("page", &page.to_string()),
+            ]);
+        if let Some(t) = token {
+            req = req.bearer_auth(t);
+        }
+        let resp = req
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| JiiError::Other(anyhow::anyhow!("github: {e}")))?;
+        let body: GhSearch = resp
+            .json()
+            .await
+            .map_err(|e| JiiError::Other(anyhow::anyhow!("github: malformed search json: {e}")))?;
+        Ok(body.into_hits(self.id()))
+    }
+}
+
+/// GitHub `/search/repositories` response (only the fields the picker needs).
+#[derive(Debug, Deserialize)]
+struct GhSearch {
+    #[serde(default)]
+    items: Vec<GhRepo>,
+}
+
+impl GhSearch {
+    /// Normalise to [`RepoHit`]s, dropping archived (dead) repos.
+    fn into_hits(self, source_id: &str) -> Vec<RepoHit> {
+        self.items
+            .into_iter()
+            .filter(|r| !r.archived)
+            .map(|r| RepoHit {
+                source_id: source_id.to_string(),
+                slug: r.full_name,
+                description: r.description.filter(|d| !d.is_empty()),
+                stars: r.stargazers_count,
+            })
+            .collect()
+    }
+}
+
+/// One repository in a search response.
+#[derive(Debug, Deserialize)]
+struct GhRepo {
+    full_name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    stargazers_count: u64,
+    #[serde(default)]
+    archived: bool,
 }
 
 /// Fetch `(remaining, limit)` from the GitHub rate-limit endpoint.
@@ -175,5 +245,26 @@ mod tests {
             serde_json::from_str(r#"{"rate":{"limit":60,"remaining":57}}"#).unwrap();
         assert_eq!(body.rate.limit, 60);
         assert_eq!(body.rate.remaining, 57);
+    }
+
+    #[test]
+    fn search_json_normalizes_and_drops_archived() {
+        let body: GhSearch = serde_json::from_str(
+            r#"{"items":[
+                {"full_name":"exteragram/ExteraGram","description":"A Telegram client","stargazers_count":1200,"archived":false},
+                {"full_name":"old/dead","description":"","stargazers_count":5,"archived":true},
+                {"full_name":"no/desc","stargazers_count":0}
+            ]}"#,
+        )
+        .unwrap();
+        let hits = body.into_hits("github");
+        // The archived repo is dropped; the empty description becomes None.
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].slug, "exteragram/ExteraGram");
+        assert_eq!(hits[0].source_id, "github");
+        assert_eq!(hits[0].stars, 1200);
+        assert_eq!(hits[0].description.as_deref(), Some("A Telegram client"));
+        assert_eq!(hits[1].slug, "no/desc");
+        assert_eq!(hits[1].description, None);
     }
 }

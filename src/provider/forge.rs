@@ -21,7 +21,7 @@ use super::{Probe, Provider, http_client};
 use crate::error::{JiiError, Result};
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query,
-    TrustLevel, Verification,
+    RepoHit, TrustLevel, Verification,
 };
 
 /// A code-hosting forge that publishes releases. Implementors supply only host specifics; the
@@ -48,6 +48,22 @@ pub trait Forge: Send + Sync {
     async fn probe(&self, client: &reqwest::Client, token: Option<&str>) -> Probe {
         let _ = (client, token);
         Probe { reachable: true, rate_limited: false, detail: None }
+    }
+
+    /// Free-text repo search: the `page`-th page (1-based) of up to `per_page` repos matching
+    /// `query`, ranked by the forge's relevance, each normalised to a [`RepoHit`] (with
+    /// `source_id` = [`id`](Forge::id)). Default: empty — a forge without a search API offers
+    /// none, and by-name discovery simply won't surface it.
+    async fn search_repos(
+        &self,
+        client: &reqwest::Client,
+        query: &str,
+        per_page: u32,
+        page: u32,
+        token: Option<&str>,
+    ) -> Result<Vec<RepoHit>> {
+        let _ = (client, query, per_page, page, token);
+        Ok(Vec::new())
     }
 }
 
@@ -84,7 +100,45 @@ impl ForgeProvider {
     fn token(&self) -> Option<String> {
         std::env::var(&self.token_env).ok().filter(|s| !s.is_empty())
     }
+
+    /// Resolve `owner/repo` to its installable candidate(s): latest release → arch-matching
+    /// asset → a candidate carrying the download URL + checksum. Empty when the release ships
+    /// nothing installable for this arch. Shared by the explicit `owner/repo` search and the
+    /// repo picker's on-pick `resolve_repo`.
+    async fn resolve(&self, owner: &str, repo: &str) -> Result<Vec<PackageCandidate>> {
+        let client = http_client()?;
+        let token = self.token();
+        let release = self.forge.latest_release(&client, owner, repo, token.as_deref()).await?;
+
+        let Some((asset, kind)) = select_asset(&release.assets, self.arch) else {
+            return Ok(Vec::new());
+        };
+
+        // Resolve a checksum now (network stays here) so the plan can enforce it.
+        let sha256 = match find_checksums_asset(&release.assets) {
+            Some(sums) => fetch_text(&client, &sums.url, token.as_deref())
+                .await
+                .ok()
+                .and_then(|text| parse_checksums(&text, &asset.name)),
+            None => None,
+        };
+
+        Ok(vec![candidate(
+            self.id(),
+            self.forge.label(),
+            owner,
+            repo,
+            &release.tag_name,
+            asset,
+            kind,
+            sha256,
+        )])
+    }
 }
+
+/// How many repos a forge by-name search returns per "page" (one chooser screen). Small so
+/// the picker stays scannable; "show more" fetches the next page.
+pub const REPO_SEARCH_PER_PAGE: u32 = 5;
 
 #[async_trait]
 impl Provider for ForgeProvider {
@@ -122,37 +176,29 @@ impl Provider for ForgeProvider {
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
         let Some((owner, repo)) = parse_owner_repo(&query.raw) else {
-            // Not an `owner/repo` query — this provider has nothing to offer.
+            // Not an `owner/repo` query — this provider has nothing to offer on the normal
+            // path. By-name discovery goes through `search_repos`/`resolve_repo` instead.
             return Ok(Vec::new());
         };
+        self.resolve(&owner, &repo).await
+    }
 
+    async fn search_repos(&self, query: &str, page: u32) -> Result<Vec<RepoHit>> {
         let client = http_client()?;
-        let token = self.token();
-        let release = self.forge.latest_release(&client, &owner, &repo, token.as_deref()).await?;
+        self.forge
+            .search_repos(&client, query, REPO_SEARCH_PER_PAGE, page, self.token().as_deref())
+            .await
+    }
 
-        let Some((asset, kind)) = select_asset(&release.assets, self.arch) else {
+    async fn resolve_repo(&self, slug: &str) -> Result<Vec<PackageCandidate>> {
+        let Some((owner, repo)) = parse_owner_repo(slug) else {
             return Ok(Vec::new());
         };
+        self.resolve(&owner, &repo).await
+    }
 
-        // Resolve a checksum now (network stays in `search`) so the plan can enforce it.
-        let sha256 = match find_checksums_asset(&release.assets) {
-            Some(sums) => fetch_text(&client, &sums.url, token.as_deref())
-                .await
-                .ok()
-                .and_then(|text| parse_checksums(&text, &asset.name)),
-            None => None,
-        };
-
-        Ok(vec![candidate(
-            self.id(),
-            self.forge.label(),
-            &owner,
-            &repo,
-            &release.tag_name,
-            asset,
-            kind,
-            sha256,
-        )])
+    fn supports_repo_search(&self) -> bool {
+        true
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {

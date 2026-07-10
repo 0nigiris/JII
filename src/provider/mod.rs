@@ -182,6 +182,30 @@ pub trait Provider: Send + Sync {
     fn ecosystem(&self) -> Option<Ecosystem> {
         None
     }
+
+    /// Free-text **by-name repo search** for a forge (GitHub, Codeberg…): return the `page`-th
+    /// page (1-based) of repositories matching `query`, ranked by the forge's own relevance.
+    /// Default: empty — only forges implement this (ADR-0053). Off the hot path: the engine
+    /// calls it just for the interactive repo picker, never during a normal multi-source
+    /// search, so it stays the optional-method growth pattern (ADR-0022) with no core branch.
+    async fn search_repos(&self, query: &str, page: u32) -> Result<Vec<crate::model::RepoHit>> {
+        let _ = (query, page);
+        Ok(Vec::new())
+    }
+
+    /// Whether this source offers by-name repo search (so the engine knows to offer the picker
+    /// at all). Default `false`; a forge overrides it to `true`.
+    fn supports_repo_search(&self) -> bool {
+        false
+    }
+
+    /// Resolve a picked `owner/repo` slug into installable candidate(s) — the release-and-asset
+    /// resolution the normal `owner/repo` search does, reused when the user picks a hit from the
+    /// repo picker. Default: empty (a non-forge source has no repo to resolve).
+    async fn resolve_repo(&self, slug: &str) -> Result<Vec<PackageCandidate>> {
+        let _ = slug;
+        Ok(Vec::new())
+    }
 }
 
 /// How JII bootstraps a missing ecosystem manager (see [`Ecosystem`]). Holds only

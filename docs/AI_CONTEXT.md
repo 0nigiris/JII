@@ -41,11 +41,23 @@ bold; pad-before-colour keeps alignment. The candidate chooser is reimplemented 
 (dialoguer dropped): arrow keys **and mouse** (hover-highlight, click-to-pick, scroll), always
 restores the terminal, non-TTY takes the default. 216 tests, pty- and pipe-verified.
 
-**Next up:** ① smart GitHub by-name search — free-text `jii exteragram` → top-5 repos with a
-"show more" (infinite pagination) + typo tolerance (`exeteragram`→`exteragram`); needs the GitHub
-Search API in the forge/github provider (its own ADR — the deferred T5 repo chooser, now scoped
-concretely). GUI (Steam + KDE Discover + GNOME Software blend) is **explicitly parked** until the
-CLI is fully polished — do not start it.
+**GitHub by-name search DONE (ADR-0053).** `jii exteragram` (a bare name only on GitHub) now, on a
+normal-source miss in an interactive session, opens a **repo picker**: `Forge::search_repos`
+(GitHub `/search/repositories`, relevance-ranked) → `model::RepoHit`s shown as
+`owner/repo — description ★stars` with a "↓ Show more" entry that pages forever; picking resolves
+the repo's latest release into the normal preview→confirm→install (untrusted → still confirmed).
+Optional forge capability (`supports_repo_search`), no core source-branch. Owner/repo, pinned
+source, intent flags, batch, `--json`, non-TTY all skip it. Crossterm menu now width-truncates each
+item so long lines don't wrap. 218 tests, pty + pipe verified. **Also this session:** setup wizard
+gained a full GitHub-token help step (benefit + create + export), which mitigates the tighter
+search rate limit.
+
+**Typo-tolerance note:** currently relies on GitHub's own fuzzy matching (fine for `exteragram`);
+a local edit-distance fallback for cases like `exeteragram`→`exteragram` is an open refinement.
+
+**Next up:** owner to steer. Candidates: refine GitHub-search typo tolerance; richer info cards;
+more polish. GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly parked** until
+the CLI is fully polished — do not start it.
 
 ---
 

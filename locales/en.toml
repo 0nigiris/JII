@@ -100,6 +100,11 @@ also_available = "Also available:"
 and_more = "…and {count} more"
 summary = "Summary:"
 preview = "Install {name}{version} via {source}{why}{sudo}"
+gh_searching = "Searching GitHub for '{name}'…"
+gh_picker_header = "GitHub repositories matching '{name}' — pick one to install:"
+gh_show_more = "↓  Show more results"
+gh_no_release = "{slug} publishes no installable Linux binary — pick another."
+gh_none = "No GitHub repositories found for '{name}'."
 
 [doctor]
 all_good = "Nothing to set up — you're all good."

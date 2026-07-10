@@ -111,6 +111,40 @@ fn menu_line(selected: bool, text: &str, palette: crate::ui::Palette) -> String 
     }
 }
 
+/// Truncate a possibly-ANSI-coloured string to at most `max` *visible* columns, copying escape
+/// sequences verbatim (they take no width) and closing with a reset. Keeps every menu item on a
+/// single terminal row, so the per-row redraw and mouse hit-testing never desync on a long line.
+fn truncate_display(s: &str, max: usize) -> String {
+    let mut out = String::new();
+    let mut visible = 0usize;
+    let mut chars = s.chars().peekable();
+    let mut truncated = false;
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // Copy the whole escape sequence (up to its letter terminator) without counting it.
+            out.push(c);
+            for e in chars.by_ref() {
+                out.push(e);
+                if e.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            continue;
+        }
+        if visible + 1 >= max {
+            truncated = true;
+            break;
+        }
+        out.push(c);
+        visible += 1;
+    }
+    if truncated {
+        out.push('…');
+    }
+    out.push_str("\u{1b}[0m");
+    out
+}
+
 /// The crossterm menu itself. Enables raw mode + mouse capture, draws the items inline,
 /// and *always* restores the terminal before returning (even on error).
 fn run_menu(
@@ -148,6 +182,9 @@ fn run_menu(
         let (_, first) = cursor::position()?;
         execute!(out, EnableMouseCapture)?;
 
+        // Keep every item on one row: truncate to the terminal width (minus a column of slack).
+        let width = terminal::size().map(|(w, _)| w).unwrap_or(80).max(20) as usize - 1;
+
         let redraw = |out: &mut io::Stdout, sel: usize| -> io::Result<()> {
             for (i, opt) in options.iter().enumerate() {
                 queue!(
@@ -155,7 +192,7 @@ fn run_menu(
                     cursor::MoveTo(0, first + i as u16),
                     terminal::Clear(ClearType::CurrentLine)
                 )?;
-                write!(out, "{}", menu_line(i == sel, opt, palette))?;
+                write!(out, "{}", truncate_display(&menu_line(i == sel, opt, palette), width))?;
             }
             out.flush()
         };

@@ -1889,3 +1889,50 @@ test-friendly (`Palette::plain()`).
 `display()` (ADR-0050) which the palette colours. 216 tests green, clippy clean; verified under a
 pty (menu renders in colour, keyboard nav selects the right source, terminal restored to cooked
 mode afterwards) and piped (zero ANSI, default taken, no hang).
+
+## ADR-0053 — By-name GitHub repo search: an interactive picker over a forge capability
+
+**Status:** Accepted (2026-07-10).
+
+**Context:** `jii <owner/repo>` installs a GitHub release, but a bare name a user only knows from
+GitHub (`jii exteragram`) found nothing — the forge provider only answered explicit `owner/repo`.
+Owner asked for free-text discovery: top matches, a "show more" that pages forever, and typo
+tolerance. This is the long-deferred T5 GitHub repo chooser (ADR-0026/0030), now scoped.
+
+**Decision:** Add by-name repo search as an **optional forge capability**, not a special case, so
+it stays within ADR-0049 (GitHub is one forge among peers) and ADR-0022 (optional-method growth):
+- `Forge::search_repos(client, query, per_page, page, token)` (default empty) — GitHub implements
+  it via `/search/repositories` (relevance/"best-match" ranking, 1-based paging), normalising each
+  item to a forge-neutral `model::RepoHit { source_id, slug, description, stars }` and dropping
+  archived repos. `ForgeProvider::resolve`/`search`/`resolve_repo` are refactored to share the
+  release→asset resolution, so a picked repo resolves exactly like an explicit `owner/repo`.
+- `Provider` gains `search_repos`/`resolve_repo` (default empty) + `supports_repo_search()`
+  (default false, forge = true). `Engine` gains `has_repo_search()`, `forge_repo_search(query,
+  page)` (fan-out, concatenated in provider order — each forge keeps its own relevance), and
+  `resolve_repo(source_id, slug)` (routes by id — dispatch, not a behavioural source-branch).
+- **CLI hook:** in the install path, a **single, slash-free, unpinned** bare name that misses every
+  normal source *in an interactive session with a forge available* opens `repo_picker`: it shows
+  the top matches (`owner/repo — description  ★stars`) with a "↓ Show more" entry that fetches the
+  next page and appends. Picking a repo resolves its latest release; if it has an installable Linux
+  asset the candidate flows into the **normal** preview→confirm→install (untrusted, so still an
+  explicit confirm, ADR-0006); if not, JII says so and re-shows the list. `owner/repo`, a pinned
+  `:source`, any intent flag (`--source`/`--auto`/`--yes`/`--no`), a batch, `--json`, and non-TTY
+  all skip the picker (unchanged behaviour). **Typo tolerance** is GitHub's own search matching for
+  now (good enough for the `exteragram` case); a local edit-distance fallback is a possible later
+  refinement.
+
+**Alternatives considered:** (a) fold GitHub repo hits into the normal ranked candidate list —
+rejected: it would flood every search with untrusted repos and force a release lookup per repo on
+the hot path. (b) Eagerly resolve each repo's release to *filter* the list to only-installable —
+rejected for v1: 5 extra API calls per page (rate-limit heavy) and slower; lazy resolve-on-pick is
+snappier and the "no Linux binary → pick another" message is clear. (c) A dedicated `jii gh <name>`
+command — rejected: `jii <name>` "just works" is the goal.
+
+**Consequences:** New `model::RepoHit`; forge/github/provider/engine gain the methods above;
+`cli::repo_picker` + `repo_label`/`humanize_count` helpers. The crossterm menu now truncates each
+item to the terminal width (`truncate_display`) so a long repo line can't wrap and desync the
+per-row redraw/mouse mapping. 218 tests (github search-JSON parse, humanize_count); live-verified
+under a pty (`jii exteragram` → GitHub picker with stars/descriptions; picking an APK-only repo
+correctly reported "no installable Linux binary" and re-prompted) and piped (picker suppressed,
+plain "not found"). **Debt:** rate limits bite harder here (GitHub search is 10/min unauthenticated)
+— the setup token help (this session) mitigates it; cross-forge paging is concatenated, not merged.

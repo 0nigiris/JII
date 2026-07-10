@@ -98,6 +98,11 @@ also_available = "Также доступно:"
 and_more = "…и ещё {count}"
 summary = "Сводка:"
 preview = "Установить {name}{version} через {source}{why}{sudo}"
+gh_searching = "Ищу на GitHub «{name}»…"
+gh_picker_header = "Репозитории GitHub по запросу «{name}» — выберите для установки:"
+gh_show_more = "↓  Показать ещё"
+gh_no_release = "{slug} не публикует устанавливаемый бинарник для Linux — выберите другой."
+gh_none = "На GitHub не найдено репозиториев по запросу «{name}»."
 
 [doctor]
 all_good = "Настраивать нечего — всё в порядке."

@@ -244,6 +244,22 @@ impl Verification {
     }
 }
 
+/// A repository match from a forge's **by-name** search (GitHub, Codeberg, …), shown in the
+/// interactive repo picker *before* a release is resolved (ADR-0053). A hit is only a
+/// pointer — the actual installable candidate is resolved on pick via
+/// [`resolve_repo`](crate::provider::Provider::resolve_repo).
+#[derive(Debug, Clone)]
+pub struct RepoHit {
+    /// The forge that produced this hit (routes the resolve back to the right provider).
+    pub source_id: String,
+    /// `owner/repo`.
+    pub slug: String,
+    /// One-line repo description, when the forge provides one.
+    pub description: Option<String>,
+    /// Popularity signal (stars), used as a cross-forge tiebreaker in the picker.
+    pub stars: u64,
+}
+
 /// A single installation candidate produced by a provider's `search`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageCandidate {

@@ -393,6 +393,25 @@ impl Cli {
                 ranked.retain(|c| &c.source_id == source);
             }
             if ranked.is_empty() {
+                // Bare-name miss + interactive + a forge offers repo search → the GitHub-style
+                // repo picker (ADR-0053) before giving up. `owner/repo` already resolves on the
+                // normal path, so only slash-free names reach here; a pinned source or any
+                // intent-expressing flag (--source/--auto/--yes/--no) skips it, as does a batch.
+                if single
+                    && pkg_source.is_none()
+                    && !name.contains('/')
+                    && !effective_auto
+                    && !self.global.yes
+                    && !self.global.no
+                    && self.interactive(renderer)
+                    && engine.has_repo_search()
+                    && let Some(cand) = self.repo_picker(&engine, name, renderer).await
+                {
+                    // Picking a repo is only the *selection*; a forge candidate is untrusted,
+                    // so the batch confirm below still asks explicitly (ADR-0006).
+                    chosen.push(cand);
+                    continue;
+                }
                 not_found.push(name.clone());
                 continue;
             }
@@ -689,6 +708,57 @@ impl Cli {
         let extra = alternatives.len().saturating_sub(MAX);
         if extra > 0 {
             renderer.info(&palette.dim(&format!("  {}", crate::t!("install.and_more", count = extra))));
+        }
+    }
+
+    /// The GitHub-style by-name repo picker (ADR-0053): search the forges for `name`, show the
+    /// top matches, and let the user pick one — with a "show more" entry that pages forever.
+    /// Picking resolves the repo's latest release into an installable candidate (returned for
+    /// the normal preview→confirm→install flow). Returns `None` on cancel, nothing found, or if
+    /// every pick published no installable Linux binary. Only reached in an interactive session.
+    async fn repo_picker(
+        &self,
+        engine: &Engine,
+        name: &str,
+        renderer: &Renderer,
+    ) -> Option<crate::model::PackageCandidate> {
+        let palette = renderer.palette();
+        renderer.info(&crate::t!("install.gh_searching", name = name));
+
+        let mut hits = engine.forge_repo_search(name, 1).await;
+        if hits.is_empty() {
+            renderer.info(&crate::t!("install.gh_none", name = name));
+            return None;
+        }
+        let mut page = 1u32;
+        let mut maybe_more = hits.len() as u32 >= crate::provider::forge::REPO_SEARCH_PER_PAGE;
+
+        loop {
+            let mut labels: Vec<String> = hits.iter().map(|h| repo_label(h, palette)).collect();
+            let more_index = maybe_more.then(|| {
+                labels.push(palette.dim(&crate::t!("install.gh_show_more")));
+                labels.len() - 1
+            });
+            let header = crate::t!("install.gh_picker_header", name = name);
+
+            match prompt::choose(renderer, &header, &labels, 0) {
+                None => return None, // cancelled
+                Some(i) if Some(i) == more_index => {
+                    page += 1;
+                    let more = engine.forge_repo_search(name, page).await;
+                    maybe_more = more.len() as u32 >= crate::provider::forge::REPO_SEARCH_PER_PAGE;
+                    hits.extend(more);
+                }
+                Some(i) => {
+                    let hit = hits[i].clone();
+                    let resolved = engine.resolve_repo(&hit.source_id, &hit.slug).await;
+                    match resolved.into_iter().next() {
+                        Some(candidate) => return Some(candidate),
+                        // The repo has no installable Linux asset — say so and let them re-pick.
+                        None => renderer.warn(&crate::t!("install.gh_no_release", slug = hit.slug)),
+                    }
+                }
+            }
         }
     }
 
@@ -2324,6 +2394,31 @@ fn table_lines(headers: &[String], rows: &[Vec<String>]) -> Vec<String> {
 
 /// A compact one-line description of a candidate for `search`/`info`:
 /// `source  vX  trust  — summary`.
+/// One line in the GitHub repo picker: `owner/repo — description  ★1.2k`. Kept to a single
+/// terminal row (each menu item must be exactly one line so the chooser's per-row redraw and
+/// mouse hit-testing stay correct): the description is budgeted against the slug length.
+fn repo_label(hit: &crate::model::RepoHit, palette: crate::ui::Palette) -> String {
+    let slug_len = hit.slug.chars().count().min(48);
+    let budget = 64usize.saturating_sub(slug_len).max(12);
+    let desc = hit
+        .description
+        .as_deref()
+        .filter(|d| !d.is_empty())
+        .map(|d| palette.dim(&format!(" — {}", one_line(d, budget))))
+        .unwrap_or_default();
+    let stars = palette.dim(&format!("★{}", humanize_count(hit.stars)));
+    format!("{}{desc}  {stars}", hit.slug)
+}
+
+/// Compact star/download counts: `1234` → `1.2k`, `2_500_000` → `2.5M`.
+fn humanize_count(n: u64) -> String {
+    match n {
+        0..=999 => n.to_string(),
+        1_000..=999_999 => format!("{:.1}k", n as f64 / 1_000.0),
+        _ => format!("{:.1}M", n as f64 / 1_000_000.0),
+    }
+}
+
 fn candidate_line(candidate: &PackageCandidate, palette: crate::ui::Palette) -> String {
     // Pad the source id to width *before* colouring so the ANSI codes don't skew alignment.
     let src = palette.source(&format!("{:8}", candidate.source_id));
@@ -2800,6 +2895,15 @@ mod tests {
                 .iter()
                 .any(|s| s.contains("architecture"))
         );
+    }
+
+    #[test]
+    fn humanize_count_compacts_large_numbers() {
+        assert_eq!(humanize_count(0), "0");
+        assert_eq!(humanize_count(999), "999");
+        assert_eq!(humanize_count(1_200), "1.2k");
+        assert_eq!(humanize_count(12_500), "12.5k");
+        assert_eq!(humanize_count(2_500_000), "2.5M");
     }
 
     #[test]

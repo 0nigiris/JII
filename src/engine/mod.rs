@@ -14,7 +14,7 @@ use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Health, InstallPlan, InstalledRecord, MatchMode, PackageCandidate, PkgVersion, Query,
+    Health, InstallPlan, InstalledRecord, MatchMode, PackageCandidate, PkgVersion, Query, RepoHit,
     TrustLevel,
 };
 use crate::privilege::Privilege;
@@ -206,6 +206,38 @@ impl Engine {
             }
         }
         false
+    }
+
+    /// Whether any provider offers by-name repo search (a forge). Lets the CLI decide whether
+    /// to offer the GitHub-style repo picker at all — no picker if no forge is enabled.
+    pub fn has_repo_search(&self) -> bool {
+        self.providers.iter().any(|p| p.supports_repo_search())
+    }
+
+    /// By-name repo search across every forge provider (ADR-0053): the `page`-th page (1-based)
+    /// of repository matches, concatenated in provider order (each forge already returns its
+    /// own relevance ranking). Only the interactive picker calls this, so it is a plain
+    /// bounded, uncached fan-out; an erroring forge just contributes nothing.
+    pub async fn forge_repo_search(&self, query: &str, page: u32) -> Vec<RepoHit> {
+        let mut hits = Vec::new();
+        for provider in self.providers.iter() {
+            if let Ok(mut found) = provider.search_repos(query, page).await {
+                hits.append(&mut found);
+            }
+        }
+        hits
+    }
+
+    /// Resolve a picked `owner/repo` (from the forge that produced it) into installable
+    /// candidate(s). Routes by `source_id` — this is dispatch, not a behavioural branch on the
+    /// source. Empty if the repo publishes nothing installable for this arch.
+    pub async fn resolve_repo(&self, source_id: &str, slug: &str) -> Vec<PackageCandidate> {
+        for provider in self.providers.iter() {
+            if provider.id() == source_id {
+                return provider.resolve_repo(slug).await.unwrap_or_default();
+            }
+        }
+        Vec::new()
     }
 
     /// Search all providers concurrently, each bounded by the configured timeout.
