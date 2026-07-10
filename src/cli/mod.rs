@@ -2080,8 +2080,12 @@ impl Cli {
         // Analyse the system first (#1): drop suggestions the user has already done, so
         // doctor is real diagnostics — not a canned list. One installed-scan for the batch.
         let installed = engine.installed_index().await;
-        let suggestions: Vec<_> = all_suggestions
-            .into_iter()
+        // Keep `all_suggestions` alive: a chosen entry may name a prerequisite (`requires`)
+        // that itself was already satisfied and filtered out of `suggestions`, so we look
+        // prerequisites up in the full list (ADR-0055).
+        let suggestions: Vec<&crate::recommend::Recommendation> = all_suggestions
+            .iter()
+            .copied()
             .filter(|r| !r.is_satisfied(&installed))
             .collect();
 
@@ -2109,6 +2113,9 @@ impl Cli {
         }
 
         // B) Curated, distro-aware suggestions (the folded-in recommend catalog).
+        //    A dependent entry (codecs/VLC) enables its prerequisite repo (RPM Fusion) first,
+        //    so it never fails with a bare "not found" because the repo was skipped (ADR-0055).
+        let mut enabled_repos: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut last_category: Option<&str> = None;
         for r in &suggestions {
             if last_category != Some(r.category.as_str()) {
@@ -2123,7 +2130,25 @@ impl Cli {
             if !prompt::confirm(renderer, &format!("    {question}"), false, &flags) {
                 continue;
             }
+            // Enable a prerequisite repo first (e.g. RPM Fusion for codecs/VLC). The exact
+            // command is shown before it runs (apply_suggestion prints it); the "yes" to the
+            // dependent is the consent for its prerequisite. Deduped within the run, and
+            // skipped when the prerequisite is already present (pure decision in `recommend`).
+            if let Some(prereq) =
+                crate::recommend::prerequisite(r, &all_suggestions, &installed, &enabled_repos)
+            {
+                renderer.info(&format!("    {}", crate::t!("doctor.prereq", title = prereq.title)));
+                if let Some(note) = &prereq.note {
+                    renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
+                }
+                self.apply_suggestion(prereq, config.clone(), renderer).await?;
+                enabled_repos.insert(prereq.id.clone());
+            }
             self.apply_suggestion(r, config.clone(), renderer).await?;
+            // Remember a repo the user enabled directly, so a later dependent doesn't re-run it.
+            if r.manual.is_some() {
+                enabled_repos.insert(r.id.clone());
+            }
         }
         Ok(())
     }

@@ -20,8 +20,10 @@ pub struct Catalog {
 /// One curated suggestion.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Recommendation {
-    /// One-line human name. (Entries still carry a `id` slug in the TOML for authoring, but
-    /// nothing reads it now that suggestions are applied by running the shown command.)
+    /// Stable slug, unique within the catalog. Used as the anchor a dependent entry's
+    /// [`requires`](Recommendation::requires) points at (e.g. codecs → `rpmfusion`).
+    pub id: String,
+    /// One-line human name.
     pub title: String,
     /// What the user gains.
     pub why: String,
@@ -33,10 +35,19 @@ pub struct Recommendation {
     /// JII specs to install to satisfy it (empty for a `manual`-only entry like a repo enable).
     #[serde(default)]
     pub packages: Vec<String>,
-    /// An exact command the user runs themselves, for steps a package install can't express
-    /// (enabling a third-party repo). Shown, never executed by JII.
+    /// An exact command the user runs to satisfy a step a package install can't express
+    /// (enabling a third-party repo). Shown before it runs; `doctor` executes it on "yes"
+    /// (interactive), a read-only run only prints it (ADR-0055).
     #[serde(default)]
     pub manual: Option<String>,
+    /// The [`id`](Recommendation::id) of a prerequisite entry that must be satisfied **first**
+    /// (e.g. codecs and VLC live in RPM Fusion, so they `requires = "rpmfusion"`). When the
+    /// user applies this suggestion and the prerequisite isn't yet present, `doctor` enables
+    /// the prerequisite before this one — so a dependent never fails with a bare "not found"
+    /// because its repo was skipped (ADR-0055). No hard-coded dependency lives in code; it is
+    /// declared here in the data.
+    #[serde(default)]
+    pub requires: Option<String>,
     /// A caveat worth surfacing (e.g. a trust boundary, or "laptops only").
     #[serde(default)]
     pub note: Option<String>,
@@ -75,6 +86,26 @@ impl Recommendation {
         let ids = self.satisfied_ids();
         !ids.is_empty() && ids.iter().all(|id| installed.contains(id))
     }
+}
+
+/// The prerequisite entry that must be enabled **before** `chosen` — or `None` when there is
+/// none, it's already satisfied on the system, or it was already enabled this run. Pure, so
+/// doctor's ordering (enable RPM Fusion before codecs/VLC, ADR-0055) is unit-tested without a
+/// live system. `all` is the full distro-filtered catalog (prerequisites are looked up there,
+/// since a satisfied one is filtered out of the offered list); `installed` is the installed-id
+/// set; `enabled` is the repos enabled so far in this run (dedupe).
+pub fn prerequisite<'a>(
+    chosen: &Recommendation,
+    all: &[&'a Recommendation],
+    installed: &std::collections::HashSet<String>,
+    enabled: &std::collections::HashSet<String>,
+) -> Option<&'a Recommendation> {
+    let req = chosen.requires.as_deref()?;
+    if enabled.contains(req) {
+        return None;
+    }
+    let prereq = all.iter().copied().find(|e| e.id == req)?;
+    (!prereq.is_satisfied(installed)).then_some(prereq)
 }
 
 /// The catalog TOML, embedded so the binary carries its own data (the `data/sources/`
@@ -133,12 +164,14 @@ mod tests {
     #[test]
     fn empty_distros_applies_everywhere() {
         let r = Recommendation {
+            id: "x".into(),
             title: "X".into(),
             why: "w".into(),
             category: "media".into(),
             distros: vec![],
             packages: vec!["x".into()],
             manual: None,
+            requires: None,
             note: None,
             check: None,
         };
@@ -150,12 +183,14 @@ mod tests {
     #[test]
     fn satisfied_ids_prefers_check_then_strips_package_specs() {
         let mut r = Recommendation {
+            id: "steam".into(),
             title: "Steam".into(),
             why: "games".into(),
             category: "gaming".into(),
             distros: vec!["fedora".into()],
             packages: vec!["steam:flatpak".into()],
             manual: None,
+            requires: None,
             note: None,
             check: Some("com.valvesoftware.Steam".into()),
         };
@@ -169,12 +204,14 @@ mod tests {
     #[test]
     fn is_satisfied_only_when_all_ids_installed() {
         let r = Recommendation {
+            id: "codecs".into(),
             title: "Codecs".into(),
             why: "media".into(),
             category: "media".into(),
             distros: vec![],
             packages: vec!["a".into(), "b".into()],
             manual: None,
+            requires: None,
             note: None,
             check: None,
         };
@@ -186,16 +223,86 @@ mod tests {
 
         // An entry with no identifiers (manual-only, no check) is never "satisfied".
         let manual = Recommendation {
+            id: "repo".into(),
             title: "Repo".into(),
             why: "w".into(),
             category: "repos".into(),
             distros: vec![],
             packages: vec![],
             manual: Some("do it".into()),
+            requires: None,
             note: None,
             check: None,
         };
         assert!(!manual.is_satisfied(&set));
+    }
+
+    fn entry(id: &str, requires: Option<&str>, check: Option<&str>) -> Recommendation {
+        Recommendation {
+            id: id.into(),
+            title: id.into(),
+            why: "w".into(),
+            category: "media".into(),
+            distros: vec![],
+            packages: vec![],
+            manual: requires.is_none().then(|| "enable repo".into()),
+            requires: requires.map(str::to_string),
+            note: None,
+            check: check.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn prerequisite_fires_only_when_needed() {
+        let rpmfusion = entry("rpmfusion", None, Some("rpmfusion-free-release"));
+        let codecs = entry("codecs", Some("rpmfusion"), None);
+        let all = vec![&rpmfusion, &codecs];
+        let empty = std::collections::HashSet::new();
+
+        // Prereq missing + not yet enabled → enable it first.
+        let got = prerequisite(&codecs, &all, &empty, &empty);
+        assert_eq!(got.map(|r| r.id.as_str()), Some("rpmfusion"));
+
+        // Already installed on the system → nothing to do.
+        let mut installed = std::collections::HashSet::new();
+        installed.insert("rpmfusion-free-release".to_string());
+        assert!(prerequisite(&codecs, &all, &installed, &empty).is_none());
+
+        // Already enabled earlier this run → not re-run.
+        let mut enabled = std::collections::HashSet::new();
+        enabled.insert("rpmfusion".to_string());
+        assert!(prerequisite(&codecs, &all, &empty, &enabled).is_none());
+
+        // An entry with no prerequisite never triggers one.
+        assert!(prerequisite(&rpmfusion, &all, &empty, &empty).is_none());
+
+        // A dangling `requires` (no such entry) resolves to nothing, not a panic.
+        let dangling = entry("x", Some("nope"), None);
+        let all2 = vec![&dangling];
+        assert!(prerequisite(&dangling, &all2, &empty, &empty).is_none());
+    }
+
+    #[test]
+    fn prerequisites_point_at_a_real_entry() {
+        let catalog = Catalog::load().unwrap();
+        let ids: std::collections::HashSet<&str> =
+            catalog.recommendation.iter().map(|r| r.id.as_str()).collect();
+        // Every `requires` must name an existing entry (no dangling prerequisite).
+        for r in &catalog.recommendation {
+            if let Some(req) = &r.requires {
+                assert!(ids.contains(req.as_str()), "{} requires missing entry {req}", r.id);
+            }
+        }
+        // The codec + VLC entries depend on RPM Fusion (the report that motivated ADR-0055).
+        let requires = |id: &str| {
+            catalog
+                .recommendation
+                .iter()
+                .find(|r| r.id == id)
+                .and_then(|r| r.requires.clone())
+        };
+        assert_eq!(requires("multimedia-codecs").as_deref(), Some("rpmfusion"));
+        assert_eq!(requires("vlc").as_deref(), Some("rpmfusion"));
     }
 
     #[test]

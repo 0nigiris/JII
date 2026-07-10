@@ -14,6 +14,18 @@ _Last updated: 2026-07-10_
 
 ## Most recent work (2026-07-10) — read this first
 
+**doctor now enables a required repo before its dependents (ADR-0055).** Field report: a user opened
+`jii doctor`, **skipped RPM Fusion**, accepted codecs/VLC (which live in RPM Fusion) → bare "not found"
++ an apparent VLC hang. Fix (data-driven, no core branch): `Recommendation` gains `requires` (+ reads
+`id` again); codecs & VLC declare `requires = "rpmfusion"`; a **pure** `recommend::prerequisite(...)`
+decides what to enable first; `doctor_offer` enables the prerequisite (its `manual` command **shown
+before it runs**, `--dry-run` honoured, parent "yes" = consent) ahead of the dependent. Note: the
+interactive doctor already *ran* `manual` repo-enables via `sh -c` (superseding the stale ADR-0035
+"shown never run"); the missing piece was the dependency link + ordering. **233 tests** (pure
+prerequisite logic + catalog wiring covered); read-only doctor render verified. Follow-ups: direct
+`jii <pkg>` doesn't resolve prerequisites yet; `openh264` needs the Cisco repo (not RPM Fusion); the
+VLC "hang" wasn't reproduced (diagnose separately on a clean `jii vlc`).
+
 **CROSS-PLATFORM EXPANSION STARTED (ADR-0054).** The owner opened a multi-release program to grow
 JII past Fedora-first toward a universal installer: **declarative Nix → Gentoo → Void → … →
 Windows/macOS**. Sequencing was decided by risk, cheapest-first: the *declarative* Nix config-edit is

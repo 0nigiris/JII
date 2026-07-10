@@ -455,8 +455,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             (`xbps-query -R`, like `pacman -Si`), root plans (`xbps-install -Sy` / `xbps-remove -Ry` /
             `xbps-install -Suy`), `xbps-query -l` list, full `_many` + `plan_update_all`. Pure `split_pkgver`.
             No core source-branch. 228 tests. Fixture-tested only — unverified on a live Void host (T7).
+      - [x] **doctor enables a required repo before its dependents** (ADR-0055). Field report: skipping
+            RPM Fusion in `jii doctor`, then accepting codecs/VLC, gave a bare "not found". Data-driven fix:
+            `Recommendation.requires` (+ reads `id`); codecs & VLC `requires = "rpmfusion"`; pure
+            `recommend::prerequisite(...)`; `doctor_offer` enables the prerequisite (command shown, dry-run
+            honoured, parent consent) before the dependent. 233 tests. Follow-ups: direct `jii <pkg>` doesn't
+            resolve prerequisites yet; openh264 needs the Cisco repo; VLC "hang" not reproduced.
       - **Cross-platform expansion (ADR-0054, ACTIVE):** grow past Fedora-first. Risk-ordered:
-            **Void ✅ → declarative-Nix Etap A → Gentoo (emerge) → … → Windows/macOS (separate epic).**
+            **Void ✅ → declarative-Nix Etap A ✅ → Gentoo (emerge) → … → Windows/macOS (separate epic).**
             - [x] **Declarative Nix — Etap A (snippet-first)** (ADR-0054). Optional
                   `Provider::install_strategies` + model `InstallStrategy`/`StrategyKind`; engine dispatch;
                   CLI chooser for a single-package interactive install. Nix detects existing config files

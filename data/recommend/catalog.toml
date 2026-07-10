@@ -1,19 +1,21 @@
 # JII recommend-catalog — curated system-onboarding suggestions.
 #
-# This is DATA, not code: `jii recommend` filters these by the host distro and
-# reports them (Analyze → Explain). It NEVER auto-applies. Entries either install
-# through the normal JII path (`packages`) or, when they cross a trust boundary a
-# package install can't express (enabling a third-party repo), show the exact
-# documented command for the user to run themselves (`manual`).
+# This is DATA, not code: `jii doctor` filters these by the host distro and offers
+# them interactively (Analyze → Explain → Ask → Apply). Entries either install through
+# the normal JII path (`packages`) or, for a step a package install can't express
+# (enabling a third-party repo), carry an exact `manual` command shown before it runs.
+# `doctor` executes an accepted entry (a read-only run only prints it). A dependent
+# entry names its prerequisite via `requires`, so its repo is enabled first (ADR-0055).
 #
 # Fields:
-#   id       stable slug (unique)
+#   id       stable slug (unique); the anchor a dependent entry's `requires` points at
 #   title    one-line human name
 #   why      what the user gains
 #   category media | repos | drivers | fonts | gaming | power
 #   distros  distro ids this applies to (empty = all); matched against Platform.distro
 #   packages JII specs to install to satisfy it (optional)
-#   manual   an exact command the user runs, for repo-enabling etc. (optional)
+#   manual   an exact command (e.g. enabling a repo), shown before doctor runs it (optional)
+#   requires id of a prerequisite entry to enable first (optional) — e.g. "rpmfusion"
 #   note     a caveat worth surfacing (optional) — e.g. a trust boundary
 #
 # Keep entries conservative and honest. Fedora-first (the MVP target); other
@@ -37,7 +39,8 @@ why = "Play the video and audio formats Fedora omits by default, in browsers and
 category = "media"
 distros = ["fedora"]
 packages = ["gstreamer1-plugins-bad-free", "gstreamer1-plugins-ugly", "gstreamer1-plugin-openh264"]
-note = "Needs RPM Fusion enabled first (see the rpmfusion entry)."
+requires = "rpmfusion"
+note = "Needs RPM Fusion enabled first — doctor enables it for you when you accept this."
 
 [[recommendation]]
 id = "vlc"
@@ -46,6 +49,7 @@ why = "Plays practically any media file without hunting for codecs."
 category = "media"
 distros = ["fedora"]
 packages = ["vlc"]
+requires = "rpmfusion"
 
 [[recommendation]]
 id = "fonts-core"

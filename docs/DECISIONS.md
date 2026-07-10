@@ -2016,3 +2016,55 @@ batch, update-all). The cross-platform program is now on record with a risk-orde
 **live-host-unverified** system providers grows (apt/pacman/zypper/nix/void) — the owner running the
 existing ones on real hosts (T7) gains value before adding more. Fedora-first remains the *default*
 posture; this ADR is the explicit, justified relaxation CLAUDE.md requires for cross-distro work.
+
+---
+
+## ADR-0055 — Recommend prerequisites: doctor enables a required repo before dependent suggestions
+
+**Status:** Accepted (2026-07-10). Landed.
+
+**Context.** A user's friend ran the released `jii` on a fresh Fedora, opened `jii doctor`, **skipped
+the RPM Fusion suggestion**, then accepted "Multimedia codecs" and "VLC" — which live in RPM Fusion —
+and got a bare `✗ Не найдено` (not found) for the codecs and an apparent hang on VLC. Root cause:
+codecs/VLC depend on the RPM Fusion repo, but the catalog modelled that only as a prose `note`
+("Needs RPM Fusion enabled first"); nothing enabled the repo or ordered it before its dependents, so
+skipping RPM Fusion silently broke everything downstream. The owner's decision: **doctor should enable
+the required third-party repos itself (with consent), before the things that need them** — "fix all
+such cases where possible." (The interactive `doctor` questionnaire already *runs* a `manual`
+repo-enable command via `run_shell_command`/`sh -c` on "yes" — superseding the stale ADR-0035 "shown,
+never run" note — so the missing piece was the **dependency link + ordering**, not execution.)
+
+**Decision.** Model the dependency **in the catalog data**, not in code. `Recommendation` gains
+`requires: Option<String>` (the `id` of a prerequisite entry) and re-reads its `id` (previously
+unread). `data/recommend/catalog.toml`: the codecs and VLC entries now declare `requires = "rpmfusion"`.
+A new **pure** `recommend::prerequisite(chosen, all, installed, enabled) -> Option<&Recommendation>`
+returns the prerequisite that must be enabled first — or `None` when there's none, it's already present
+on the system (`is_satisfied`), or it was already enabled earlier this run (dedupe). In
+`doctor_offer`, when the user accepts a suggestion, JII enables its prerequisite first: it prints the
+prerequisite's title + trust `note` and runs its `manual` command through the existing
+`apply_suggestion` (which **shows the exact command before running it**, honours `--dry-run`, and
+carries the parent "yes" as consent). The full distro-filtered catalog is kept alongside the
+offered-subset so a prerequisite that was *already satisfied* (and thus filtered out of the offered
+list) is still found for the lookup. The core never branches on the source or distro — the dependency
+is declared in data and resolved by a pure function.
+
+**Alternatives considered.** (a) *Leave it as a prose note* — rejected: that is exactly what failed
+the user. (b) *Auto-enable RPM Fusion unconditionally at startup* — rejected: a third-party repo is a
+trust boundary; it must be tied to a consented action and shown. (c) *Ask a second, separate y/n for
+the prerequisite* — rejected as needless friction: accepting codecs *is* accepting "set up codecs,"
+which requires the repo; the command is still shown before it runs. (d) *Hard-code the codecs→RPM
+Fusion link in Rust* — rejected: violates the data-driven catalog principle (ADR-0033) and the
+no-distro-branch rule (ADR-0029).
+
+**Consequences.** `doctor` now enables RPM Fusion before installing codecs/VLC when the user accepts
+them, so the reported failure can't recur via that path. Pure `prerequisite` + the catalog wiring are
+unit-tested (fires only when needed; dedupe; already-satisfied skip; dangling-`requires` safe); the
+read-only `doctor` render was verified intact. **Known limitations / follow-ups:** (1) the direct
+`jii <pkg>` install path (outside doctor) does **not** yet resolve prerequisites — a `jii vlc` on a
+box without RPM Fusion still relies on another source (Flatpak) or misses; wiring prerequisites into
+the general install path is future work. (2) `gstreamer1-plugin-openh264` lives in the Cisco
+OpenH264 repo (usually enabled by default on Fedora Workstation), which RPM Fusion does not provide;
+on a spin where it's disabled that one package can still miss. (3) The friend's VLC "hang" was not
+reproduced (likely the no-RPM-Fusion miss falling back to a slow source search); enabling RPM Fusion
+via doctor makes `dnf` resolve VLC directly — if a hang persists on a clean `jii vlc`, diagnose
+separately.
