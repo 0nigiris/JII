@@ -48,14 +48,17 @@ normal-source miss in an interactive session, opens a **repo picker**: `Forge::s
 the repo's latest release into the normal preview→confirm→install (untrusted → still confirmed).
 Optional forge capability (`supports_repo_search`), no core source-branch. Owner/repo, pinned
 source, intent flags, batch, `--json`, non-TTY all skip it. Crossterm menu now width-truncates each
-item so long lines don't wrap. 218 tests, pty + pipe verified. **Also this session:** setup wizard
+item so long lines don't wrap. 219 tests, pty + pipe verified. **Also:** setup wizard
 gained a full GitHub-token help step (benefit + create + export), which mitigates the tighter
 search rate limit.
 
-**Typo-tolerance note:** currently relies on GitHub's own fuzzy matching (fine for `exteragram`);
-a local edit-distance fallback for cases like `exeteragram`→`exteragram` is an open refinement.
+**Typo-tolerance DONE.** On top of GitHub's own fuzzy matching, when the verbatim term finds
+nothing the picker retries cheap edit-distance-1 variants (`cli::typo_variants`: deletions then
+adjacent transpositions, deduped/capped) and adopts the first that hits, paging that corrected term
+and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
+for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** owner to steer. Candidates: refine GitHub-search typo tolerance; richer info cards;
+**Next up:** owner to steer. Candidates: richer info cards;
 more polish. GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly parked** until
 the CLI is fully polished — do not start it.
 

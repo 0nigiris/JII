@@ -1917,9 +1917,12 @@ it stays within ADR-0049 (GitHub is one forge among peers) and ADR-0022 (optiona
   asset the candidate flows into the **normal** preview→confirm→install (untrusted, so still an
   explicit confirm, ADR-0006); if not, JII says so and re-shows the list. `owner/repo`, a pinned
   `:source`, any intent flag (`--source`/`--auto`/`--yes`/`--no`), a batch, `--json`, and non-TTY
-  all skip the picker (unchanged behaviour). **Typo tolerance** is GitHub's own search matching for
-  now (good enough for the `exteragram` case); a local edit-distance fallback is a possible later
-  refinement.
+  all skip the picker (unchanged behaviour). **Typo tolerance** — GitHub's own fuzzy matching handles
+  the easy cases (`exteragram`); on top of it, when the verbatim term finds **nothing**, the picker
+  retries with cheap edit-distance-1 variants (`cli::typo_variants`: single-char deletions first —
+  the everyday extra-key slip — then adjacent transpositions; deduped, capped at 16) and adopts the
+  first variant that hits, from then on paging *that* corrected term and telling the user
+  (`install.gh_corrected`). So `exeteragram` → `exteragram` now recovers locally without a name index.
 
 **Alternatives considered:** (a) fold GitHub repo hits into the normal ranked candidate list —
 rejected: it would flood every search with untrusted repos and force a release lookup per repo on
@@ -1929,7 +1932,7 @@ snappier and the "no Linux binary → pick another" message is clear. (c) A dedi
 command — rejected: `jii <name>` "just works" is the goal.
 
 **Consequences:** New `model::RepoHit`; forge/github/provider/engine gain the methods above;
-`cli::repo_picker` + `repo_label`/`humanize_count` helpers. The crossterm menu now truncates each
+`cli::repo_picker` + `repo_label`/`humanize_count`/`typo_variants` helpers. The crossterm menu now truncates each
 item to the terminal width (`truncate_display`) so a long repo line can't wrap and desync the
 per-row redraw/mouse mapping. 218 tests (github search-JSON parse, humanize_count); live-verified
 under a pty (`jii exteragram` → GitHub picker with stars/descriptions; picking an APK-only repo

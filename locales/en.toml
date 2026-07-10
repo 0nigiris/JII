@@ -105,6 +105,7 @@ gh_picker_header = "GitHub repositories matching '{name}' — pick one to instal
 gh_show_more = "↓  Show more results"
 gh_no_release = "{slug} publishes no installable Linux binary — pick another."
 gh_none = "No GitHub repositories found for '{name}'."
+gh_corrected = "Nothing for '{name}' — showing results for '{fixed}' instead."
 
 [doctor]
 all_good = "Nothing to set up — you're all good."

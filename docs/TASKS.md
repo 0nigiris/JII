@@ -443,10 +443,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             interactive **repo picker** (GitHub `/search/repositories` → `owner/repo — desc ★stars`, a
             "↓ Show more" that pages forever); picking resolves the release into the normal install flow
             (untrusted → confirmed). Optional forge capability, no core source-branch. 218 tests, pty+pipe
-            verified. Typo tolerance = GitHub's own matching (local edit-distance fallback = open refinement).
+            verified.
+      - [x] **Typo tolerance for GitHub search** (ADR-0053). On top of GitHub's own fuzzy matching, a
+            verbatim miss retries cheap edit-distance-1 variants (`cli::typo_variants`: deletions then
+            adjacent transpositions) and adopts the first that hits, paging the corrected term and telling
+            the user. `exeteragram` → `exteragram` recovers locally. 219 tests, pty-verified.
       - [x] **Setup GitHub-token help.** Setup wizard now explains the token (rate-limit benefit + create +
             export), mitigating the tighter search rate limit.
-      - **Next (owner to steer):** typo-tolerance refinement for GitHub search; richer info cards; more
+      - **Next (owner to steer):** richer info cards; more
             polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in

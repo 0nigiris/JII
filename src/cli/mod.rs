@@ -725,7 +725,27 @@ impl Cli {
         let palette = renderer.palette();
         renderer.info(&crate::t!("install.gh_searching", name = name));
 
-        let mut hits = engine.forge_repo_search(name, 1).await;
+        // The query we actually page through. If the verbatim term finds nothing we may swap in
+        // a typo-corrected variant below, and from then on paginate *that* corrected term.
+        let mut query = name.to_string();
+        let mut hits = engine.forge_repo_search(&query, 1).await;
+        if hits.is_empty() {
+            // Recover from a typo (`exeteragram` → `exteragram`): retry the forge with cheap
+            // edit-distance-1 variants and take the first that finds anything.
+            for variant in typo_variants(name) {
+                let found = engine.forge_repo_search(&variant, 1).await;
+                if !found.is_empty() {
+                    renderer.info(&crate::t!(
+                        "install.gh_corrected",
+                        name = name,
+                        fixed = variant.clone()
+                    ));
+                    query = variant;
+                    hits = found;
+                    break;
+                }
+            }
+        }
         if hits.is_empty() {
             renderer.info(&crate::t!("install.gh_none", name = name));
             return None;
@@ -739,13 +759,13 @@ impl Cli {
                 labels.push(palette.dim(&crate::t!("install.gh_show_more")));
                 labels.len() - 1
             });
-            let header = crate::t!("install.gh_picker_header", name = name);
+            let header = crate::t!("install.gh_picker_header", name = &query);
 
             match prompt::choose(renderer, &header, &labels, 0) {
                 None => return None, // cancelled
                 Some(i) if Some(i) == more_index => {
                     page += 1;
-                    let more = engine.forge_repo_search(name, page).await;
+                    let more = engine.forge_repo_search(&query, page).await;
                     maybe_more = more.len() as u32 >= crate::provider::forge::REPO_SEARCH_PER_PAGE;
                     hits.extend(more);
                 }
@@ -2410,6 +2430,35 @@ fn repo_label(hit: &crate::model::RepoHit, palette: crate::ui::Palette) -> Strin
     format!("{}{desc}  {stars}", hit.slug)
 }
 
+/// Cheap edit-distance-1 variants of a search term, tried in order when the forge's own fuzzy
+/// match finds nothing — enough to recover from an everyday typo (`exeteragram` → `exteragram`)
+/// without an expensive dictionary. Covers single-character **deletions** first (an extra key
+/// is the common slip) then **adjacent transpositions**; deduped, order-preserving, and capped
+/// so a miss on a long term stays a handful of extra forge calls, not dozens.
+fn typo_variants(query: &str) -> Vec<String> {
+    let chars: Vec<char> = query.chars().collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |v: String, out: &mut Vec<String>| {
+        if v.chars().count() >= 2 && v != query && seen.insert(v.clone()) {
+            out.push(v);
+        }
+    };
+    // Deletions: drop one character.
+    for i in 0..chars.len() {
+        let v: String = chars[..i].iter().chain(&chars[i + 1..]).collect();
+        push(v, &mut out);
+    }
+    // Adjacent transpositions: swap two neighbours.
+    for i in 0..chars.len().saturating_sub(1) {
+        let mut c = chars.clone();
+        c.swap(i, i + 1);
+        push(c.into_iter().collect(), &mut out);
+    }
+    out.truncate(16);
+    out
+}
+
 /// Compact star/download counts: `1234` → `1.2k`, `2_500_000` → `2.5M`.
 fn humanize_count(n: u64) -> String {
     match n {
@@ -2904,6 +2953,22 @@ mod tests {
         assert_eq!(humanize_count(1_200), "1.2k");
         assert_eq!(humanize_count(12_500), "12.5k");
         assert_eq!(humanize_count(2_500_000), "2.5M");
+    }
+
+    #[test]
+    fn typo_variants_recover_common_slips() {
+        // Extra character: the corrected term is reachable by a single deletion.
+        assert!(typo_variants("exeteragram").contains(&"exteragram".to_string()));
+        // Swapped neighbours: an adjacent transposition puts them back.
+        assert!(typo_variants("gti").contains(&"git".to_string()));
+        // Deduped, never echoes the input, and stays a bounded handful.
+        let v = typo_variants("firefox");
+        assert!(!v.contains(&"firefox".to_string()));
+        assert!(v.len() <= 16);
+        let mut sorted = v.clone();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), v.len());
     }
 
     #[test]
