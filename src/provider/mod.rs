@@ -21,6 +21,7 @@ pub mod copr;
 pub mod dnf;
 pub mod flatpak;
 pub mod forge;
+pub mod gentoo;
 pub mod github;
 pub mod go;
 pub mod homebrew;
@@ -303,6 +304,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("void") {
             providers.push(Box::new(void::Void::new()));
+        }
+        if config.is_enabled("gentoo") {
+            providers.push(Box::new(gentoo::Gentoo::new()));
         }
         if config.is_enabled("nix") {
             providers.push(Box::new(nix::Nix::new()));

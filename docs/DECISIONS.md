@@ -2012,10 +2012,21 @@ parser + diff + backup first.
 
 **Consequences.** `void` is a first-class source everywhere (sources list, ranking, `--source void`,
 batch, update-all). The cross-platform program is now on record with a risk-ordered plan: **Void
-(done) → Gentoo → declarative-Nix Etap A → … → Windows/macOS (separate epic)**. The pile of
-**live-host-unverified** system providers grows (apt/pacman/zypper/nix/void) — the owner running the
-existing ones on real hosts (T7) gains value before adding more. Fedora-first remains the *default*
-posture; this ADR is the explicit, justified relaxation CLAUDE.md requires for cross-distro work.
+(done) → declarative-Nix Etap A (done) → Gentoo (done) → … → Windows/macOS (separate epic)**. The
+pile of **live-host-unverified** system providers grows (apt/pacman/zypper/nix/void/gentoo) — the
+owner running the existing ones on real hosts (T7) gains value before adding more. Fedora-first
+remains the *default* posture; this ADR is the explicit, justified relaxation CLAUDE.md requires for
+cross-distro work.
+
+**Update (2026-07-10) — Gentoo (Portage/`emerge`) landed** as the next cheap imperative provider
+(`src/provider/gentoo.rs`, id `gentoo`, Official). Portage is **atom-based** (`category/package`), so
+`search` parses `emerge --search "^name$"` and emits one candidate per `category/name` (keeping the
+atom in `raw`; a bare name in two categories yields two candidates); plans run `emerge --ask=n <atom>`
+/ `--unmerge` / `--update` / `-uDN @world` (root) with `_many` batching; `list_installed` reads
+`/var/db/pkg/<category>/<PF>` directly (no gentoolkit/portage-utils dependency); pure, revision-aware
+`split_pf` derives name+version. Builds **from source** (slow — inherent to Gentoo, surfaced not
+hidden). No core source-branch; new `gentoo_official`/`_many` reasons. 243 tests; fixture-tested only
+(T7). **Windows/macOS remains the one non-trivial epic** (privilege/paths/packaging/CI).
 
 ---
 

@@ -32,6 +32,17 @@ Windows/macOS**. Sequencing was decided by risk, cheapest-first: the *declarativ
 the one novel/high-risk piece (new kind of action — editing a hand-written config — plus setup
 discovery), while emerge/xbps/winget/brew are imperative "just another `Provider`". So we prove the
 platform seam with a cheap imperative provider first.
+- **Gentoo (Portage/`emerge`) provider LANDED.** `src/provider/gentoo.rs`, id `gentoo`, **Official**
+  (::gentoo tree is GPG-verified), self-gates on `emerge` (ADR-0029). Portage uses **atoms**
+  `category/package`: exact-name search via `emerge --search "^name$"` (parses the `*  cat/pkg`
+  blocks + `Latest version available:`/`Description:`; emits one candidate per `category/name`,
+  keeping the atom in `raw`; a bare name in two categories → two candidates). Root plans `emerge
+  --ask=n <atom>` / `emerge --unmerge` / `emerge --update` / `emerge -uDN @world`, full `_many`
+  batching. `list_installed` reads `/var/db/pkg/<category>/<PF>` directly (no gentoolkit/portage-utils
+  dep); pure `split_pf` (PF → name+version, revision-aware). Builds **from source** (slow — inherent
+  to Gentoo, not hidden). Registered everywhere (after void). **No core source-branch. 243 tests.**
+  Fixture-tested only — unverified on a live Gentoo host (T7). Reuses shared `[reason]` (`mgr="emerge"`)
+  + new `gentoo_official`/`_many`.
 - **Void (XBPS) provider LANDED.** `src/provider/void.rs`, id `void`, **Official** (Void repos are
   RSA-signed), self-gates on `xbps-install` (ADR-0029). Exact-name search via `xbps-query -R <name>`
   (property stanza, like `pacman -Si`, lax-captured; emits only on an exact `pkgname` match); plans
@@ -55,9 +66,10 @@ platform seam with a cheap imperative provider first.
   pure + unit-tested; the menu→print→install-nothing path is **pty-verified** (stubbed nix + temp
   home.nix). Etap B (real `rnix` auto-edit + diff + backup + confirm) stays deferred. **231 tests.**
   New `[nix]` locale section (en+ru, parity green).
-- **Next in this program:** **Gentoo (emerge)** — imperative provider (USE flags / source builds /
-  `world` — heavier than Void). Windows/macOS is a **separate later epic** (breaks `privilege.rs`,
-  paths, packaging, CI) — scope on its own.
+- **Next in this program:** **Windows/macOS** is the remaining big piece — a **separate later epic**
+  (breaks `privilege.rs`, paths, packaging, CI) — scope on its own. Nearer-term: declarative-Nix
+  **Etap B** (real `rnix` auto-edit + diff + backup + confirm); the owner running the existing
+  non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) on real hosts (T7).
 
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
 (ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
@@ -103,8 +115,8 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** the cross-platform program (ADR-0054) is active — Void ✅ and declarative-Nix Etap A ✅
-done; next is **Gentoo (emerge)**. Windows/macOS stays a separate later epic. Other candidates:
+**Next up:** the cross-platform program (ADR-0054) is active — Void ✅, declarative-Nix Etap A ✅ and
+Gentoo ✅ done; **Windows/macOS** is the remaining big piece (separate later epic). Other candidates:
 declarative-Nix **Etap B** (real `rnix` auto-edit + diff + backup + confirm); richer info cards; more
 polish; the owner running the existing non-Fedora providers on real hosts (T7). GUI (Steam + KDE
 Discover + GNOME Software blend) stays **explicitly parked** until the CLI is fully polished — do not

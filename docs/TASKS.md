@@ -462,7 +462,7 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             honoured, parent consent) before the dependent. 233 tests. Follow-ups: direct `jii <pkg>` doesn't
             resolve prerequisites yet; openh264 needs the Cisco repo; VLC "hang" not reproduced.
       - **Cross-platform expansion (ADR-0054, ACTIVE):** grow past Fedora-first. Risk-ordered:
-            **Void ✅ → declarative-Nix Etap A ✅ → Gentoo (emerge) → … → Windows/macOS (separate epic).**
+            **Void ✅ → declarative-Nix Etap A ✅ → Gentoo ✅ → … → Windows/macOS (separate epic).**
             - [x] **Declarative Nix — Etap A (snippet-first)** (ADR-0054). Optional
                   `Provider::install_strategies` + model `InstallStrategy`/`StrategyKind`; engine dispatch;
                   CLI chooser for a single-package interactive install. Nix detects existing config files
@@ -473,12 +473,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   pty-verified. 231 tests. New `[nix]` locale section (en+ru).
             - [ ] **Declarative Nix — Etap B.** Real file edit via `rnix` (parse → insert into the packages
                   list) with **diff-preview → backup → confirm**. Deferred; Etap A proved detection + generation.
-            - [ ] **Gentoo (emerge)** — imperative provider (USE flags / source builds / `world` — heavier
-                  than Void, so it comes after).
+            - [x] **Gentoo (Portage/emerge)** (ADR-0054). `provider/gentoo.rs`, id `gentoo`, Official
+                  (GPG-verified ::gentoo tree), self-gates on `emerge`. Atom-based (`category/package`):
+                  exact search `emerge --search "^name$"` (one candidate per `cat/name`, atom in `raw`),
+                  root plans `emerge --ask=n`/`--unmerge`/`--update`/`-uDN @world`, `_many` batching,
+                  `/var/db/pkg` list, pure `split_pf`. Builds from source (slow, inherent). No core
+                  source-branch. 243 tests. Fixture-tested only — unverified on a live Gentoo host (T7).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** Gentoo (emerge); declarative-Nix Etap B (rnix auto-edit); richer info
-            cards; more polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
+      - **Next (owner to steer):** Windows/macOS (separate epic); declarative-Nix Etap B (rnix auto-edit);
+            richer info cards; more polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:
