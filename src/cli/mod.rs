@@ -558,16 +558,49 @@ impl Cli {
                         renderer.info(&crate::t!("common.aborted"));
                         return Ok(());
                     }
-                    Some(index) => {
-                        if let crate::model::StrategyKind::Manual { guidance } =
-                            &strategies[index].kind
-                        {
+                    Some(index) => match &strategies[index].kind {
+                        crate::model::StrategyKind::Manual { guidance } => {
                             renderer.info(guidance);
                             renderer.info(&crate::t!("nix.guidance_footer"));
                             return Ok(());
                         }
+                        crate::model::StrategyKind::EditFile { path, new_content, diff, apply } => {
+                            // Auto-edit a user-owned config (Nix Etap B, ADR-0056): show the
+                            // diff, confirm, back up, write. One user-owned file, never root.
+                            renderer.info(&crate::t!(
+                                "nix.edit_intro",
+                                file = path.display().to_string()
+                            ));
+                            renderer.info(diff);
+                            let flags = self
+                                .prompt_flags(engine.config().install.auto)
+                                .with_yes(assume_yes);
+                            if !prompt::confirm(renderer, &crate::t!("nix.edit_confirm"), true, &flags)
+                            {
+                                renderer.info(&crate::t!("common.aborted"));
+                                return Ok(());
+                            }
+                            match write_nix_config(path, new_content) {
+                                Ok(backup) => {
+                                    renderer.success(&crate::t!(
+                                        "nix.edit_written",
+                                        file = path.display().to_string()
+                                    ));
+                                    renderer.info(&crate::t!(
+                                        "nix.edit_backup",
+                                        backup = backup.display().to_string()
+                                    ));
+                                    renderer
+                                        .info(&crate::t!("nix.edit_apply", cmd = apply.clone()));
+                                }
+                                Err(e) => renderer
+                                    .error(&crate::t!("nix.edit_failed", error = e.to_string())),
+                            }
+                            return Ok(());
+                        }
                         // Imperative → fall through to the normal preview/confirm/install.
-                    }
+                        crate::model::StrategyKind::Imperative => {}
+                    },
                 }
             }
         }
@@ -2893,10 +2926,35 @@ async fn flathub_configured() -> bool {
         .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "flathub"))
 }
 
+/// Back up `path` to `<path>.jii-bak` and overwrite it with `content`, returning the backup
+/// path (Nix Etap B, ADR-0056). The provider only produces an `EditFile` for a user-owned
+/// config, so this is plain user-space file IO — no privilege escalation. The backup is
+/// written first, so a failed write always leaves a recoverable copy.
+fn write_nix_config(path: &std::path::Path, content: &str) -> std::io::Result<std::path::PathBuf> {
+    let mut backup = path.as_os_str().to_owned();
+    backup.push(".jii-bak");
+    let backup = std::path::PathBuf::from(backup);
+    std::fs::copy(path, &backup)?;
+    std::fs::write(path, content)?;
+    Ok(backup)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{PkgVersion, TrustLevel};
+
+    #[test]
+    fn write_nix_config_backs_up_then_overwrites() {
+        // Nix Etap B: the original is preserved at <path>.jii-bak before the new content lands.
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("home.nix");
+        std::fs::write(&cfg, "old\n").unwrap();
+        let backup = write_nix_config(&cfg, "new\n").unwrap();
+        assert_eq!(backup, cfg.with_file_name("home.nix.jii-bak"));
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "new\n");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "old\n");
+    }
 
     #[test]
     fn cli_definition_is_valid() {

@@ -325,9 +325,12 @@ Run **`jii sources`** to see which are usable on *your* box, and **`jii provider
 ecosystem managers and what's installed. Missing one? `jii providers add npm` bootstraps it.
 
 On **Nix**, if you manage your system declaratively (a NixOS `configuration.nix` or a home-manager
-`home.nix`), `jii <pkg>` offers a choice: install now with `nix profile install`, or **show you the
-exact snippet** to add to your config (with the file and the `nixos-rebuild`/`home-manager switch`
-command) — JII prints it and changes nothing; you place it yourself. No declarative config, no prompt.
+`home.nix`), `jii <pkg>` offers a choice: install now with `nix profile install`, or add the package to
+your config. For a home-manager `home.nix` you own, JII **makes the edit for you** — it splices the
+package into your `home.packages` list (keeping your formatting and comments), **shows the diff**, saves
+a `.jii-bak` backup, writes the file, and prints the `home-manager switch` command to apply it. For the
+root-owned NixOS `configuration.nix` (or anything it can't safely edit) it instead **shows the exact
+snippet** to add and changes nothing. No declarative config, no prompt.
 
 ---
 

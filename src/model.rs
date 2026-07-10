@@ -284,6 +284,22 @@ pub enum StrategyKind {
     /// apply command, and a backup note. JII never writes the file or runs a command here
     /// ("show, never run", ADR-0048/0054 Etap A).
     Manual { guidance: String },
+    /// **Auto-edit** a user-writable declarative config (Nix Etap B, ADR-0056): the provider
+    /// has already parsed the file and spliced the package into the existing list. The CLI
+    /// shows `diff`, asks to confirm, backs the file up, then writes `new_content` — after
+    /// which the user runs `apply` to activate it. Only offered for files the current user
+    /// owns (home-manager `home.nix`); the root-owned NixOS config stays [`Manual`]. JII still
+    /// never runs a privileged command here — it writes one user-owned file, nothing more.
+    EditFile {
+        /// The config file to rewrite (already confirmed to exist and be user-owned).
+        path: PathBuf,
+        /// The full new file contents — the package spliced into its declarative list.
+        new_content: String,
+        /// A rendered diff (unchanged-context / `-` removed / `+` added lines) shown first.
+        diff: String,
+        /// The command that activates the change once written (`home-manager switch`).
+        apply: String,
+    },
 }
 
 /// A single installation candidate produced by a provider's `search`.

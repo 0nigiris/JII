@@ -2079,3 +2079,61 @@ on a spin where it's disabled that one package can still miss. (3) The friend's 
 reproduced (likely the no-RPM-Fusion miss falling back to a slow source search); enabling RPM Fusion
 via doctor makes `dnf` resolve VLC directly — if a hang persists on a clean `jii vlc`, diagnose
 separately.
+
+## ADR-0056 — Declarative Nix Etap B: parser-driven auto-edit of a user-owned config (diff → backup → write)
+
+**Status:** Accepted (2026-07-10). Landed.
+
+**Context.** ADR-0054 shipped declarative Nix "Etap A" — when JII detects a Nix config the user
+maintains (`/etc/nixos/configuration.nix` or a home-manager `home.nix`), the install menu offers a
+"show me the snippet" path that **only prints** the block to add plus the apply command, never
+touching the file. The owner's next step (chosen via the direction prompt: *"Nix этап B (авто-правка
+конфига)"*) is to actually **make the edit** for the user: splice the package into the existing list,
+show a diff, and write it — the first time JII modifies a user's hand-written configuration, which is
+why it gets its own ADR.
+
+**Decision.**
+1. **Scope v1 = user-owned files only.** Auto-edit is offered **only** for a home-manager `home.nix`
+   (under `$HOME`, `home.packages`). The root-owned NixOS `configuration.nix` stays Etap A
+   (show-snippet): editing it needs privilege, and JII "is never fully run as root" (CLAUDE.md) — a
+   privileged config rewrite is a separate, larger decision. So Etap B needs **no escalation**: it
+   writes exactly one file the current user owns.
+2. **New action shape, not a new privileged step.** `StrategyKind` gains
+   `EditFile { path, new_content, diff, apply }` alongside `Imperative`/`Manual` (ADR-0054). The
+   **provider precomputes everything** — it reads the file, produces the rewritten content and a
+   rendered diff — so the core stays source-agnostic: the CLI just shows the diff, confirms, backs up,
+   and writes, exactly as it already shows `Manual` guidance. No `if source == "nix"` anywhere.
+3. **Edit via the concrete syntax tree, splice the original text.** `insert_package(source, attr, pkg)`
+   parses with **`rnix` 0.14** (its lossless rowan CST), locates the `home.packages` list (unwrapping a
+   leading `with pkgs;`), and splices `pkg` into the **original source bytes** at the right offset —
+   it never re-prints the tree (which would reformat the whole file). It mirrors the existing style
+   (multi-line list → new indented line after the last item, past any trailing comment; inline
+   `[ a b ]` → space-separated; empty `[]` → `[ pkg ]`), detects an already-present package, and
+   returns `NotFound` for anything it can't confidently edit (attribute absent, value isn't a plain
+   list, or the file doesn't parse) so the caller **falls back to the Etap A snippet**. Comments and
+   formatting elsewhere are preserved byte-for-byte.
+4. **Safety rails on write.** The CLI shows the diff, asks a y/n (honouring `--yes/--no/--auto` and,
+   because the strategy menu is already gated off under `--dry-run`, a dry run never writes), backs the
+   file up to `<path>.jii-bak` **before** overwriting (so a failed write always leaves a recoverable
+   copy), then prints the apply command (`home-manager switch`) for the user to run.
+
+**Alternatives considered.** (a) *Hand-roll a Nix text editor (regex/string scan)* — rejected: doing
+it correctly means re-implementing a comment- and string-aware Nix lexer, strictly more code and more
+bug surface than leaning on the canonical parser; `rnix` is the smaller, safer dependency. (b)
+*Pretty-print the edited AST back out* — rejected: it reflows the user's entire file; splicing into the
+original text preserves their formatting exactly. (c) *Also auto-edit `configuration.nix` via
+`sudo`/`pkexec`* — deferred: privileged config rewrites are a separate trust/UX decision; v1 stays
+user-space. (d) *Auto-run `home-manager switch` after writing* — rejected: JII installs, it doesn't
+activate a user's whole generation behind their back; we show the command instead.
+
+**Consequences.** A home-manager user picking "Add to …/home.nix" now gets the package actually added,
+with a previewed diff and a `.jii-bak` backup, then a one-line apply hint — while a plain `nix profile`
+user still sees no menu, and the NixOS system config still only shows a snippet. `insert_package`,
+`find_list`, `line_diff` and the backup/write helper are unit-tested across multi-line, inline, empty,
+no-`with-pkgs`, comment-preserving, already-present, not-found and unparseable inputs. New runtime
+dependency: `rnix` 0.14 (pulls `rowan`/`text-size`/`countme`). **Known limitations / follow-ups:**
+(1) only the flat `home.packages = [ … ]` form is recognised; a nested `home = { packages = … }` or a
+package list built by a function (`lib.optionals …`) falls back to the snippet. (2) The full
+menu→edit→apply flow is unit-tested at the seams but not yet exercised on a live home-manager host
+(T7 debt, shared with the Void/Gentoo providers). (3) `configuration.nix` auto-edit and wiring the
+edit into non-interactive/batch installs remain future work.

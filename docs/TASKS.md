@@ -471,8 +471,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   A declarative pick **SHOWS** the snippet + file + apply cmd + backup note and **installs
                   nothing** ("show, never run"). Pure detection/snippet/guidance unit-tested; menu→print path
                   pty-verified. 231 tests. New `[nix]` locale section (en+ru).
-            - [ ] **Declarative Nix — Etap B.** Real file edit via `rnix` (parse → insert into the packages
-                  list) with **diff-preview → backup → confirm**. Deferred; Etap A proved detection + generation.
+            - [x] **Declarative Nix — Etap B (parser-driven auto-edit)** (ADR-0056). A user-owned
+                  home-manager `home.nix` is now **actually edited**. `StrategyKind::EditFile{path,new_content,
+                  diff,apply}`; provider parses with `rnix` 0.14 (rowan CST) and **splices the package into the
+                  original source bytes** (no reflow) — mirrors style (multi-line/inline/empty), preserves
+                  comments, detects already-present, returns `NotFound` → Etap A snippet fallback (attr absent /
+                  not a plain list / unparseable). Root-owned `configuration.nix` stays snippet-only → **no
+                  escalation** (one user file). CLI: diff → confirm (`--yes/--no/--auto`; `--dry-run` never
+                  writes) → back up `<path>.jii-bak` → write → print `home-manager switch`.
+                  `insert_package`/`find_list`/`line_diff`/`write_nix_config` unit-tested. 253 tests. New
+                  `[nix]` `edit_*` locale keys (en+ru). **T7:** full menu→edit→apply flow unverified on a live
+                  home-manager host. **Follow-ups:** `configuration.nix` auto-edit; wire the edit into
+                  non-interactive/batch installs.
             - [x] **Gentoo (Portage/emerge)** (ADR-0054). `provider/gentoo.rs`, id `gentoo`, Official
                   (GPG-verified ::gentoo tree), self-gates on `emerge`. Atom-based (`category/package`):
                   exact search `emerge --search "^name$"` (one candidate per `cat/name`, atom in `raw`),
@@ -481,8 +491,9 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   source-branch. 243 tests. Fixture-tested only — unverified on a live Gentoo host (T7).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** Windows/macOS (separate epic); declarative-Nix Etap B (rnix auto-edit);
-            richer info cards; more polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
+      - **Next (owner to steer):** Windows/macOS (separate epic); ADR-0056 follow-ups (`configuration.nix`
+            auto-edit; wire the Nix edit into non-interactive/batch installs); richer info cards; more polish.
+            GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

@@ -13,6 +13,7 @@
 //! reproducible builds).
 
 use async_trait::async_trait;
+use rnix::{Root, SyntaxKind, SyntaxNode};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -170,12 +171,16 @@ impl Provider for Nix {
     }
 
     async fn install_strategies(&self, candidate: &PackageCandidate) -> Vec<InstallStrategy> {
-        // Declarative Nix, Etap A (ADR-0054): only offer a choice when the user actually
-        // manages their system declaratively — i.e. a config file we recognise exists on this
-        // host. A plain `nix profile` user (Nix on Fedora, say) has none, so this returns empty
-        // and JII installs imperatively as before (no annoying menu). When a config *is* found,
-        // offer `nix profile install` (default, immediate) plus a "show me the snippet" path per
-        // detected file. The declarative paths only **show** guidance — JII never edits the file.
+        // Declarative Nix: only offer a choice when the user actually manages their system
+        // declaratively — i.e. a config file we recognise exists on this host. A plain
+        // `nix profile` user (Nix on Fedora, say) has none, so this returns empty and JII
+        // installs imperatively as before (no annoying menu). When a config *is* found we
+        // offer `nix profile install` (default, immediate) plus one path per detected file:
+        //   • Etap B (ADR-0056): a user-owned home-manager `home.nix` we can parse → an
+        //     **auto-edit** (`EditFile`) — JII splices the package in, shows a diff, backs up,
+        //     and writes it (one user-owned file, no root).
+        //   • Etap A (ADR-0054): the root-owned NixOS config, or any file we can't confidently
+        //     edit → **show the snippet** (`Manual`), changing nothing.
         let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()) else {
             return Vec::new();
         };
@@ -197,11 +202,157 @@ impl Provider for Nix {
             out.push(InstallStrategy {
                 label: crate::t!("nix.strategy_add_to", file = t.file.display().to_string()),
                 hint,
-                kind: StrategyKind::Manual { guidance: guidance(t, &candidate.name) },
+                kind: strategy_for_target(t, &candidate.name),
             });
         }
         out
     }
+}
+
+/// Decide *how* a declarative target is offered for `name` (ADR-0056). A user-owned
+/// home-manager file whose declarative list we can parse and splice into becomes an
+/// [`StrategyKind::EditFile`] (auto-edit with diff/backup); everything else — the root-owned
+/// NixOS config, an unreadable file, an already-present package, or a shape we can't safely
+/// edit — falls back to Etap A [`StrategyKind::Manual`] (show the snippet, change nothing).
+fn strategy_for_target(t: &NixTarget, name: &str) -> StrategyKind {
+    if t.home
+        && let Ok(source) = std::fs::read_to_string(&t.file)
+        && let Insertion::Inserted(new_content) = insert_package(&source, t.attr, name)
+    {
+        return StrategyKind::EditFile {
+            path: t.file.clone(),
+            diff: line_diff(&source, &new_content),
+            new_content,
+            apply: t.apply.to_string(),
+        };
+    }
+    StrategyKind::Manual { guidance: guidance(t, name) }
+}
+
+/// Outcome of splicing a package into a declarative list (see [`insert_package`]).
+#[derive(Debug, PartialEq)]
+enum Insertion {
+    /// The full rewritten file, with the package added to the list.
+    Inserted(String),
+    /// The package is already declared in the list — nothing to do.
+    AlreadyPresent,
+    /// The attribute/list wasn't found (or the file didn't parse) — caller shows a snippet.
+    NotFound,
+}
+
+/// Splice `pkg` into the declarative list assigned to `attr_path` (e.g. `home.packages`) in a
+/// Nix `source`, preserving the file's exact formatting and comments. The heavy lifting is done
+/// by `rnix`'s lossless concrete syntax tree: we locate the target list node and splice `pkg`
+/// into the **original text** at the right byte offset — never re-print the tree (which would
+/// reformat the whole file). Hand-rolling this would mean re-implementing a comment- and
+/// string-aware Nix lexer, so leaning on the canonical parser is the smaller, safer surface
+/// (ADR-0056). Returns [`Insertion::NotFound`] for anything we can't confidently edit, so the
+/// caller can fall back to showing a snippet.
+fn insert_package(source: &str, attr_path: &str, pkg: &str) -> Insertion {
+    let parse = Root::parse(source);
+    // A file that doesn't parse cleanly is not one we'll rewrite — show a snippet instead.
+    if !parse.errors().is_empty() {
+        return Insertion::NotFound;
+    }
+    let Some(list) = find_list(&parse.syntax(), attr_path) else {
+        return Insertion::NotFound;
+    };
+    let items: Vec<SyntaxNode> = list.children().collect();
+    // Already declared? (Bare idents like `ripgrep`, matched on their trimmed text.)
+    if items.iter().any(|i| i.text().to_string().trim() == pkg) {
+        return Insertion::AlreadyPresent;
+    }
+    let range = list.text_range();
+    let (list_start, list_end) = (usize::from(range.start()), usize::from(range.end()));
+
+    // Empty list `[]` / `[ ]`: replace the whole node with a tidy one-liner.
+    let Some(first) = items.first() else {
+        let replacement = format!("[ {pkg} ]");
+        return Insertion::Inserted(splice(source, list_start, list_end, &replacement));
+    };
+
+    let l_brack_end = list
+        .children_with_tokens()
+        .find(|e| e.kind() == SyntaxKind::TOKEN_L_BRACK)
+        .map(|e| usize::from(e.text_range().end()))
+        .unwrap_or(list_start);
+    let first_start = usize::from(first.text_range().start());
+    let last_end = usize::from(items.last().unwrap().text_range().end());
+
+    // Multi-line list (each item on its own line) vs inline `[ a b ]`: mirror the existing style.
+    if source[l_brack_end..first_start].contains('\n') {
+        let indent = line_indent(source, first_start);
+        // Insert on a fresh line after the last item's line (past any trailing comment).
+        let nl = source[last_end..].find('\n').map_or(last_end, |i| last_end + i);
+        Insertion::Inserted(splice(source, nl, nl, &format!("\n{indent}{pkg}")))
+    } else {
+        Insertion::Inserted(splice(source, last_end, last_end, &format!(" {pkg}")))
+    }
+}
+
+/// The declarative list node (`[ … ]`) assigned to `attr_path`, unwrapping a leading
+/// `with pkgs;`. Returns `None` if the attribute is absent or its value isn't a plain list.
+fn find_list(root: &SyntaxNode, attr_path: &str) -> Option<SyntaxNode> {
+    let av = root.descendants().find(|n| {
+        n.kind() == SyntaxKind::NODE_ATTRPATH_VALUE
+            && n.children()
+                .find(|c| c.kind() == SyntaxKind::NODE_ATTRPATH)
+                .is_some_and(|p| p.text().to_string().trim() == attr_path)
+    })?;
+    // The value is the AttrpathValue's child node that isn't the attrpath.
+    let mut value = av.children().find(|c| c.kind() != SyntaxKind::NODE_ATTRPATH)?;
+    // Unwrap any `with <ns>; <body>` wrappers to reach the list.
+    while value.kind() == SyntaxKind::NODE_WITH {
+        value = value.children().last()?;
+    }
+    (value.kind() == SyntaxKind::NODE_LIST).then_some(value)
+}
+
+/// The leading whitespace of the line containing byte offset `at` (an item's indentation).
+fn line_indent(source: &str, at: usize) -> String {
+    let line_start = source[..at].rfind('\n').map_or(0, |i| i + 1);
+    source[line_start..at].chars().take_while(|c| *c == ' ' || *c == '\t').collect()
+}
+
+/// Replace `source[start..end]` with `replacement`, returning the new string.
+fn splice(source: &str, start: usize, end: usize, replacement: &str) -> String {
+    let mut out = String::with_capacity(source.len() + replacement.len());
+    out.push_str(&source[..start]);
+    out.push_str(replacement);
+    out.push_str(&source[end..]);
+    out
+}
+
+/// A compact line diff of `old` → `new` for the confirm prompt: a few lines of unchanged
+/// context, then `-` removed / `+` added lines. Since JII only ever inserts into a list, the
+/// change is a small localized hunk; this trims the common prefix/suffix and shows the middle.
+fn line_diff(old: &str, new: &str) -> String {
+    let o: Vec<&str> = old.lines().collect();
+    let n: Vec<&str> = new.lines().collect();
+    let mut p = 0;
+    while p < o.len() && p < n.len() && o[p] == n[p] {
+        p += 1;
+    }
+    let mut s = 0;
+    while s < o.len() - p && s < n.len() - p && o[o.len() - 1 - s] == n[n.len() - 1 - s] {
+        s += 1;
+    }
+    const CTX: usize = 3;
+    let mut out = String::new();
+    for line in &o[p.saturating_sub(CTX)..p] {
+        out.push_str(&format!("  {line}\n"));
+    }
+    for line in &o[p..o.len() - s] {
+        out.push_str(&format!("- {line}\n"));
+    }
+    for line in &n[p..n.len() - s] {
+        out.push_str(&format!("+ {line}\n"));
+    }
+    let tail_end = (o.len() - s + CTX).min(o.len());
+    for line in &o[o.len() - s..tail_end] {
+        out.push_str(&format!("  {line}\n"));
+    }
+    out
 }
 
 /// A recognised place a package can be declared in a user's Nix configuration.
@@ -623,5 +774,101 @@ mod tests {
         assert!(g.contains("environment.systemPackages = with pkgs; ["));
         assert!(g.contains("ripgrep"));
         assert!(g.contains("sudo nixos-rebuild switch"));
+    }
+
+    // ----- Etap B: parser-driven auto-edit (insert_package / find_list / line_diff) -----
+
+    fn inserted(source: &str, attr: &str, pkg: &str) -> String {
+        match insert_package(source, attr, pkg) {
+            Insertion::Inserted(s) => s,
+            other => panic!("expected Inserted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn inserts_into_a_multiline_list_preserving_indent_and_order() {
+        let src = "{ pkgs, ... }:\n{\n  home.packages = with pkgs; [\n    ripgrep\n    fd\n  ];\n}\n";
+        let out = inserted(src, "home.packages", "bat");
+        assert_eq!(
+            out,
+            "{ pkgs, ... }:\n{\n  home.packages = with pkgs; [\n    ripgrep\n    fd\n    bat\n  ];\n}\n"
+        );
+    }
+
+    #[test]
+    fn inserts_into_an_inline_list_with_a_space() {
+        let src = "{ home.packages = with pkgs; [ ripgrep fd ]; }\n";
+        let out = inserted(src, "home.packages", "bat");
+        assert_eq!(out, "{ home.packages = with pkgs; [ ripgrep fd bat ]; }\n");
+    }
+
+    #[test]
+    fn inserts_into_an_empty_list() {
+        assert_eq!(
+            inserted("{ home.packages = [ ]; }\n", "home.packages", "bat"),
+            "{ home.packages = [ bat ]; }\n"
+        );
+        assert_eq!(
+            inserted("{ home.packages = []; }\n", "home.packages", "bat"),
+            "{ home.packages = [ bat ]; }\n"
+        );
+    }
+
+    #[test]
+    fn insert_works_without_a_with_pkgs_wrapper() {
+        let src = "{ home.packages = [\n  pkgs.ripgrep\n]; }\n";
+        let out = inserted(src, "home.packages", "pkgs.bat");
+        assert_eq!(out, "{ home.packages = [\n  pkgs.ripgrep\n  pkgs.bat\n]; }\n");
+    }
+
+    #[test]
+    fn insert_preserves_comments_and_lands_after_a_trailing_comment() {
+        let src = "{\n  home.packages = with pkgs; [\n    # editors\n    ripgrep\n    fd # finder\n  ];\n}\n";
+        let out = inserted(src, "home.packages", "bat");
+        assert_eq!(
+            out,
+            "{\n  home.packages = with pkgs; [\n    # editors\n    ripgrep\n    fd # finder\n    bat\n  ];\n}\n"
+        );
+    }
+
+    #[test]
+    fn already_present_is_detected_and_not_duplicated() {
+        let src = "{ home.packages = with pkgs; [\n    ripgrep\n    fd\n  ]; }\n";
+        assert_eq!(insert_package(src, "home.packages", "fd"), Insertion::AlreadyPresent);
+    }
+
+    #[test]
+    fn missing_attribute_or_non_list_yields_not_found() {
+        // Attribute absent entirely.
+        assert_eq!(
+            insert_package("{ home.stateVersion = \"24.05\"; }\n", "home.packages", "bat"),
+            Insertion::NotFound
+        );
+        // Present, but not a plain list (a function call) — we won't guess at editing it.
+        assert_eq!(
+            insert_package("{ home.packages = lib.optionals true [ ]; }\n", "home.packages", "bat"),
+            Insertion::NotFound
+        );
+        // Doesn't parse → never edited.
+        assert_eq!(insert_package("{ home.packages = [ ", "home.packages", "bat"), Insertion::NotFound);
+    }
+
+    #[test]
+    fn find_list_matches_the_system_attr_too() {
+        let src = "{ environment.systemPackages = with pkgs; [ git ]; }\n";
+        let out = inserted(src, "environment.systemPackages", "vim");
+        assert_eq!(out, "{ environment.systemPackages = with pkgs; [ git vim ]; }\n");
+    }
+
+    #[test]
+    fn line_diff_shows_the_single_added_line_with_context() {
+        let old = "a\nb\nc\nd\n";
+        let new = "a\nb\nX\nc\nd\n";
+        let diff = line_diff(old, new);
+        assert!(diff.contains("+ X\n"), "diff was: {diff}");
+        // Only an addition — no removed lines.
+        assert!(!diff.lines().any(|l| l.starts_with("- ")), "diff was: {diff}");
+        // Surrounding lines are shown as unchanged context.
+        assert!(diff.contains("  b\n") && diff.contains("  c\n"), "diff was: {diff}");
     }
 }

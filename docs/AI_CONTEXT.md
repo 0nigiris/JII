@@ -64,12 +64,26 @@ platform seam with a cheap imperative provider first.
   user is never nagged).** A declarative pick **prints the exact snippet + file + apply command +
   backup note and installs nothing** ("show, never run", ADR-0048). Detection/snippet/guidance are
   pure + unit-tested; the menu→print→install-nothing path is **pty-verified** (stubbed nix + temp
-  home.nix). Etap B (real `rnix` auto-edit + diff + backup + confirm) stays deferred. **231 tests.**
-  New `[nix]` locale section (en+ru, parity green).
+  home.nix). New `[nix]` locale section (en+ru, parity green).
+- **Declarative Nix — Etap B LANDED (parser-driven auto-edit; ADR-0056).** A home-manager `home.nix`
+  the user owns is now **actually edited**, not just shown. `StrategyKind` gains
+  `EditFile { path, new_content, diff, apply }`; the **provider** parses the file with **`rnix` 0.14**
+  (lossless rowan CST), locates `home.packages` (unwrapping `with pkgs;`), and **splices the package
+  into the original source bytes** (no reflow) — mirroring style (multi-line/inline/empty), preserving
+  comments, detecting already-present, and returning `NotFound` → **Etap A snippet fallback** for
+  anything it can't safely edit (attr absent / value not a plain list / unparseable). The root-owned
+  NixOS `configuration.nix` **stays snippet-only** (privileged rewrite deferred), so Etap B needs **no
+  escalation** — it writes one user-owned file. CLI: show diff → confirm (honours `--yes/--no/--auto`;
+  `--dry-run` never writes as the menu is already gated off) → back up to `<path>.jii-bak` → write →
+  print `home-manager switch`. `insert_package`/`find_list`/`line_diff`/`write_nix_config` unit-tested
+  (multi-line, inline, empty, no-`with-pkgs`, comment-preserving, already-present, not-found,
+  unparseable, backup+overwrite). **253 tests green, clippy + build clean.** New `[nix]` `edit_*`
+  locale keys (en+ru parity). *Full menu→edit→apply flow not yet run on a live home-manager host — T7
+  debt.*
 - **Next in this program:** **Windows/macOS** is the remaining big piece — a **separate later epic**
-  (breaks `privilege.rs`, paths, packaging, CI) — scope on its own. Nearer-term: declarative-Nix
-  **Etap B** (real `rnix` auto-edit + diff + backup + confirm); the owner running the existing
-  non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) on real hosts (T7).
+  (breaks `privilege.rs`, paths, packaging, CI) — scope on its own. Nearer-term: `configuration.nix`
+  auto-edit + wiring the edit into non-interactive/batch installs (ADR-0056 follow-ups); the owner
+  running the existing non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) on real hosts (T7).
 
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
 (ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
@@ -115,12 +129,12 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** the cross-platform program (ADR-0054) is active — Void ✅, declarative-Nix Etap A ✅ and
-Gentoo ✅ done; **Windows/macOS** is the remaining big piece (separate later epic). Other candidates:
-declarative-Nix **Etap B** (real `rnix` auto-edit + diff + backup + confirm); richer info cards; more
-polish; the owner running the existing non-Fedora providers on real hosts (T7). GUI (Steam + KDE
-Discover + GNOME Software blend) stays **explicitly parked** until the CLI is fully polished — do not
-start it.
+**Next up:** the cross-platform program (ADR-0054/0056) is active — Void ✅, declarative-Nix Etap A ✅,
+Gentoo ✅ and declarative-Nix Etap B ✅ (parser-driven auto-edit) done; **Windows/macOS** is the
+remaining big piece (separate later epic). Other candidates: `configuration.nix` auto-edit + wiring the
+Nix edit into non-interactive/batch installs (ADR-0056 follow-ups); richer info cards; more polish; the
+owner running the existing non-Fedora providers on real hosts (T7). GUI (Steam + KDE Discover + GNOME
+Software blend) stays **explicitly parked** until the CLI is fully polished — do not start it.
 
 ---
 
