@@ -30,15 +30,22 @@ platform seam with a cheap imperative provider first.
   **228 tests green, clippy + build clean.** Verified on this Fedora host that `void` shows as
   *enabled-but-unavailable* and `pkg:void` misses honestly (xbps absent — same **T7 live-host debt**
   as apt/pacman/zypper/nix; parsers are fixture-tested only).
-- **Declarative Nix approach fixed (not yet built): snippet-first (Etap A).** JII will **detect which
-  config files actually exist** (NixOS `configuration.nix`→`environment.systemPackages`; standalone
-  home-manager `home.nix`→`home.packages`; flakes) and offer only those + "show snippet" + the
-  imperative `nix profile`, each with a hint. Declarative path **generates + SHOWS the exact snippet +
-  file/place + backup note, never writes the file** (fits "show, never run" / ADR-0048). Real
-  auto-edit via `rnix` + diff + backup + confirm is **Etap B**, deferred until Etap A proves detection
-  + snippet generation. Regex-editing `.nix` is ruled out.
-- **Next in this program:** build declarative-Nix **Etap A**, then **Gentoo (emerge)**. Windows/macOS
-  is a **separate later epic** (breaks `privilege.rs`, paths, packaging, CI) — scope on its own.
+- **Declarative Nix — Etap A LANDED (snippet-first).** New optional `Provider::install_strategies`
+  (default empty; ADR-0022 growth) + model `InstallStrategy`/`StrategyKind::{Imperative,Manual}`;
+  engine `install_strategies(source_id, candidate)` (dispatch, no source-branch); CLI calls it **only
+  for a single-package interactive install** and shows a chooser when non-empty. **Nix implements it:**
+  detects which config files actually exist (NixOS `configuration.nix`→`environment.systemPackages`
+  → `sudo nixos-rebuild switch`; standalone home-manager `home.nix`→`home.packages` →
+  `home-manager switch`) and offers **only those** + the default imperative `nix profile install`,
+  each with a hint. **No config detected → empty → no menu → plain imperative install (a Nix-on-Fedora
+  user is never nagged).** A declarative pick **prints the exact snippet + file + apply command +
+  backup note and installs nothing** ("show, never run", ADR-0048). Detection/snippet/guidance are
+  pure + unit-tested; the menu→print→install-nothing path is **pty-verified** (stubbed nix + temp
+  home.nix). Etap B (real `rnix` auto-edit + diff + backup + confirm) stays deferred. **231 tests.**
+  New `[nix]` locale section (en+ru, parity green).
+- **Next in this program:** **Gentoo (emerge)** — imperative provider (USE flags / source builds /
+  `world` — heavier than Void). Windows/macOS is a **separate later epic** (breaks `privilege.rs`,
+  paths, packaging, CI) — scope on its own.
 
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
 (ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
@@ -84,11 +91,12 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** the cross-platform program (ADR-0054) is now active — **declarative-Nix Etap A**
-(snippet-first, detect real config files), then **Gentoo (emerge)**. Windows/macOS stays a separate
-later epic. Other candidates: richer info cards; more polish; the owner running the existing
-non-Fedora providers on real hosts (T7). GUI (Steam + KDE Discover + GNOME Software blend) stays
-**explicitly parked** until the CLI is fully polished — do not start it.
+**Next up:** the cross-platform program (ADR-0054) is active — Void ✅ and declarative-Nix Etap A ✅
+done; next is **Gentoo (emerge)**. Windows/macOS stays a separate later epic. Other candidates:
+declarative-Nix **Etap B** (real `rnix` auto-edit + diff + backup + confirm); richer info cards; more
+polish; the owner running the existing non-Fedora providers on real hosts (T7). GUI (Steam + KDE
+Discover + GNOME Software blend) stays **explicitly parked** until the CLI is fully polished — do not
+start it.
 
 ---
 

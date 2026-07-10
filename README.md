@@ -323,6 +323,11 @@ JII uses whatever is present on your machine — mix and match freely.
 Run **`jii sources`** to see which are usable on *your* box, and **`jii providers`** to see the
 ecosystem managers and what's installed. Missing one? `jii providers add npm` bootstraps it.
 
+On **Nix**, if you manage your system declaratively (a NixOS `configuration.nix` or a home-manager
+`home.nix`), `jii <pkg>` offers a choice: install now with `nix profile install`, or **show you the
+exact snippet** to add to your config (with the file and the `nixos-rebuild`/`home-manager switch`
+command) — JII prints it and changes nothing; you place it yourself. No declarative config, no prompt.
+
 ---
 
 ## Trust & safety

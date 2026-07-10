@@ -457,18 +457,22 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             No core source-branch. 228 tests. Fixture-tested only — unverified on a live Void host (T7).
       - **Cross-platform expansion (ADR-0054, ACTIVE):** grow past Fedora-first. Risk-ordered:
             **Void ✅ → declarative-Nix Etap A → Gentoo (emerge) → … → Windows/macOS (separate epic).**
-            - [ ] **Declarative Nix — Etap A (snippet-first).** Detect which config files actually exist
-                  (NixOS `configuration.nix`→`environment.systemPackages`; home-manager `home.nix`→`home.packages`;
-                  flakes); offer only those + "show snippet" + imperative `nix profile`, each with a hint;
-                  the declarative path **generates + SHOWS** the exact snippet + file/place + backup note,
-                  **never writes** the file ("show, never run" / ADR-0048). Etap B (real `rnix` auto-edit +
-                  diff + backup + confirm) is deferred until A proves detection + generation.
+            - [x] **Declarative Nix — Etap A (snippet-first)** (ADR-0054). Optional
+                  `Provider::install_strategies` + model `InstallStrategy`/`StrategyKind`; engine dispatch;
+                  CLI chooser for a single-package interactive install. Nix detects existing config files
+                  (NixOS `configuration.nix`→`environment.systemPackages`; home-manager `home.nix`→`home.packages`)
+                  and offers only those + imperative `nix profile`, each with a hint; no config → no menu.
+                  A declarative pick **SHOWS** the snippet + file + apply cmd + backup note and **installs
+                  nothing** ("show, never run"). Pure detection/snippet/guidance unit-tested; menu→print path
+                  pty-verified. 231 tests. New `[nix]` locale section (en+ru).
+            - [ ] **Declarative Nix — Etap B.** Real file edit via `rnix` (parse → insert into the packages
+                  list) with **diff-preview → backup → confirm**. Deferred; Etap A proved detection + generation.
             - [ ] **Gentoo (emerge)** — imperative provider (USE flags / source builds / `world` — heavier
                   than Void, so it comes after).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** declarative-Nix Etap A (above); richer info cards; more
-            polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
+      - **Next (owner to steer):** Gentoo (emerge); declarative-Nix Etap B (rnix auto-edit); richer info
+            cards; more polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

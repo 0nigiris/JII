@@ -526,6 +526,52 @@ impl Cli {
             chosen.push(best);
         }
 
+        // 1b. Declarative-vs-imperative install choice (ADR-0054, Etap A). For a single-package
+        //     interactive install, ask the owning source whether it offers alternative install
+        //     *strategies* (Nix: declarative config snippets alongside `nix profile install`).
+        //     Only Nix opts in, and only when it detects a config file on this host — so this is
+        //     silent for every other source and for plain `nix profile` users (no core
+        //     source-branch: the CLI just shows whatever the provider returns). A declarative
+        //     ("show me the snippet") pick prints the guidance and installs nothing; the
+        //     imperative pick falls through to the normal flow below.
+        if single
+            && chosen.len() == 1
+            && !effective_auto
+            && !self.global.yes
+            && !self.global.no
+            && !self.global.dry_run
+            && self.interactive(renderer)
+        {
+            let candidate = &chosen[0];
+            let strategies = engine
+                .install_strategies(&candidate.source_id, candidate)
+                .await;
+            if !strategies.is_empty() {
+                let palette = renderer.palette();
+                let labels: Vec<String> = strategies
+                    .iter()
+                    .map(|s| format!("{}  —  {}", s.label, palette.dim(&s.hint)))
+                    .collect();
+                let header = crate::t!("nix.strategy_header", name = candidate.name.clone());
+                match prompt::choose(renderer, &header, &labels, 0) {
+                    None => {
+                        renderer.info(&crate::t!("common.aborted"));
+                        return Ok(());
+                    }
+                    Some(index) => {
+                        if let crate::model::StrategyKind::Manual { guidance } =
+                            &strategies[index].kind
+                        {
+                            renderer.info(guidance);
+                            renderer.info(&crate::t!("nix.guidance_footer"));
+                            return Ok(());
+                        }
+                        // Imperative → fall through to the normal preview/confirm/install.
+                    }
+                }
+            }
+        }
+
         // 2. Report misses. If nothing resolved, stop; otherwise offer to continue.
         if !not_found.is_empty() {
             let names = not_found.join(", ");

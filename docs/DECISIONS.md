@@ -1979,20 +1979,26 @@ rather than living in a chat. Two design questions had to be answered before wri
    `provider/mod.rs`, `KNOWN_SOURCES`, and the default priority (after zypper). **No core
    source-branch.** 9 unit tests; 228 total green, clippy clean. **Debt (T7):** unverified on a live
    Void host (same as apt/pacman/zypper/nix) — parsers are fixture-tested only.
-3. **Declarative Nix is snippet-first (Etap A), auto-edit deferred (Etap B).** For the future Nix
-   config path the owner chose the **safe** design: JII **detects which config files actually exist
-   on this host** (NixOS `/etc/nixos/configuration.nix` → `environment.systemPackages`; standalone
-   home-manager `~/.config/home-manager/home.nix` → `home.packages`; flakes) and offers **only the
-   ones present**, plus "just show me the snippet" and the existing imperative `nix profile install`
-   — each choice carrying a one-line hint of what it's for. For a chosen declarative path JII
-   **generates and shows the exact snippet + the exact file and where it goes + a backup note, but
-   does not write the file** (Etap A). This fits JII's established "show, never run" boundary
-   (RPM Fusion, brew/nix bootstrap `Script`) and ADR-0048 ("JII cooperates with the system; it is not
-   the centre of the world"). **Etap B** — actually editing the file via a real Nix parser (`rnix`)
-   with **diff-preview → backup → confirm** — is deferred until Etap A proves detection + snippet
-   generation. Regex-editing `.nix` is ruled out (it will eventually corrupt a real config). *Not yet
-   implemented — this ADR records the agreed approach so the next session builds Etap A, not a
-   guessed design.*
+3. **Declarative Nix is snippet-first (Etap A — LANDED), auto-edit deferred (Etap B).** The owner
+   chose the **safe** design and it is now implemented. New optional `Provider::install_strategies(
+   candidate) -> Vec<InstallStrategy>` (default empty; ADR-0022 growth) + model `InstallStrategy {
+   label, hint, kind }` / `StrategyKind::{Imperative, Manual{guidance}}`. The engine exposes it as
+   `install_strategies(source_id, candidate)` (dispatch, no source-branch); the CLI calls it **only
+   for a single-package interactive install** and, if non-empty, shows a chooser. **Nix implements
+   it:** it **detects which config files actually exist on this host** — NixOS
+   `/etc/nixos/configuration.nix` → `environment.systemPackages` (apply `sudo nixos-rebuild switch`);
+   standalone home-manager `~/.config/home-manager/home.nix` or `~/.config/nixpkgs/home.nix` →
+   `home.packages` (apply `home-manager switch`) — and offers **only the ones present**, each with a
+   one-line hint, alongside the default imperative `nix profile install`. **Crucially, when no config
+   is detected it returns empty → no menu → plain imperative install as before** (a Nix-on-Fedora
+   `nix profile` user is never nagged). A declarative pick is `Manual{guidance}`: the CLI **prints the
+   exact snippet + the file + the apply command + a backup note and installs nothing** ("show, never
+   run" — RPM Fusion / bootstrap `Script` precedent, ADR-0048). Detection (`detect_targets`, via an
+   injectable existence predicate), the snippet builder and the guidance builder are pure and
+   unit-tested; the interactive menu → print-guidance → install-nothing path was pty-verified with a
+   stubbed `nix` + a temp home containing a `home.nix`. **Etap B** — actually editing the file via a
+   real Nix parser (`rnix`) with **diff-preview → backup → confirm** — stays deferred; regex-editing
+   `.nix` is ruled out (it will eventually corrupt a real config).
 
 **Alternatives considered.** (a) *Start with declarative Nix* (owner's first instinct) — rejected:
 begins the program with the hardest, riskiest, most novel piece. (b) *Start with Gentoo* (owner's

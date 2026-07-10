@@ -260,6 +260,32 @@ pub struct RepoHit {
     pub stars: u64,
 }
 
+/// An alternative *way* to install a candidate, offered interactively beyond the default
+/// imperative `plan_install` (ADR-0054). Nix is the first producer: it detects the user's
+/// declarative setup and offers the config-snippet paths alongside `nix profile install`.
+/// The core never branches on the source — the CLI shows whatever a provider returns and
+/// either runs the imperative plan or prints the manual guidance.
+#[derive(Debug, Clone)]
+pub struct InstallStrategy {
+    /// Menu label, e.g. "Add to ~/.config/home-manager/home.nix".
+    pub label: String,
+    /// One-line hint of what this choice means / when to use it.
+    pub hint: String,
+    /// What choosing it does.
+    pub kind: StrategyKind,
+}
+
+/// What an [`InstallStrategy`] does when chosen.
+#[derive(Debug, Clone)]
+pub enum StrategyKind {
+    /// Run the source's normal imperative `plan_install` (execute as usual).
+    Imperative,
+    /// **Show** this guidance and change nothing — a ready snippet, the file it goes in, the
+    /// apply command, and a backup note. JII never writes the file or runs a command here
+    /// ("show, never run", ADR-0048/0054 Etap A).
+    Manual { guidance: String },
+}
+
 /// A single installation candidate produced by a provider's `search`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageCandidate {

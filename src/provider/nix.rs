@@ -16,11 +16,14 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::{Bootstrap, Ecosystem, Provider, command_plan, run_capture_lax, which};
 use crate::error::Result;
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
+use crate::model::{
+    InstallPlan, InstallStrategy, InstalledRecord, PackageCandidate, PkgVersion, Query,
+    StrategyKind, TrustLevel,
+};
 
 const ID: &str = "nix";
 const BIN: &str = "nix";
@@ -165,6 +168,112 @@ impl Provider for Nix {
     async fn is_installed(&self, record: &InstalledRecord) -> bool {
         nix_profile_bin(&record.name).is_some_and(|p| p.exists())
     }
+
+    async fn install_strategies(&self, candidate: &PackageCandidate) -> Vec<InstallStrategy> {
+        // Declarative Nix, Etap A (ADR-0054): only offer a choice when the user actually
+        // manages their system declaratively — i.e. a config file we recognise exists on this
+        // host. A plain `nix profile` user (Nix on Fedora, say) has none, so this returns empty
+        // and JII installs imperatively as before (no annoying menu). When a config *is* found,
+        // offer `nix profile install` (default, immediate) plus a "show me the snippet" path per
+        // detected file. The declarative paths only **show** guidance — JII never edits the file.
+        let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()) else {
+            return Vec::new();
+        };
+        let targets = detect_targets(&home);
+        if targets.is_empty() {
+            return Vec::new();
+        }
+        let mut out = vec![InstallStrategy {
+            label: crate::t!("nix.strategy_imperative"),
+            hint: crate::t!("nix.strategy_imperative_hint"),
+            kind: StrategyKind::Imperative,
+        }];
+        for t in &targets {
+            let hint = if t.home {
+                crate::t!("nix.strategy_hint_home")
+            } else {
+                crate::t!("nix.strategy_hint_system")
+            };
+            out.push(InstallStrategy {
+                label: crate::t!("nix.strategy_add_to", file = t.file.display().to_string()),
+                hint,
+                kind: StrategyKind::Manual { guidance: guidance(t, &candidate.name) },
+            });
+        }
+        out
+    }
+}
+
+/// A recognised place a package can be declared in a user's Nix configuration.
+struct NixTarget {
+    /// The config file (shown to the user; never written by JII in Etap A).
+    file: PathBuf,
+    /// The Nix attribute the package is added to (`environment.systemPackages` / `home.packages`).
+    attr: &'static str,
+    /// The command that applies the change once edited.
+    apply: &'static str,
+    /// Whether this is a home-manager (user) target vs a NixOS (system) one — picks the hint.
+    home: bool,
+}
+
+/// Candidate declarative targets, in the order they're offered. NixOS system config first,
+/// then the two standard standalone home-manager locations. Split from [`detect_targets`] so
+/// the "which files exist" decision is unit-testable without touching the real filesystem.
+fn candidate_targets(home: &Path) -> Vec<NixTarget> {
+    vec![
+        NixTarget {
+            file: PathBuf::from("/etc/nixos/configuration.nix"),
+            attr: "environment.systemPackages",
+            apply: "sudo nixos-rebuild switch",
+            home: false,
+        },
+        NixTarget {
+            file: home.join(".config/home-manager/home.nix"),
+            attr: "home.packages",
+            apply: "home-manager switch",
+            home: true,
+        },
+        NixTarget {
+            file: home.join(".config/nixpkgs/home.nix"),
+            attr: "home.packages",
+            apply: "home-manager switch",
+            home: true,
+        },
+    ]
+}
+
+/// The declarative targets that actually exist on this host.
+fn detect_targets(home: &Path) -> Vec<NixTarget> {
+    detect_targets_with(home, |p| p.exists())
+}
+
+/// [`detect_targets`] with an injectable existence predicate (for tests).
+fn detect_targets_with<F: Fn(&Path) -> bool>(home: &Path, exists: F) -> Vec<NixTarget> {
+    candidate_targets(home)
+        .into_iter()
+        .filter(|t| exists(&t.file))
+        .collect()
+}
+
+/// A ready-to-paste snippet declaring `name` in `attr` (e.g. an
+/// `environment.systemPackages = with pkgs; [ … ];` block). Indented two spaces so it reads
+/// as a nested attribute. This is code, not prose — it stays literal (not localised).
+fn snippet(attr: &str, name: &str) -> String {
+    format!("  {attr} = with pkgs; [\n    {name}\n  ];")
+}
+
+/// The full "here's what to add, and how to apply it" guidance for a declarative target —
+/// intro + snippet + apply command + a backup note. Shown, never executed (Etap A).
+fn guidance(target: &NixTarget, name: &str) -> String {
+    let file = target.file.display().to_string();
+    format!(
+        "{intro}\n\n{snippet}\n\n{apply}\n  {cmd}\n\n{backup}",
+        intro = crate::t!("nix.guidance_intro", name = name, attr = target.attr, file = file),
+        snippet = snippet(target.attr, name),
+        apply = crate::t!("nix.guidance_apply"),
+        cmd = target.apply,
+        backup = crate::t!("nix.guidance_backup"),
+    )
 }
 
 /// Nixpkgs flake reference for a package name (`nixpkgs#ripgrep`).
@@ -467,5 +576,52 @@ mod tests {
         assert_eq!(store_name("abc-ripgrep-14.1.1").as_deref(), Some("ripgrep"));
         // A hyphenated package name keeps its non-version segments.
         assert_eq!(store_name("abc-ripgrep-all-0.10.6").as_deref(), Some("ripgrep-all"));
+    }
+
+    #[test]
+    fn detect_targets_offers_only_existing_config_files() {
+        let home = Path::new("/home/tester");
+        let nixos = Path::new("/etc/nixos/configuration.nix");
+        let hm = home.join(".config/home-manager/home.nix");
+
+        // No recognised config → no declarative choice at all (plain `nix profile` user).
+        assert!(detect_targets_with(home, |_| false).is_empty());
+
+        // Only a NixOS system config present → one system target.
+        let sys = detect_targets_with(home, |p| p == nixos);
+        assert_eq!(sys.len(), 1);
+        assert_eq!(sys[0].attr, "environment.systemPackages");
+        assert!(!sys[0].home);
+
+        // Only a standalone home-manager config present → one home target.
+        let user = detect_targets_with(home, |p| p == hm);
+        assert_eq!(user.len(), 1);
+        assert_eq!(user[0].attr, "home.packages");
+        assert!(user[0].home);
+        assert_eq!(user[0].apply, "home-manager switch");
+    }
+
+    #[test]
+    fn snippet_declares_the_package_in_the_attr() {
+        let s = snippet("home.packages", "ripgrep");
+        assert!(s.contains("home.packages = with pkgs; ["));
+        assert!(s.contains("ripgrep"));
+        assert!(s.contains("];"));
+    }
+
+    #[test]
+    fn guidance_shows_file_snippet_and_apply_command_but_no_write() {
+        let target = NixTarget {
+            file: PathBuf::from("/etc/nixos/configuration.nix"),
+            attr: "environment.systemPackages",
+            apply: "sudo nixos-rebuild switch",
+            home: false,
+        };
+        let g = guidance(&target, "ripgrep");
+        // Locale-independent, structural assertions (the literal file/attr/command).
+        assert!(g.contains("/etc/nixos/configuration.nix"));
+        assert!(g.contains("environment.systemPackages = with pkgs; ["));
+        assert!(g.contains("ripgrep"));
+        assert!(g.contains("sudo nixos-rebuild switch"));
     }
 }

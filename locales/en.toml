@@ -346,3 +346,15 @@ flathub_advice = "Most Flatpak apps live on Flathub. Add it with:  flatpak remot
 token_ok = "{env} is set — GitHub requests aren't rate-limited"
 token_missing = "{env} is not set — GitHub is limited to ~60 requests/hour"
 token_advice = "Optional: export {env}=<a GitHub token> to lift the anonymous rate limit."
+
+[nix]
+strategy_header = "How do you want to install {name} with Nix?"
+strategy_imperative = "Install now — nix profile install (imperative)"
+strategy_imperative_hint = "Immediate; not recorded in your Nix configuration."
+strategy_add_to = "Add to {file}"
+strategy_hint_system = "Declarative (NixOS) — applied on `sudo nixos-rebuild switch`."
+strategy_hint_home = "Declarative (home-manager) — applied on `home-manager switch`."
+guidance_intro = "Add {name} to {attr} in {file}:"
+guidance_apply = "Then apply the change:"
+guidance_backup = "Tip: back the file up first — it's your own hand-written config, and JII won't touch it."
+guidance_footer = "Nothing was installed — JII only shows the change. Add the snippet and apply it yourself when ready."

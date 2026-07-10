@@ -14,8 +14,8 @@ use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Health, InstallPlan, InstalledRecord, MatchMode, PackageCandidate, PkgVersion, Query, RepoHit,
-    TrustLevel,
+    Health, InstallPlan, InstallStrategy, InstalledRecord, MatchMode, PackageCandidate, PkgVersion,
+    Query, RepoHit, TrustLevel,
 };
 use crate::privilege::Privilege;
 use crate::provider::ProviderRegistry;
@@ -235,6 +235,24 @@ impl Engine {
         for provider in self.providers.iter() {
             if provider.id() == source_id {
                 return provider.resolve_repo(slug).await.unwrap_or_default();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Alternative install strategies the owning source offers for `candidate` (ADR-0054) —
+    /// Nix's declarative config snippets alongside the imperative `nix profile install`.
+    /// Routes by `source_id` (dispatch, not a behavioural source-branch). Empty unless the
+    /// provider opts in *and* has something to offer (Nix only when a config is detected).
+    /// Called only for a single-package interactive install.
+    pub async fn install_strategies(
+        &self,
+        source_id: &str,
+        candidate: &PackageCandidate,
+    ) -> Vec<InstallStrategy> {
+        for provider in self.providers.iter() {
+            if provider.id() == source_id {
+                return provider.install_strategies(candidate).await;
             }
         }
         Vec::new()

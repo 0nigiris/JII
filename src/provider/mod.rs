@@ -174,6 +174,22 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// Alternative install **strategies** to offer interactively for `candidate`, beyond the
+    /// default imperative `plan_install`. Default: empty → the engine just plans and installs
+    /// as usual. Nix overrides it (ADR-0054): when it detects a declarative setup (NixOS
+    /// `configuration.nix`, home-manager `home.nix`, a flake) it offers the config-snippet
+    /// paths alongside `nix profile install`. Off the hot path — the engine asks only for a
+    /// **single-package interactive** install; may do filesystem I/O (config detection), so it
+    /// is async. No core source-branch: the CLI shows whatever is returned and either runs the
+    /// imperative plan or prints the manual guidance (ADR-0022 optional-method growth).
+    async fn install_strategies(
+        &self,
+        candidate: &PackageCandidate,
+    ) -> Vec<crate::model::InstallStrategy> {
+        let _ = candidate;
+        Vec::new()
+    }
+
     /// If this source is an installable *ecosystem* manager (npm, cargo, brew, flatpak…),
     /// describe it for `jii providers` and for bootstrapping a missing manager (#7/#8).
     /// Default `None`: base system repos (dnf/copr/apt/pacman/zypper) and non-manager

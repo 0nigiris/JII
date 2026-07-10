@@ -344,3 +344,15 @@ flathub_advice = "Большинство Flatpak-приложений живут
 token_ok = "{env} задан — запросы к GitHub без лимита"
 token_missing = "{env} не задан — GitHub ограничивает ~60 запросами в час"
 token_advice = "Опционально: export {env}=<токен GitHub>, чтобы снять анонимный лимит."
+
+[nix]
+strategy_header = "Как установить {name} через Nix?"
+strategy_imperative = "Установить сейчас — nix profile install (императивно)"
+strategy_imperative_hint = "Сразу; не попадёт в вашу конфигурацию Nix."
+strategy_add_to = "Добавить в {file}"
+strategy_hint_system = "Декларативно (NixOS) — применяется через `sudo nixos-rebuild switch`."
+strategy_hint_home = "Декларативно (home-manager) — применяется через `home-manager switch`."
+guidance_intro = "Добавьте {name} в {attr} в файле {file}:"
+guidance_apply = "Затем примените изменение:"
+guidance_backup = "Совет: сначала сделайте резервную копию файла — это ваш рукописный конфиг, JII его не трогает."
+guidance_footer = "Ничего не установлено — JII только показывает изменение. Добавьте сниппет и примените его сами, когда будете готовы."
