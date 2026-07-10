@@ -74,8 +74,8 @@ has it.
 JII is **not** a package manager. It sits *on top of* the ones you already have and
 orchestrates them:
 
-> **DNF · COPR · apt · pacman · zypper · Nix · Flatpak · Snap · GitHub Releases (incl. AppImage
-> assets) · Cargo · npm · pipx · Go · Homebrew**
+> **DNF · COPR · apt · pacman · zypper · XBPS · Nix · Flatpak · Snap · GitHub Releases (incl.
+> AppImage assets) · Cargo · npm · pipx · Go · Homebrew**
 
 It searches all of them at once, ranks the results by trust, freshness and your chosen profile,
 recommends the single best option, and installs it — transparently, and without ever running
@@ -309,6 +309,7 @@ JII uses whatever is present on your machine — mix and match freely.
 | **apt** | Debian / Ubuntu repositories | 🟢 Official |
 | **pacman** | Arch Linux repositories | 🟢 Official |
 | **zypper** | openSUSE repositories | 🟢 Official |
+| **XBPS** | Void Linux repositories | 🟢 Official |
 | **Nix** | nixpkgs | 🟡 Community |
 | **Flatpak** | Flathub apps (sandboxed) | 🟢/🟡 Official-verified · Community |
 | **Snap** | Snap Store | 🟡 Community |

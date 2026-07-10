@@ -14,6 +14,32 @@ _Last updated: 2026-07-10_
 
 ## Most recent work (2026-07-10) — read this first
 
+**CROSS-PLATFORM EXPANSION STARTED (ADR-0054).** The owner opened a multi-release program to grow
+JII past Fedora-first toward a universal installer: **declarative Nix → Gentoo → Void → … →
+Windows/macOS**. Sequencing was decided by risk, cheapest-first: the *declarative* Nix config-edit is
+the one novel/high-risk piece (new kind of action — editing a hand-written config — plus setup
+discovery), while emerge/xbps/winget/brew are imperative "just another `Provider`". So we prove the
+platform seam with a cheap imperative provider first.
+- **Void (XBPS) provider LANDED.** `src/provider/void.rs`, id `void`, **Official** (Void repos are
+  RSA-signed), self-gates on `xbps-install` (ADR-0029). Exact-name search via `xbps-query -R <name>`
+  (property stanza, like `pacman -Si`, lax-captured; emits only on an exact `pkgname` match); plans
+  `xbps-install -Sy` / `xbps-remove -Ry` / `xbps-install -Suy [pkg]` (root); `xbps-query -l` list;
+  full `_many` batching + `plan_update_all`. Pure `split_pkgver` backs both parsers. Reuses shared
+  `[reason]` keys (`mgr="xbps"`) + new `void_official`/`void_official_many`. Registered in
+  provider/mod.rs + KNOWN_SOURCES + default priority (after zypper). **No core source-branch.**
+  **228 tests green, clippy + build clean.** Verified on this Fedora host that `void` shows as
+  *enabled-but-unavailable* and `pkg:void` misses honestly (xbps absent — same **T7 live-host debt**
+  as apt/pacman/zypper/nix; parsers are fixture-tested only).
+- **Declarative Nix approach fixed (not yet built): snippet-first (Etap A).** JII will **detect which
+  config files actually exist** (NixOS `configuration.nix`→`environment.systemPackages`; standalone
+  home-manager `home.nix`→`home.packages`; flakes) and offer only those + "show snippet" + the
+  imperative `nix profile`, each with a hint. Declarative path **generates + SHOWS the exact snippet +
+  file/place + backup note, never writes the file** (fits "show, never run" / ADR-0048). Real
+  auto-edit via `rnix` + diff + backup + confirm is **Etap B**, deferred until Etap A proves detection
+  + snippet generation. Regex-editing `.nix` is ruled out.
+- **Next in this program:** build declarative-Nix **Etap A**, then **Gentoo (emerge)**. Windows/macOS
+  is a **separate later epic** (breaks `privilege.rs`, paths, packaging, CI) — scope on its own.
+
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
 (ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
 string lives in `locales/en.toml` / `ru.toml`, keyed by namespace, looked up via `t!("key",
@@ -58,9 +84,11 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** owner to steer. Candidates: richer info cards;
-more polish. GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly parked** until
-the CLI is fully polished — do not start it.
+**Next up:** the cross-platform program (ADR-0054) is now active — **declarative-Nix Etap A**
+(snippet-first, detect real config files), then **Gentoo (emerge)**. Windows/macOS stays a separate
+later epic. Other candidates: richer info cards; more polish; the owner running the existing
+non-Fedora providers on real hosts (T7). GUI (Steam + KDE Discover + GNOME Software blend) stays
+**explicitly parked** until the CLI is fully polished — do not start it.
 
 ---
 

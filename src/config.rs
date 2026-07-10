@@ -15,8 +15,8 @@ use crate::model::TrustLevel;
 /// Providers are wired in over later phases; this list is the contract the config
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
-    "dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github", "cargo", "npm",
-    "pipx", "go", "brew", "nix",
+    "dnf", "copr", "apt", "pacman", "zypper", "void", "flatpak", "snap", "github", "cargo",
+    "npm", "pipx", "go", "brew", "nix",
 ];
 
 /// Top-level configuration.
@@ -135,8 +135,8 @@ impl Default for SourcesConfig {
     fn default() -> Self {
         SourcesConfig {
             priority: [
-                "dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap", "github", "cargo",
-                "npm", "pipx", "go", "brew", "nix",
+                "dnf", "copr", "apt", "pacman", "zypper", "void", "flatpak", "snap", "github",
+                "cargo", "npm", "pipx", "go", "brew", "nix",
             ]
             .iter()
             .map(|s| s.to_string())

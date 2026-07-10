@@ -450,7 +450,24 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             the user. `exeteragram` → `exteragram` recovers locally. 219 tests, pty-verified.
       - [x] **Setup GitHub-token help.** Setup wizard now explains the token (rate-limit benefit + create +
             export), mitigating the tighter search rate limit.
-      - **Next (owner to steer):** richer info cards; more
+      - [x] **Void (XBPS) provider** (ADR-0054) — first step of the cross-platform program. `provider/void.rs`,
+            id `void`, Official (RSA-signed repos), self-gates on `xbps-install`. Exact-name search
+            (`xbps-query -R`, like `pacman -Si`), root plans (`xbps-install -Sy` / `xbps-remove -Ry` /
+            `xbps-install -Suy`), `xbps-query -l` list, full `_many` + `plan_update_all`. Pure `split_pkgver`.
+            No core source-branch. 228 tests. Fixture-tested only — unverified on a live Void host (T7).
+      - **Cross-platform expansion (ADR-0054, ACTIVE):** grow past Fedora-first. Risk-ordered:
+            **Void ✅ → declarative-Nix Etap A → Gentoo (emerge) → … → Windows/macOS (separate epic).**
+            - [ ] **Declarative Nix — Etap A (snippet-first).** Detect which config files actually exist
+                  (NixOS `configuration.nix`→`environment.systemPackages`; home-manager `home.nix`→`home.packages`;
+                  flakes); offer only those + "show snippet" + imperative `nix profile`, each with a hint;
+                  the declarative path **generates + SHOWS** the exact snippet + file/place + backup note,
+                  **never writes** the file ("show, never run" / ADR-0048). Etap B (real `rnix` auto-edit +
+                  diff + backup + confirm) is deferred until A proves detection + generation.
+            - [ ] **Gentoo (emerge)** — imperative provider (USE flags / source builds / `world` — heavier
+                  than Void, so it comes after).
+            - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
+                  (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
+      - **Next (owner to steer):** declarative-Nix Etap A (above); richer info cards; more
             polish. GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in

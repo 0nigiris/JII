@@ -1939,3 +1939,74 @@ under a pty (`jii exteragram` → GitHub picker with stars/descriptions; picking
 correctly reported "no installable Linux binary" and re-prompted) and piped (picker suppressed,
 plain "not found"). **Debt:** rate limits bite harder here (GitHub search is 10/min unauthenticated)
 — the setup token help (this session) mitigates it; cross-forge paging is concatenated, not merged.
+
+---
+
+## ADR-0054 — Cross-platform expansion: cheap imperative providers first, Void (XBPS) added; declarative Nix is snippet-first
+
+**Status:** Accepted (2026-07-10). Void provider landed; the rest is a sequenced program.
+
+**Context.** The owner decided to grow JII beyond Fedora-first toward a genuinely universal
+installer: Nix (a *declarative* config path, not just the existing `nix profile`), then Gentoo
+(emerge), then Void (XBPS), then possibly other distros and eventually Windows/macOS. This is a
+multi-release program that touches CLAUDE.md's Fedora-first MVP constraint, so it is recorded here
+rather than living in a chat. Two design questions had to be answered before writing code:
+*(a) in what order*, and *(b) how the risky declarative-Nix path behaves*.
+
+**Decision.**
+1. **Sequence by risk, cheapest-first.** The declarative Nix config-edit is the single novel,
+   high-risk item (it introduces a *new kind of action* — modifying a user's hand-written config —
+   plus setup discovery). Gentoo/Void/Windows/macOS package managers are **imperative**, structurally
+   identical to the existing apt/pacman/zypper providers ("just another `Provider`", the ADR-0022
+   growth pattern), so they are cheap and safe. We therefore **prove the platform seam with a cheap
+   imperative provider first**, then tackle declarative Nix. Between Void and Gentoo we start with
+   **Void**: XBPS gives clean machine-readable output and maps directly onto the pacman model,
+   whereas Gentoo's emerge drags in USE flags, source builds and the `world` file (a separate epic).
+   **Windows/macOS is explicitly its own later epic**, not "another provider" — it breaks
+   `privilege.rs` (no sudo/pkexec), path handling, packaging and CI, and must be scoped on its own.
+2. **Void (XBPS) provider — landed.** `src/provider/void.rs`, id `void`, `TrustLevel::Official`
+   (Void's official repos are RSA-signed), self-gates on the `xbps-install` binary (ADR-0029; no
+   distro branch). Search uses `xbps-query -R <name>` — an **exact-name** property stanza (the
+   analogue of `pacman -Si`), read via `run_capture_lax` (unknown package exits non-zero = "no
+   candidate", not a source failure), and only emits a candidate when `pkgname` matches the query
+   exactly (never installs a near-name). Plans: `xbps-install -Sy` (install, root), `xbps-remove -Ry`
+   (remove + orphaned deps, root), `xbps-install -Suy [pkg]` (single/many/all update, root). Batching
+   via `plan_install_many`/`plan_remove_many`/`plan_update_many` and bulk `plan_update_all` (bare
+   `jii update`, D10). `list_installed` parses `xbps-query -l`. A pure `split_pkgver`
+   (`name-version_revision` → name + display version, splitting on the final hyphen and dropping the
+   `_revision`) backs both the stanza and list parsers. Reuses the shared `[reason]` keys with
+   `mgr = "xbps"`; adds `reason.void_official`/`void_official_many`. Registered in
+   `provider/mod.rs`, `KNOWN_SOURCES`, and the default priority (after zypper). **No core
+   source-branch.** 9 unit tests; 228 total green, clippy clean. **Debt (T7):** unverified on a live
+   Void host (same as apt/pacman/zypper/nix) — parsers are fixture-tested only.
+3. **Declarative Nix is snippet-first (Etap A), auto-edit deferred (Etap B).** For the future Nix
+   config path the owner chose the **safe** design: JII **detects which config files actually exist
+   on this host** (NixOS `/etc/nixos/configuration.nix` → `environment.systemPackages`; standalone
+   home-manager `~/.config/home-manager/home.nix` → `home.packages`; flakes) and offers **only the
+   ones present**, plus "just show me the snippet" and the existing imperative `nix profile install`
+   — each choice carrying a one-line hint of what it's for. For a chosen declarative path JII
+   **generates and shows the exact snippet + the exact file and where it goes + a backup note, but
+   does not write the file** (Etap A). This fits JII's established "show, never run" boundary
+   (RPM Fusion, brew/nix bootstrap `Script`) and ADR-0048 ("JII cooperates with the system; it is not
+   the centre of the world"). **Etap B** — actually editing the file via a real Nix parser (`rnix`)
+   with **diff-preview → backup → confirm** — is deferred until Etap A proves detection + snippet
+   generation. Regex-editing `.nix` is ruled out (it will eventually corrupt a real config). *Not yet
+   implemented — this ADR records the agreed approach so the next session builds Etap A, not a
+   guessed design.*
+
+**Alternatives considered.** (a) *Start with declarative Nix* (owner's first instinct) — rejected:
+begins the program with the hardest, riskiest, most novel piece. (b) *Start with Gentoo* (owner's
+stated next-in-line) — deferred behind Void: emerge is materially more complex, a poor "prove the
+seam cheaply" pick. (c) *Hardcode a fixed list of Nix config locations to ask about* — rejected: the
+locations differ per user and most don't exist on a given host; offering a NixOS target to a
+home-manager user produces a snippet that goes nowhere. JII must **detect** the real files and offer
+only those. (d) *Auto-edit the config immediately* — rejected for now (Etap B): editing a
+hand-written, git-tracked, module-split config from the first run is high-risk and needs a real
+parser + diff + backup first.
+
+**Consequences.** `void` is a first-class source everywhere (sources list, ranking, `--source void`,
+batch, update-all). The cross-platform program is now on record with a risk-ordered plan: **Void
+(done) → Gentoo → declarative-Nix Etap A → … → Windows/macOS (separate epic)**. The pile of
+**live-host-unverified** system providers grows (apt/pacman/zypper/nix/void) — the owner running the
+existing ones on real hosts (T7) gains value before adding more. Fedora-first remains the *default*
+posture; this ADR is the explicit, justified relaxation CLAUDE.md requires for cross-distro work.
