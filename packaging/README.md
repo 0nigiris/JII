@@ -33,6 +33,12 @@ everything is prepared so each is a few commands.
 > | openSUSE Leap / Tumbleweed | **OBS** (native) or COPR openSUSE chroots |
 > | Arch / CachyOS / Manjaro / … | **AUR** (`jii-bin`) |
 > | Debian / Ubuntu | the `.deb` on Releases (a hosted apt repo is future work) |
+> | Alpine (servers/containers) | **`alpine/APKBUILD`** (aport — sha512 via `abuild checksum`) |
+> | Void Linux | **`void/template`** (`srcpkgs/jii`) |
+> | Gentoo | **`gentoo/*.ebuild`** (overlay, `jii-bin`) |
+> | NixOS / any Nix | **`nix/jii.nix`** (`nix-build` / overlay) |
+> | Homebrew on Linux | **`homebrew/jii.rb`** (tap) |
+> | Any OS with Rust | **crates.io** — `cargo install jii` (metadata ready) |
 
 ---
 
@@ -131,6 +137,38 @@ Arch/CachyOS box (`sudo pacman -S --needed base-devel git pacman-contrib`).
 4. Users then: `yay -S jii-bin` (or any AUR helper).
 
 ---
+
+## More channels — prepared recipes (needs your accounts to publish)
+
+Each of these is a **prebuilt-binary** recipe (repacks the release tarball, no compile)
+so JII installs natively on more of the Linux world. They're ready in-tree; publishing
+each needs the target distro's account/repo and a **test-build on that distro** (this dev
+host is Fedora, so they ship validated by construction — same tarball, same layout as the
+proven `.rpm`/AUR paths — but each should get one real build before going live).
+
+| File | Publish to | User then runs |
+|---|---|---|
+| [`alpine/APKBUILD`](alpine/APKBUILD) | Alpine aports (`testing/jii`) | `apk add jii` |
+| [`void/template`](void/template) | void-packages (`srcpkgs/jii`) | `xbps-install jii` |
+| [`gentoo/jii-bin-*.ebuild`](gentoo/) | a Gentoo overlay (`app-admin/jii-bin`) | `emerge jii-bin` |
+| [`nix/jii.nix`](nix/jii.nix) | Nixpkgs / a flake / an overlay | `nix-build …/jii.nix` · `nix-env -i` |
+| [`homebrew/jii.rb`](homebrew/jii.rb) | a tap (`0nigiris/homebrew-jii`) | `brew tap 0nigiris/jii && brew install jii` |
+
+Notes:
+- **Alpine** is musl-native and JII's binary is a static musl build → perfect fit for
+  servers/containers. Run `abuild checksum` to fill `sha512sums` (Alpine uses sha512).
+- **Void** template carries the real sha256 per arch already (Void uses sha256).
+- **Gentoo**: run `ebuild jii-bin-*.ebuild manifest` in the overlay to generate `Manifest`.
+- **Nix** derivation has the SRI hashes baked in; no `autoPatchelf` needed (static binary).
+- **Homebrew** covers **Linux** (Linuxbrew); a macOS bottle needs a native mac build first.
+
+## `cargo install jii` (crates.io) — needs a crates.io token
+
+`Cargo.toml` carries the crates.io metadata (`repository`, `keywords`, `categories`,
+`readme`, `rust-version`), and `cargo publish --dry-run` packages + compiles cleanly.
+To publish: `cargo login <token>` then `cargo publish`. Anyone with a Rust toolchain on
+**any OS** can then `cargo install jii` (compiles from source). This is the widest-reach
+channel that doesn't depend on a per-distro maintainer.
 
 ## Multi-arch spec (how it works)
 

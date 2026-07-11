@@ -57,6 +57,14 @@ sudo dnf install ./jii-*.rpm          # Fedora / RHEL / openSUSE-rpm
 sudo apt install ./jii_*.deb          # Debian / Ubuntu
 yay -S jii-bin                        # Arch / CachyOS  (once published to the AUR)
 #   .rpm/.deb are on the GitHub Release; grab the one for your arch.
+
+# C. Once the native repos are published (recipes ready in packaging/):
+apk add jii                           # Alpine
+sudo xbps-install jii                 # Void
+sudo emerge jii-bin                   # Gentoo
+nix-build packaging/nix/jii.nix       # Nix / NixOS
+brew install 0nigiris/jii/jii         # Homebrew on Linux
+cargo install jii                     # any OS with a Rust toolchain
 ```
 
 Run `jii --version` right after — it should print the current tag.

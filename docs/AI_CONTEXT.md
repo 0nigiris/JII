@@ -8,14 +8,37 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-12_
 
 ---
 
-## Most recent work (2026-07-11) — read this first
+## Most recent work (2026-07-12) — read this first
+
+**"JII everywhere" — packaging recipes for every mainstream channel (ADR-0060).** Continuing the
+install-easy epic toward the owner's goal ("installable from everywhere; every COPR chroot; server
+distros"). Landed this session (all in `packaging/`, each a prebuilt-binary repack of the release
+tarball, no compile):
+
+- **`homebrew/jii.rb`** (Linux/Linuxbrew tap), **`alpine/APKBUILD`** (musl-native; `sha512sums` via
+  `abuild checksum`), **`void/template`** (real sha256), **`gentoo/jii-bin-*.ebuild`** (overlay),
+  **`nix/jii.nix`** (SRI hashes baked in, static → no autoPatchelf).
+- **crates.io ready**: `Cargo.toml` gained `repository`/`homepage`/`readme`/`keywords`/`categories`/
+  `rust-version`; `cargo publish --dry-run` packages + compiles clean → `cargo install jii` works on
+  **any OS with Rust** once published (needs a crates.io token — owner action).
+- **A shareable cross-system test guide** was published as an Artifact from `docs/SUPPORTED_SYSTEMS.md`
+  (for the owner to hand a friend); `docs/SUPPORTED_SYSTEMS.md` install section extended with the new
+  channels; `packaging/README.md` documents each recipe + "which channel serves whom".
+- **Not build-tested off-Fedora.** This dev host is Fedora-only, so the new recipes ship
+  validated-by-construction (same tarball/layout as the proven `.rpm`/AUR paths), each still needs one
+  real build on its target distro + the owner's account to publish. **No core Rust behaviour changed.**
+
+**Still open (owner directive, awaiting go): T6 bootstrap-a-missing-manager + rank GitHub strictly last.**
+Deferred until after the install-easy epic; see TASKS.md "Next".
+
+<details><summary>Previous session (2026-07-11) — install.sh native install + multi-arch spec</summary>
 
 **"Install-easy" epic + a new steering directive.** Owner is running a cross-system testing round
-(NixOS VM + friends on every distro) *before* any Windows/macOS port. Landed this session:
+(NixOS VM + friends on every distro) *before* any Windows/macOS port. Landed that session:
 
 - **`install.sh` now does native installs (ADR-0059).** New `JII_METHOD=auto|native|portable`
   (default `auto`; also `--native`/`--portable`). `auto`: on an interactive terminal with a
@@ -47,6 +70,8 @@ surface + prepend a bootstrap plan step. (2) **GitHub strictly last** — defaul
 `src/config.rs` currently ranks `github` *above* `cargo/npm/pipx/go/brew/nix`; owner wants it the
 absolute last resort. Both are the agreed **next core work** after the install-easy epic. *Owner to
 confirm github below cargo/npm/go/nix too.*
+
+</details>
 
 ## Declarative Nix Etap C (2026-07-11)
 

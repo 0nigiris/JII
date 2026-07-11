@@ -1,0 +1,32 @@
+# Template file for 'jii' — prebuilt-binary (static musl, no compile).
+#
+# Drop this at srcpkgs/jii/template in a void-packages checkout and build with
+# `./xbps-src pkg jii`. The release binary is a static musl build, so no cross-toolchain
+# and no runtime deps. Checksums below are the release tarballs' sha256 (Void uses sha256);
+# refresh them with `./xbps-src update-check` / `xgensum -f` on each release bump.
+pkgname=jii
+version=0.1.5beta
+revision=1
+short_desc="Smart universal package installer for Linux"
+maintainer="0nigiris <0nigiris@users.noreply.github.com>"
+license="GPL-3.0-or-later"
+homepage="https://github.com/0nigiris/JII"
+
+_tag="v0.1.5-beta"
+case "$XBPS_TARGET_MACHINE" in
+	x86_64)  _arch=x86_64;  checksum=33b5be49f61c85c61a7cdf11fffc6a7cc7889c81c64a056c924cd4cbe4378201 ;;
+	aarch64) _arch=aarch64; checksum=1844096e6f57552cd236d39a4518670e51fafce8ac26d657513756b543cfd424 ;;
+	*) broken="no prebuilt JII binary for this architecture" ;;
+esac
+distfiles="${homepage}/releases/download/${_tag}/jii-${_tag}-${_arch}-linux.tar.gz"
+wrksrc="jii-${_tag}-${_arch}-linux"
+
+do_install() {
+	vbin jii
+	vman jii.1
+	vcompletion completions/jii.bash bash
+	vcompletion completions/_jii zsh
+	vcompletion completions/jii.fish fish
+	vlicense LICENSE
+	vdoc README.md
+}

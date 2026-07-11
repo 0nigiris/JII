@@ -520,6 +520,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   publish (owner's AUR/COPR accounts). `docs/SUPPORTED_SYSTEMS.md` cross-system test matrix;
                   README rewrite (two methods; `$ `-prompt copy-paste fix). **T7:** live native `sudo` install
                   unverified; AUR/COPR unpublished; Arch pacman native path pending the AUR publish.
+            - [x] **"JII everywhere" — packaging recipes for every channel (2026-07-12, ADR-0060).**
+                  `packaging/jii.spec` made multi-arch (one SRPM → every x86_64+aarch64 COPR/OBS chroot;
+                  Fedora/EPEL=CentOS/Rocky/Alma/openSUSE). Added prebuilt-binary recipes:
+                  `homebrew/jii.rb` (Linuxbrew), `alpine/APKBUILD` (musl-native), `void/template`,
+                  `gentoo/jii-bin-*.ebuild`, `nix/jii.nix`. crates.io metadata in `Cargo.toml`
+                  (`cargo publish --dry-run` clean → `cargo install jii`). Cross-system test guide
+                  published as an Artifact for a friend. **Owner actions:** publish each (their accounts)
+                  + one real build per off-Fedora recipe; exotic arches wait on the CI cross-compile epic.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

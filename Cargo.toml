@@ -4,6 +4,12 @@ version = "0.1.5-beta"
 edition = "2024"
 description = "Just Install It — a smart universal package installer for Linux"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/0nigiris/JII"
+homepage = "https://github.com/0nigiris/JII"
+readme = "README.md"
+keywords = ["package-manager", "installer", "cli", "linux", "dnf"]
+categories = ["command-line-utilities"]
+rust-version = "1.85"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

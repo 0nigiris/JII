@@ -1,0 +1,35 @@
+# Maintainer: 0nigiris <0nigiris@users.noreply.github.com>
+#
+# Prebuilt-binary aport for JII. Alpine is musl-native, and JII's release binary is a
+# static musl build — so it drops straight in, no compile. Suits Alpine servers and
+# containers. Build with `abuild -r` in an aports checkout (srcpkgs/testing/jii/APKBUILD),
+# then run `abuild checksum` to fill sha512sums below (Alpine uses sha512, not sha256).
+# On each release bump pkgver and re-run `abuild checksum`.
+pkgname=jii
+pkgver=0.1.5_beta
+pkgrel=0
+pkgdesc="Smart universal package installer for Linux"
+url="https://github.com/0nigiris/JII"
+arch="x86_64 aarch64"
+license="GPL-3.0-or-later"
+options="!check !strip"  # prebuilt static binary: nothing to test-build or strip here
+# pkgver may not contain a hyphen; reconstruct the real tag (v0.1.5-beta).
+_tag="v${pkgver/_/-}"
+source="jii-$pkgver-x86_64.tar.gz::$url/releases/download/$_tag/jii-$_tag-x86_64-linux.tar.gz
+	jii-$pkgver-aarch64.tar.gz::$url/releases/download/$_tag/jii-$_tag-aarch64-linux.tar.gz"
+
+package() {
+	case "$CARCH" in
+		x86_64) cd "$srcdir/jii-$_tag-x86_64-linux" ;;
+		aarch64) cd "$srcdir/jii-$_tag-aarch64-linux" ;;
+	esac
+	install -Dm755 jii "$pkgdir"/usr/bin/jii
+	install -Dm644 jii.1 "$pkgdir"/usr/share/man/man1/jii.1
+	install -Dm644 completions/jii.bash "$pkgdir"/usr/share/bash-completion/completions/jii
+	install -Dm644 completions/_jii "$pkgdir"/usr/share/zsh/site-functions/_jii
+	install -Dm644 completions/jii.fish "$pkgdir"/usr/share/fish/vendor_completions.d/jii.fish
+	install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+}
+
+# Run `abuild checksum` to populate these from the fetched tarballs.
+sha512sums=""
