@@ -14,6 +14,36 @@ _Last updated: 2026-07-11_
 
 ## Most recent work (2026-07-11) — read this first
 
+**"Install-easy" epic + a new steering directive.** Owner is running a cross-system testing round
+(NixOS VM + friends on every distro) *before* any Windows/macOS port. Landed this session:
+
+- **`install.sh` now does native installs (ADR-0059).** New `JII_METHOD=auto|native|portable`
+  (default `auto`; also `--native`/`--portable`). `auto`: on an interactive terminal with a
+  supported manager (`dnf`/`apt`/`zypper`) it **asks** (default native) whether to install the
+  system `.rpm`/`.deb` via that manager or a portable binary to `~/.local/bin`; **no TTY (pipe/CI)
+  → portable, never a surprise `sudo`.** Native asset URL is discovered from the release-by-tag JSON
+  (arch+ext grep), `.sha256`-verified, and the exact `sudo … install` argv is printed before it runs.
+  **Arch/`pacman` not wired yet** — its native path is the AUR (`jii-bin`), unpublished; pacman hosts
+  get a note + portable fallback. Non-destructive paths verified on the Fedora dev host (syntax, URL
+  discovery ×4, portable, auto-no-tty clean, auto-tty answered `n`); **live `sudo` install is T7 debt.**
+- **Packaging bumped to v0.1.5-beta** — `packaging/aur/PKGBUILD` (real sha256sums, pkgver `0.1.5_beta`)
+  and `packaging/jii.spec` are release-accurate and ready to publish. Publishing to AUR/COPR still needs
+  the owner's accounts (SSH key / Fedora account); code is prepared.
+- **`docs/SUPPORTED_SYSTEMS.md`** — cross-system test matrix + per-system smoke test (companion to
+  `RELEASE_TESTPLAN.md`). **README** install section rewritten for the two methods; earlier README fix
+  removed the `$ ` prompt from copy-paste blocks (a CachyOS tester copied `$ ` and hit `bash: $: …`).
+
+**New directive (not yet implemented) — see [DECISIONS backlog / ROADMAP T6]:** (1) **Bootstrap a
+missing manager** — if the best candidate's backend isn't installed (e.g. app on Flatpak but no
+Flatpak), *offer to install the manager then the app*, never auto. This is **T6** (designed in
+ROADMAP, currently FROZEN); the engine today *skips* `!is_available()` sources, so this needs T6 to
+surface + prepend a bootstrap plan step. (2) **GitHub strictly last** — default `priority` in
+`src/config.rs` currently ranks `github` *above* `cargo/npm/pipx/go/brew/nix`; owner wants it the
+absolute last resort. Both are the agreed **next core work** after the install-easy epic. *Owner to
+confirm github below cargo/npm/go/nix too.*
+
+## Declarative Nix Etap C (2026-07-11)
+
 **Declarative Nix Etap C: privileged auto-edit of the root-owned `configuration.nix` LANDED
 (ADR-0058).** This closes the **last** declarative gap. Etap B auto-edited only a user-owned
 `home.nix`; the NixOS system config stayed snippet-only because writing it needs root. Now

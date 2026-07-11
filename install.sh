@@ -1,22 +1,48 @@
 #!/bin/sh
-# JII installer — download a prebuilt binary and drop it on your PATH. No build, no root.
+# JII installer.
 #
 #   curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
 #
-# What it does: detects your CPU (x86_64 / arm64), downloads the matching static
-# musl binary from the latest GitHub release, verifies its sha256, and installs it
-# to ~/.local/bin (override with JII_BIN_DIR). It never needs sudo.
+# Two ways to install (see JII_METHOD below):
+#   • native   — the system package (.rpm/.deb) via dnf/apt/zypper. Integrated: man page,
+#                shell completions, removable with your package manager. Needs sudo.
+#   • portable — the static musl binary dropped in ~/.local/bin. No root, any distro.
 #
-# Options via env:
-#   JII_VERSION=v0.1.0-beta   install a specific tag (default: latest release)
-#   JII_BIN_DIR=/usr/local/bin install elsewhere (may need write access)
+# By default (JII_METHOD=auto): if a supported package manager is present and this is an
+# interactive terminal, JII asks which you want (default: native). In a pipe / CI (no
+# terminal) it installs portable and never runs sudo unprompted — escalation only ever
+# happens after you say yes.
+#
+# Options via env (or args --native / --portable):
+#   JII_METHOD=auto|native|portable  install method (default: auto)
+#   JII_VERSION=v0.1.5-beta          install a specific tag (default: latest release)
+#   JII_BIN_DIR=/usr/local/bin       portable install dir (default: ~/.local/bin)
 set -eu
 
 REPO="0nigiris/JII"
 BIN_DIR="${JII_BIN_DIR:-$HOME/.local/bin}"
+METHOD="${JII_METHOD:-auto}"
 
 err() { printf 'jii-install: %s\n' "$1" >&2; exit 1; }
 info() { printf '%s\n' "$1"; }
+
+# --- 0. Parse args ----------------------------------------------------------
+for arg in "$@"; do
+  case "$arg" in
+    --native) METHOD="native" ;;
+    --portable) METHOD="portable" ;;
+    --method=*) METHOD="${arg#--method=}" ;;
+    -h | --help)
+      info "Usage: install.sh [--native|--portable]   (or set JII_METHOD)"
+      exit 0
+      ;;
+    *) err "unknown option: $arg (try --native or --portable)" ;;
+  esac
+done
+case "$METHOD" in
+  auto | native | portable) : ;;
+  *) err "JII_METHOD must be auto, native or portable (got '$METHOD')." ;;
+esac
 
 # --- 1. Preconditions -------------------------------------------------------
 [ "$(uname -s)" = "Linux" ] || err "JII is Linux-only (found $(uname -s))."
@@ -33,12 +59,40 @@ fi
 
 # --- 2. Detect architecture -------------------------------------------------
 case "$(uname -m)" in
-  x86_64 | amd64) ARCH="x86_64" ;;
-  aarch64 | arm64) ARCH="aarch64" ;;
+  x86_64 | amd64) ARCH="x86_64"; RPMARCH="x86_64"; DEBARCH="amd64" ;;
+  aarch64 | arm64) ARCH="aarch64"; RPMARCH="aarch64"; DEBARCH="arm64" ;;
   *) err "unsupported CPU architecture: $(uname -m) (x86_64 and aarch64 are published)." ;;
 esac
 
-# --- 3. Resolve the version -------------------------------------------------
+# --- 3. Detect the native package manager + escalation ----------------------
+# NATIVE_KIND: rpm | deb (a package we publish and can install here) | aur | "" (none).
+if command -v dnf >/dev/null 2>&1; then
+  NATIVE_MGR="dnf"; NATIVE_KIND="rpm"
+elif command -v apt-get >/dev/null 2>&1; then
+  NATIVE_MGR="apt"; NATIVE_KIND="deb"
+elif command -v zypper >/dev/null 2>&1; then
+  NATIVE_MGR="zypper"; NATIVE_KIND="rpm"
+elif command -v pacman >/dev/null 2>&1; then
+  NATIVE_MGR="pacman"; NATIVE_KIND="aur"
+else
+  NATIVE_MGR=""; NATIVE_KIND=""
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+  ESC=""; CAN_ESC=1
+elif command -v sudo >/dev/null 2>&1; then
+  ESC="sudo"; CAN_ESC=1
+else
+  ESC=""; CAN_ESC=0
+fi
+
+# Can we do a real native install here (have a publishable package + a way to escalate)?
+NATIVE_OK=0
+case "$NATIVE_KIND" in
+  rpm | deb) [ "$CAN_ESC" -eq 1 ] && NATIVE_OK=1 ;;
+esac
+
+# --- 4. Resolve the version -------------------------------------------------
 TAG="${JII_VERSION:-}"
 if [ -z "$TAG" ]; then
   info "Finding the latest release…"
@@ -54,43 +108,142 @@ if [ -z "$TAG" ]; then
   [ -n "$TAG" ] || err "could not determine the latest release; set JII_VERSION=<tag>."
 fi
 
-ASSET="jii-${TAG}-${ARCH}-linux.tar.gz"
-BASE="https://github.com/$REPO/releases/download/$TAG"
-
-# --- 4. Download + verify + install ----------------------------------------
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
-info "Downloading $ASSET …"
-dl "$BASE/$ASSET" "$TMP/$ASSET" || err "download failed: $BASE/$ASSET"
+# --- 5. Ask a yes/no question on the controlling terminal -------------------
+# Returns 0 for yes (default on empty input), 1 for no *or* when there is no terminal
+# to ask on (a pipe / CI). Never blocks a non-interactive run.
+ask_default_yes() {
+  # Prompt and read inside a group whose stderr is silenced, so a failed open of
+  # /dev/tty (no controlling terminal) produces no noise — the group just exits
+  # non-zero and we fall back. On success the typed answer is echoed back to us.
+  _ans=$(
+    { printf '%s' "$1" >/dev/tty && IFS= read -r _r </dev/tty && printf '%s' "$_r"; } 2>/dev/null
+  ) || return 1
+  case "$_ans" in
+    [Nn] | [Nn][Oo]) return 1 ;;
+    *) return 0 ;;
+  esac
+}
 
-if dl "$BASE/$ASSET.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
-  info "Verifying checksum…"
-  # The .sha256 file records the asset's basename; verify from inside $TMP.
-  ( cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1 ) \
-    || err "checksum verification failed — refusing to install."
-else
-  info "No checksum published for this asset; skipping verification."
+# --- 6. Choose method (auto → ask or fall back) -----------------------------
+if [ "$METHOD" = "auto" ]; then
+  if [ "$NATIVE_OK" -eq 1 ] \
+    && ask_default_yes "Install jii system-wide with $NATIVE_MGR (needs sudo)?  [Y = system / n = portable in ~/.local/bin] "; then
+    METHOD="native"
+  else
+    METHOD="portable"
+  fi
 fi
 
-tar -xzf "$TMP/$ASSET" -C "$TMP"
-# The tarball holds a top-level dir jii-<tag>-<arch>-linux/ with the binary inside.
-SRC=$(find "$TMP" -type f -name jii -perm -u+x | head -n1)
-[ -n "$SRC" ] || err "the archive did not contain a 'jii' binary."
+# --- 7. Native install (returns non-zero to request a portable fallback) ----
+native_install() {
+  REL_JSON=$(fetch "https://api.github.com/repos/$REPO/releases/tags/$TAG") || {
+    info "Could not fetch release metadata; falling back to a portable install."
+    return 1
+  }
+  case "$NATIVE_KIND" in
+    rpm) PAT="\\.$RPMARCH\\.rpm" ;;
+    deb) PAT="_$DEBARCH\\.deb" ;;
+  esac
+  # Pick the asset's download URL straight from the release JSON (robust to the
+  # package's version/release-number naming), excluding the .sha256 sidecar.
+  URL=$(printf '%s\n' "$REL_JSON" \
+    | grep -o '"browser_download_url": *"[^"]*"' \
+    | sed 's/.*"\(https[^"]*\)".*/\1/' \
+    | grep -E "$PAT\$" | grep -v '\.sha256$' | head -n1)
+  [ -n "$URL" ] || {
+    info "No native $NATIVE_KIND package for $ARCH in $TAG; falling back to a portable install."
+    return 1
+  }
 
-mkdir -p "$BIN_DIR"
-install -m 0755 "$SRC" "$BIN_DIR/jii"
-info "Installed jii $TAG → $BIN_DIR/jii"
+  ASSET=$(basename "$URL")
+  info "Downloading $ASSET …"
+  dl "$URL" "$TMP/$ASSET" || {
+    info "Download failed; falling back to a portable install."
+    return 1
+  }
+  if dl "$URL.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
+    info "Verifying checksum…"
+    ( cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1 ) \
+      || err "checksum verification failed — refusing to install."
+  fi
 
-# --- 5. PATH hint -----------------------------------------------------------
-case ":$PATH:" in
-  *":$BIN_DIR:"*) : ;;
-  *)
-    info ""
-    info "⚠ $BIN_DIR is not on your PATH. Add it, e.g.:"
-    info "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
-    ;;
-esac
+  case "$NATIVE_MGR" in
+    dnf) set -- dnf install -y "$TMP/$ASSET" ;;
+    zypper) set -- zypper --non-interactive install --allow-unsigned-rpm "$TMP/$ASSET" ;;
+    apt) set -- apt-get install -y "$TMP/$ASSET" ;;
+    *) return 1 ;;
+  esac
+  info ""
+  info "JII will install the native package with this command (sudo may ask for your password):"
+  info "    ${ESC:+$ESC }$*"
+  # shellcheck disable=SC2086
+  $ESC "$@" || {
+    info "Native install failed; falling back to a portable install."
+    return 1
+  }
+  return 0
+}
 
+# --- 8. Portable install ----------------------------------------------------
+portable_install() {
+  ASSET="jii-${TAG}-${ARCH}-linux.tar.gz"
+  BASE="https://github.com/$REPO/releases/download/$TAG"
+
+  info "Downloading $ASSET …"
+  dl "$BASE/$ASSET" "$TMP/$ASSET" || err "download failed: $BASE/$ASSET"
+
+  if dl "$BASE/$ASSET.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
+    info "Verifying checksum…"
+    # The .sha256 file records the asset's basename; verify from inside $TMP.
+    ( cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1 ) \
+      || err "checksum verification failed — refusing to install."
+  else
+    info "No checksum published for this asset; skipping verification."
+  fi
+
+  tar -xzf "$TMP/$ASSET" -C "$TMP"
+  # The tarball holds a top-level dir jii-<tag>-<arch>-linux/ with the binary inside.
+  SRC=$(find "$TMP" -type f -name jii -perm -u+x | head -n1)
+  [ -n "$SRC" ] || err "the archive did not contain a 'jii' binary."
+
+  mkdir -p "$BIN_DIR"
+  install -m 0755 "$SRC" "$BIN_DIR/jii"
+  info "Installed jii $TAG → $BIN_DIR/jii"
+
+  # PATH hint (portable only — the native path lands in /usr/bin, already on PATH).
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) : ;;
+    *)
+      info ""
+      info "⚠ $BIN_DIR is not on your PATH. Add it, e.g.:"
+      info "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+      ;;
+  esac
+}
+
+# --- 9. Do it ---------------------------------------------------------------
+if [ "$METHOD" = "native" ]; then
+  if [ "$NATIVE_KIND" = "aur" ]; then
+    info "On Arch, the native package is the AUR 'jii-bin' (\`yay -S jii-bin\`) — not published yet."
+    info "Installing the portable binary for now."
+    METHOD="portable"
+  elif [ "$NATIVE_OK" -eq 1 ]; then
+    if native_install; then
+      info "Installed jii $TAG (native $NATIVE_KIND via $NATIVE_MGR)."
+      info ""
+      info "Done. Try:  jii doctor"
+      exit 0
+    fi
+    METHOD="portable"
+  else
+    info "No supported native package manager with escalation here; installing portable."
+    METHOD="portable"
+  fi
+fi
+
+portable_install
 info ""
 info "Done. Try:  jii doctor"

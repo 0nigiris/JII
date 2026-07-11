@@ -118,14 +118,22 @@ runtime deps**, runs on every Linux distro (glibc or musl, old or new). No compi
 
 ### One-liner (recommended)
 
-Installs to `~/.local/bin`, **no root**:
-
 ```sh
 curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
 ```
 
-It auto-detects your CPU, downloads the matching binary from the latest release, verifies its
-sha256, and installs it. Then run `jii doctor` to confirm it sees your sources.
+It auto-detects your CPU, downloads the matching binary from the latest release, and verifies
+its sha256. On an interactive terminal, if it finds a supported package manager
+(`dnf`/`apt`/`zypper`) it **asks** whether to install the native package system-wide (default)
+or a portable binary to `~/.local/bin`. Piped or in CI (no terminal) it installs **portable,
+no root** — it never runs `sudo` without you saying yes. Force either method:
+
+```sh
+JII_METHOD=native   curl -fsSL …/install.sh | sh   # system package via dnf/apt/zypper (sudo)
+JII_METHOD=portable curl -fsSL …/install.sh | sh   # static binary in ~/.local/bin, no root
+```
+
+Then run `jii doctor` to confirm it sees your sources.
 
 ### Native package (`.rpm` / `.deb`)
 

@@ -513,10 +513,21 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   source-branch. 243 tests. Fixture-tested only — unverified on a live Gentoo host (T7).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** declarative-Nix program **complete** through Etap C.
-            Windows/macOS (separate epic, deferred until the rest is done); richer info cards; more polish;
-            live verification of the non-Fedora providers and the Nix edit→apply on real hosts (T7).
-            GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
+            - [x] **"Install-easy" epic (2026-07-11).** `install.sh` native installs (ADR-0059:
+                  `JII_METHOD=auto|native|portable`, default `auto` asks-then-native on a TTY, portable in
+                  pipes/CI, exact `sudo … install` shown first; Arch/AUR not wired yet). Packaging bumped to
+                  v0.1.5-beta (`packaging/aur/PKGBUILD` real sha256sums + `packaging/jii.spec`), ready to
+                  publish (owner's AUR/COPR accounts). `docs/SUPPORTED_SYSTEMS.md` cross-system test matrix;
+                  README rewrite (two methods; `$ `-prompt copy-paste fix). **T7:** live native `sudo` install
+                  unverified; AUR/COPR unpublished; Arch pacman native path pending the AUR publish.
+      - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
+            **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
+            (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
+            T6 must surface them + prepend a bootstrap plan step) **and rank GitHub strictly last** (default
+            `priority` in `src/config.rs` currently puts `github` above `cargo/npm/pipx/go/brew/nix`; owner
+            wants it the absolute last resort — confirm scope). Then: publish AUR/COPR + wire pacman native;
+            Windows/macOS (separate epic, deferred); richer info cards; live verification of non-Fedora
+            providers and the Nix + native-install flows on real hosts (T7). GUI is **parked**.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in
       **[docs/BETA_ROADMAP.md](BETA_ROADMAP.md)**. Priority order:

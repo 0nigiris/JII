@@ -2242,3 +2242,50 @@ safely splice-and-apply is needless friction for NixOS users.
 the `needs_root` classification, the dry-run no-write/no-stage guarantee for the root path, and the
 exact elevated argv; the live escalated write still needs a real NixOS host to exercise (extends the
 ADR-0056/0057 T7 verification debt). This closes the last open item from ADR-0056.
+
+## ADR-0059 — `install.sh` native-package install (opt-in via `auto`), portable stays the safe default
+
+**Status:** Accepted (2026-07-11). Landed.
+
+**Context.** `install.sh` (the `curl … | sh` one-liner) only ever downloaded the static-musl tarball
+and dropped it in `~/.local/bin` — a rootless, universal install. A user testing on CachyOS objected
+that this is "not a real install": no system integration, no man page/completions on the system path,
+not removable via the package manager. JII already **builds and publishes** native `.rpm`/`.deb` on
+every release (nfpm) and has an AUR `PKGBUILD`, so the packages exist; the installer just never used
+them. The tension: a `curl | sh` pipe that silently runs `sudo` contradicts JII's own binding
+principle — *"JII is never fully run as root; only concrete steps escalate, exact command shown first."*
+
+**Decision.** `install.sh` gains a `JII_METHOD` selector (`auto` | `native` | `portable`; also
+`--native` / `--portable` args), defaulting to **`auto`**:
+
+1. **`auto`** — detect the native manager (`dnf`/`apt`/`zypper` → the matching `.rpm`/`.deb`). If one is
+   present **and** escalation is available (`root` or `sudo`) **and** a controlling terminal exists
+   (`/dev/tty` readable), *ask* the user (default **yes = native**) whether to install system-wide via
+   that manager or portably to `~/.local/bin`. **No TTY (a real pipe / CI) → portable, no prompt, no
+   sudo.** This mirrors the app's philosophy: native is offered up-front, but privilege escalation
+   never happens without an explicit answer.
+2. **`native`** — force the native package. The exact privileged command is printed first
+   (`sudo dnf install -y …` etc.); `sudo` itself gates on the password. Falls back to portable (with a
+   note) when there is no supported manager / no escalation / no native asset — it warns, never hard-fails.
+3. **`portable`** — the original behaviour verbatim (unchanged), so existing users and CI see no change.
+
+Native assets are discovered from the GitHub **release-by-tag** JSON (grep the `browser_download_url`
+matching the arch + extension) rather than by reconstructing the nfpm filename — robust to release-number
+and naming quirks. The downloaded package's `.sha256` (also on the release) is verified before install,
+same as the tarball path. The manager's own command is built as an argv and printed verbatim before it
+runs. **Arch/`pacman` is deliberately not wired to a privileged install:** its native path is the AUR
+(`jii-bin`), which isn't published yet — for now `pacman` hosts get a note pointing at the AUR and a
+portable fallback. Wiring `yay -S jii-bin` is a one-line follow-up once the AUR package is live.
+
+**Alternatives rejected.** (a) *Default to native (`sudo` in the pipe).* Rejected — surprising root in a
+`curl | sh` context is exactly the "no surprise escalation" line JII draws for itself; worse UX than a
+clean rootless install. (b) *Keep portable-only, publish native repos only.* Rejected — the user wants
+the one-liner itself to be able to do a real install; opt-in `auto` delivers that without the surprise.
+(c) *Reconstruct the nfpm filename.* Rejected as brittle (release number `-1`, `~`/`-`/`.` version quirks);
+API discovery is stable. (d) *`sudo tee`/`dpkg -i` improvised flows.* Rejected — use each manager's own
+`install` verb so the package is tracked and removable natively.
+
+**Consequences.** `curl … | sh` on Fedora/Debian/openSUSE now offers a tracked system install (removable
+via the manager, with man page + completions) while staying rootless-by-default in pipes/CI. Portable is
+untouched. The live native-install path (actual `sudo dnf/apt/zypper install`) is unverified on real
+hosts — it extends the T7 live-verification debt, and Arch native waits on the AUR publish.
