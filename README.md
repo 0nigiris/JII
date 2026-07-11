@@ -120,8 +120,8 @@ runtime deps**, runs on every Linux distro (glibc or musl, old or new). No compi
 
 Installs to `~/.local/bin`, **no root**:
 
-```console
-$ curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
+```sh
+curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
 ```
 
 It auto-detects your CPU, downloads the matching binary from the latest release, verifies its
@@ -132,34 +132,34 @@ sha256, and installs it. Then run `jii doctor` to confirm it sees your sources.
 Grab the file for your arch from [Releases](https://github.com/0nigiris/JII/releases) — it also
 drops a man page and shell completions:
 
-```console
-$ sudo dnf install ./jii-*.rpm      # Fedora / RHEL / openSUSE
-$ sudo apt install ./jii_*.deb      # Debian / Ubuntu
+```sh
+sudo dnf install ./jii-*.rpm      # Fedora / RHEL / openSUSE
+sudo apt install ./jii_*.deb      # Debian / Ubuntu
 ```
 
 ### Arch (AUR)
 
-```console
-$ yay -S jii-bin        # once published — see packaging/README.md
+```sh
+yay -S jii-bin        # once published — see packaging/README.md
 ```
 
 ### Manual tarball
 
 If you prefer to place it yourself:
 
-```console
-$ tar -xzf jii-v0.1.3-beta-x86_64-linux.tar.gz
-$ sha256sum -c jii-v0.1.3-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
-$ install -Dm755 jii-v0.1.3-beta-x86_64-linux/jii ~/.local/bin/jii
+```sh
+tar -xzf jii-v0.1.3-beta-x86_64-linux.tar.gz
+sha256sum -c jii-v0.1.3-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
+install -Dm755 jii-v0.1.3-beta-x86_64-linux/jii ~/.local/bin/jii
 ```
 
 ### Build from source
 
 Needs a recent Rust toolchain (edition 2024):
 
-```console
-$ git clone https://github.com/0nigiris/JII && cd JII
-$ cargo install --path .    # then make sure ~/.cargo/bin is on your PATH
+```sh
+git clone https://github.com/0nigiris/JII && cd JII
+cargo install --path .    # then make sure ~/.cargo/bin is on your PATH
 ```
 
 > **Note.** JII drives the package managers you already have — it doesn't bundle any. On a machine
