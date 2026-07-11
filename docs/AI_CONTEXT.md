@@ -26,9 +26,15 @@ _Last updated: 2026-07-11_
   **Arch/`pacman` not wired yet** — its native path is the AUR (`jii-bin`), unpublished; pacman hosts
   get a note + portable fallback. Non-destructive paths verified on the Fedora dev host (syntax, URL
   discovery ×4, portable, auto-no-tty clean, auto-tty answered `n`); **live `sudo` install is T7 debt.**
-- **Packaging bumped to v0.1.5-beta** — `packaging/aur/PKGBUILD` (real sha256sums, pkgver `0.1.5_beta`)
-  and `packaging/jii.spec` are release-accurate and ready to publish. Publishing to AUR/COPR still needs
-  the owner's accounts (SSH key / Fedora account); code is prepared.
+- **Packaging bumped to v0.1.5-beta + made multi-arch/multi-distro.** `packaging/aur/PKGBUILD` (real
+  sha256sums, pkgver `0.1.5_beta`). `packaging/jii.spec` is now **multi-arch** (both release tarballs as
+  Source0/Source1, `%prep` `%ifarch` picks by target CPU) — one SRPM rebuilds correctly for **x86_64 and
+  aarch64**, validated locally via `rpmbuild --target … --rebuild` + `file` on the packaged binary. This
+  unblocks selecting **every** Fedora/EPEL(RHEL/CentOS/Rocky/Alma)/openSUSE chroot on COPR/OBS.
+  `packaging/README.md` documents all channels: **AUR**, **COPR** (Fedora+EPEL+openSUSE chroots, `buildscm
+  --method rpkg`), **OBS** (native openSUSE). Publishing still needs the owner's accounts (AUR SSH key /
+  Fedora FAS / openSUSE). *Other CPU arches (ppc64le/s390x/…) need a musl binary built first — a CI
+  cross-compile task in `release.yml`, tracked separately.* Vision: JII installable from every manager/repo.
 - **`docs/SUPPORTED_SYSTEMS.md`** — cross-system test matrix + per-system smoke test (companion to
   `RELEASE_TESTPLAN.md`). **README** install section rewritten for the two methods; earlier README fix
   removed the `$ ` prompt from copy-paste blocks (a CachyOS tester copied `$ ` and hit `bash: $: …`).

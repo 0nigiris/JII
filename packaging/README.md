@@ -43,9 +43,11 @@ can build Fedora, EPEL (RHEL/CentOS/Rocky/Alma) **and** openSUSE chroots from th
 spec.
 
 1. Log in at <https://copr.fedorainfracloud.org> (Fedora Account / FAS).
-2. **New Project** (e.g. `jii`). Under **Chroots** tick what you want to serve, e.g.:
-   `fedora-42-x86_64`, `fedora-42-aarch64`, `epel-9-x86_64`,
-   `opensuse-leap-15.6-x86_64`, `opensuse-tumbleweed-x86_64`.
+2. **New Project** (e.g. `jii`). Under **Chroots** tick **everything you want to serve, in
+   both x86_64 and aarch64** — the spec is multi-arch (see below), so select freely:
+   - Fedora — every `fedora-*-x86_64` / `fedora-*-aarch64` (and `fedora-rawhide-*`);
+   - **EPEL** (RHEL / CentOS Stream / Rocky / Alma servers) — `epel-8-*`, `epel-9-*`, `epel-10-*`;
+   - openSUSE — `opensuse-leap-15.6-*`, `opensuse-tumbleweed-*`.
 3. Make sure `jii.spec`'s `Version`/`%_tag` match the release you cut (see "Bumping").
 4. Build it — **web UI** (easiest): project → *Builds* → *New Build* → **SCM** tab:
    - Clone url `https://github.com/0nigiris/JII.git`, Committish `master`,
@@ -68,10 +70,9 @@ spec.
    sudo zypper install jii
    ```
 
-> **aarch64 caveat.** `jii.spec`'s `Source0` is arch-templated (`…-%{_arch}-linux.tar.gz`)
-> and COPR builds one SRPM for all chroots, so the **aarch64** build can fail on source
-> extraction. Serve **x86_64 first**; a genuinely multi-arch spec (both tarballs +
-> `%ifarch`) is the fix — see "Multi-arch spec" below.
+> **Both arches work.** `jii.spec` is multi-arch (both release tarballs are Sources; `%prep`
+> picks by target CPU), so one SRPM rebuilds correctly in **x86_64 and aarch64** chroots —
+> validated by building both from a single SRPM. Pick every chroot you want.
 
 ---
 
@@ -89,8 +90,10 @@ works.
    cd home:<your-user>
    osc mkpac jii && cd jii
    cp ~/JII/packaging/jii.spec .
-   # fetch the tarball the spec references (x86_64 shown; add aarch64 for a multi-arch spec):
-   curl -fLO https://github.com/0nigiris/JII/releases/download/v0.1.5-beta/jii-v0.1.5-beta-x86_64-linux.tar.gz
+   # the spec is multi-arch → commit BOTH release tarballs (Source0 + Source1):
+   for a in x86_64 aarch64; do
+     curl -fLO https://github.com/0nigiris/JII/releases/download/v0.1.5-beta/jii-v0.1.5-beta-$a-linux.tar.gz
+   done
    osc add jii.spec *.tar.gz
    osc commit -m "jii 0.1.5-beta"
    ```
@@ -129,24 +132,30 @@ Arch/CachyOS box (`sudo pacman -S --needed base-devel git pacman-contrib`).
 
 ---
 
-## Multi-arch spec (aarch64 on COPR/OBS)
+## Multi-arch spec (how it works)
 
-To build aarch64 as well as x86_64 from a single spec, the spec must carry **both**
-tarballs and pick by arch, because COPR/OBS store sources per-package, not per-arch:
+`jii.spec` is already multi-arch, so **one SRPM serves every x86_64 and aarch64 chroot**.
+It carries both release tarballs as Sources and `%prep` unpacks the one matching the target
+CPU (COPR/OBS store sources per-package, not per-arch, so both must travel in the SRPM):
 
 ```spec
 Source0: %{url}/releases/download/%{_tag}/jii-%{_tag}-x86_64-linux.tar.gz
 Source1: %{url}/releases/download/%{_tag}/jii-%{_tag}-aarch64-linux.tar.gz
 %prep
 %ifarch aarch64
-%autosetup -n jii-%{_tag}-aarch64-linux -b1
+%setup -q -T -b 1 -n jii-%{_tag}-aarch64-linux
 %else
-%autosetup -n jii-%{_tag}-x86_64-linux
+%setup -q -n jii-%{_tag}-x86_64-linux
 %endif
 ```
 
-The current `jii.spec` is single-source (x86_64-clean). If/when aarch64 repos are wanted,
-switch to the two-source form above.
+Validated locally by rebuilding the one SRPM for both targets
+(`rpmbuild --target x86_64|aarch64 --rebuild`): each produces a correct-arch `.rpm` (verified
+with `file` on the packaged `/usr/bin/jii`).
+
+> **Other CPU arches** (ppc64le, s390x, armhfp, i686…) that COPR/OBS *offer* need a JII
+> **binary** for that arch first — today the release only builds `x86_64` + `aarch64` musl
+> statics. Adding more is a CI cross-compilation task (`release.yml`), tracked separately.
 
 ---
 

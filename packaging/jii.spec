@@ -1,9 +1,11 @@
-# RPM spec for JII — a *binary repack* of the official GitHub release tarball.
+# RPM spec for JII — a *binary repack* of the official GitHub release tarballs.
 #
-# It downloads the prebuilt static-musl binary (plus man page, completions and docs)
-# and installs them, so COPR/rpmbuild produce an installable .rpm with no compile and
-# no build-time network beyond fetching Source0. Ideal for a `copr build` that Just Works.
-# On each release, bump Version and %_tag. See packaging/README.md for the COPR steps.
+# It ships the prebuilt static-musl binary (plus man page, completions and docs), so
+# COPR / OBS / rpmbuild produce an installable .rpm with no compile. It is **multi-arch
+# from one spec**: both the x86_64 and aarch64 release tarballs are Sources, and %prep
+# unpacks the one matching the build's target arch. This lets COPR/OBS build *every*
+# x86_64 **and** aarch64 chroot (Fedora, EPEL for RHEL/CentOS/Rocky/Alma, openSUSE) from
+# a single SRPM. On each release, bump Version and %_tag. See packaging/README.md.
 #
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
@@ -17,7 +19,11 @@ Summary:        A smart universal package installer for Linux
 
 License:        GPLv3+
 URL:            https://github.com/0nigiris/JII
-Source0:        %{url}/releases/download/%{_tag}/jii-%{_tag}-%{_arch}-linux.tar.gz
+# One Source per published arch; %%prep picks the one matching the target CPU. A single
+# SRPM then rebuilds correctly in both x86_64 and aarch64 chroots (COPR/OBS store sources
+# per package, not per arch, so both tarballs must travel in the SRPM).
+Source0:        %{url}/releases/download/%{_tag}/jii-%{_tag}-x86_64-linux.tar.gz
+Source1:        %{url}/releases/download/%{_tag}/jii-%{_tag}-aarch64-linux.tar.gz
 
 ExclusiveArch:  x86_64 aarch64
 # Prebuilt binary: no debug symbols to extract, no ELF hardening checks to run.
@@ -31,7 +37,12 @@ option, and explains why. It is not a package manager; it drives the ones you ha
 and never runs fully as root: only the concrete steps that need it escalate, shown first.
 
 %prep
-%autosetup -n jii-%{_tag}-%{_arch}-linux
+# Unpack only the tarball matching the target arch (both are Sources in the SRPM).
+%ifarch aarch64
+%setup -q -T -b 1 -n jii-%{_tag}-aarch64-linux
+%else
+%setup -q -n jii-%{_tag}-x86_64-linux
+%endif
 
 %install
 install -Dm0755 jii %{buildroot}%{_bindir}/jii
