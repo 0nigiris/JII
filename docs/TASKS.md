@@ -493,6 +493,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   `apply_edit_file` guarantees `--dry-run` writes nothing. `declarative_pref` + dry-run
                   no-write unit-tested; flag conflict + non-Nix no-op verified live. 255 tests. New
                   `nix.edit_dry_run` locale key (en+ru).
+            - [x] **Declarative Nix — Etap C (privileged `configuration.nix` auto-edit)** (ADR-0058).
+                  Closes the last ADR-0056 follow-up. `strategy_for_target` now emits an `EditFile` for
+                  **any** readable/parseable config (not just home-manager); `StrategyKind::EditFile` gains
+                  `needs_root` (`= !home`), unreadable/unparseable still → `Manual`. CLI `apply_edit_file`
+                  branches on the flag, not the source: user file → `write_nix_config` (direct); root file
+                  → `write_nix_config_root` — stage `new_content` in an `O_EXCL` temp, then two **explicit**
+                  elevated `cp` commands via `privilege.rs` (`cp -a -- <dest> <dest>.jii-bak`, then
+                  `cp -- <tmp> <dest>`), `prime`d once, argv **printed first**; `--dry-run` shows them,
+                  writes/stages nothing. JII never fully root — only the two `cp`s escalate. 259 tests
+                  (+4: `needs_root` class, root dry-run no-write/no-stage, exact argv, unreadable→Manual).
+                  New `nix.edit_root_cmds` locale key (en+ru). **T7:** live escalated write unverified on a
+                  real NixOS host.
             - [x] **Gentoo (Portage/emerge)** (ADR-0054). `provider/gentoo.rs`, id `gentoo`, Official
                   (GPG-verified ::gentoo tree), self-gates on `emerge`. Atom-based (`category/package`):
                   exact search `emerge --search "^name$"` (one candidate per `cat/name`, atom in `raw`),
@@ -501,8 +513,9 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   source-branch. 243 tests. Fixture-tested only — unverified on a live Gentoo host (T7).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** Windows/macOS (separate epic); `configuration.nix` auto-edit (ADR-0056
-            follow-up, privileged rewrite); richer info cards; more polish.
+      - **Next (owner to steer):** declarative-Nix program **complete** through Etap C.
+            Windows/macOS (separate epic, deferred until the rest is done); richer info cards; more polish;
+            live verification of the non-Fedora providers and the Nix edit→apply on real hosts (T7).
             GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in

@@ -284,14 +284,17 @@ pub enum StrategyKind {
     /// apply command, and a backup note. JII never writes the file or runs a command here
     /// ("show, never run", ADR-0048/0054 Etap A).
     Manual { guidance: String },
-    /// **Auto-edit** a user-writable declarative config (Nix Etap B, ADR-0056): the provider
-    /// has already parsed the file and spliced the package into the existing list. The CLI
-    /// shows `diff`, asks to confirm, backs the file up, then writes `new_content` — after
-    /// which the user runs `apply` to activate it. Only offered for files the current user
-    /// owns (home-manager `home.nix`); the root-owned NixOS config stays [`Manual`]. JII still
-    /// never runs a privileged command here — it writes one user-owned file, nothing more.
+    /// **Auto-edit** a declarative config (Nix Etap B/C, ADR-0056/0058): the provider has
+    /// already parsed the file and spliced the package into the existing list. The CLI shows
+    /// `diff`, asks to confirm, backs the file up, then writes `new_content` — after which the
+    /// user runs `apply` to activate it. For a user-owned file (`needs_root == false`, e.g.
+    /// home-manager `home.nix`) the CLI writes it directly. For a root-owned file
+    /// (`needs_root == true`, e.g. `/etc/nixos/configuration.nix`) the CLI performs the backup
+    /// and write via `privilege.rs` (batched `sudo`/`pkexec`, exact commands shown first). The
+    /// provider only *plans* — it never escalates or writes; the CLI does, through the one
+    /// escalation path.
     EditFile {
-        /// The config file to rewrite (already confirmed to exist and be user-owned).
+        /// The config file to rewrite (already confirmed to exist and parse).
         path: PathBuf,
         /// The full new file contents — the package spliced into its declarative list.
         new_content: String,
@@ -299,6 +302,11 @@ pub enum StrategyKind {
         diff: String,
         /// The command that activates the change once written (`home-manager switch`).
         apply: String,
+        /// Whether writing the file requires root (a system config like
+        /// `/etc/nixos/configuration.nix`). Drives whether the CLI writes directly or via the
+        /// privilege-escalation path. The core stays source-agnostic — it acts on this flag,
+        /// not on the source name.
+        needs_root: bool,
     },
 }
 

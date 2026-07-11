@@ -2194,3 +2194,51 @@ back out. `ask` and `never` behave exactly as before. `Cli::declarative_pref` (f
 resolution) and `apply_edit_file`'s dry-run no-write guarantee are unit-tested; the live
 batch→edit→apply flow still needs a home-manager host (same T7 debt as ADR-0056). Still open from
 ADR-0056: `configuration.nix` auto-edit (privileged rewrite).
+
+## ADR-0058 — Declarative Nix Etap C: privileged auto-edit of the root-owned `configuration.nix`
+
+**Status:** Accepted (2026-07-11). Landed.
+
+**Context.** ADR-0056 (Etap B) auto-edits a *user-owned* home-manager `home.nix` (parse → splice →
+diff → `.jii-bak` → write), but deliberately left the root-owned NixOS system config
+(`/etc/nixos/configuration.nix`) at Etap A: JII only **showed** a snippet (`Manual`) and changed
+nothing, because writing it needs root and "JII is never fully run as root". That was the last
+declarative gap: a NixOS user (as opposed to a standalone home-manager user) got no auto-edit at all.
+The binding constraints already provide the mechanism — *only concrete steps escalate, via sudo/pkexec,
+exact commands shown first, and escalation lives in `privilege.rs`* — so the remaining work is to route
+the existing splice through that path rather than block on ownership.
+
+**Decision.**
+1. **`EditFile` grows a `needs_root: bool`.** `strategy_for_target` (nix.rs) no longer gates auto-edit
+   on `t.home`: *any* config it can read and parse becomes an `EditFile`; the system target simply
+   carries `needs_root: !t.home`. An unreadable/unparseable file still falls back to `Manual` (Etap A
+   snippet). The provider still only **plans** — it neither escalates nor writes.
+2. **The CLI branches on the flag, not on the source.** `apply_edit_file` writes a `needs_root == false`
+   file directly (`write_nix_config`, unchanged); for `needs_root == true` it goes through
+   `write_nix_config_root`: stage `new_content` in a user-owned temp file (`O_EXCL`, so a pre-planted
+   path/symlink can't be clobbered), then run two **explicit** elevated commands via `privilege.rs` —
+   `cp -a -- <dest> <dest>.jii-bak` (backup) then `cp -- <tmp> <dest>` (write). `Privilege::prime` runs
+   once so the pair prompts at most once. The exact `sudo`/`pkexec` argv is **printed before** anything
+   runs; `--dry-run` prints them and writes/stages nothing. The core stays source-agnostic — it acts on
+   `needs_root`, never on `source == "nix"`.
+3. **Backup symmetry.** The root file is backed up to the same `<path>.jii-bak` sibling as the
+   home-manager case (owned by root, created by the elevated `cp -a`), so recovery is identical.
+
+**Alternatives considered.** (a) *Pipe `new_content` to `sudo tee <dest>` in one command* — rejected:
+`Privilege::run` inherits stdio (no stdin plumbing), and it would also skip the backup; adding a stdin
+path to `privilege.rs` is more surface than a staged temp + two `cp`s. (b) *`sudo install -m … <tmp>
+<dest>`* — rejected: a plain `cp` onto the existing file preserves the destination's owner/mode
+already, and two obvious `cp`s read more clearly in the "commands shown first" prompt than `install`
+flags. (c) *A dedicated `EditFileRoot` variant instead of a bool* — rejected: it duplicates four
+identical fields and forces two match arms everywhere for a single behavioural bit; a `needs_root` flag
+is the minimal honest signal. (d) *Keep it at Etap A (snippet only)* — rejected: it was the one
+remaining declarative gap and the escalation machinery already exists; showing a snippet when JII can
+safely splice-and-apply is needless friction for NixOS users.
+
+**Consequences.** On a NixOS host, `jii install ripgrep` with `prefer_declarative = always` (or
+`--nix-config`) now splices `ripgrep` into `environment.systemPackages`, shows the diff **and** the two
+`sudo cp` commands, backs the file up, writes it, then reminds the user to `sudo nixos-rebuild switch`.
+`--dry-run` shows all of that and touches nothing. `home.nix` behaviour is unchanged. Unit tests cover
+the `needs_root` classification, the dry-run no-write/no-stage guarantee for the root path, and the
+exact elevated argv; the live escalated write still needs a real NixOS host to exercise (extends the
+ADR-0056/0057 T7 verification debt). This closes the last open item from ADR-0056.

@@ -176,11 +176,12 @@ impl Provider for Nix {
         // `nix profile` user (Nix on Fedora, say) has none, so this returns empty and JII
         // installs imperatively as before (no annoying menu). When a config *is* found we
         // offer `nix profile install` (default, immediate) plus one path per detected file:
-        //   • Etap B (ADR-0056): a user-owned home-manager `home.nix` we can parse → an
-        //     **auto-edit** (`EditFile`) — JII splices the package in, shows a diff, backs up,
-        //     and writes it (one user-owned file, no root).
-        //   • Etap A (ADR-0054): the root-owned NixOS config, or any file we can't confidently
-        //     edit → **show the snippet** (`Manual`), changing nothing.
+        //   • Etap B/C (ADR-0056/0058): any config we can parse → an **auto-edit** (`EditFile`)
+        //     — JII splices the package in, shows a diff, backs up, and writes it. A user-owned
+        //     `home.nix` is written directly; the root-owned NixOS config is written via the
+        //     privilege path (`needs_root`), with the exact `sudo` commands shown first.
+        //   • Etap A (ADR-0054): any file we can't confidently read/parse → **show the snippet**
+        //     (`Manual`), changing nothing.
         let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()) else {
             return Vec::new();
         };
@@ -209,14 +210,15 @@ impl Provider for Nix {
     }
 }
 
-/// Decide *how* a declarative target is offered for `name` (ADR-0056). A user-owned
-/// home-manager file whose declarative list we can parse and splice into becomes an
-/// [`StrategyKind::EditFile`] (auto-edit with diff/backup); everything else — the root-owned
-/// NixOS config, an unreadable file, an already-present package, or a shape we can't safely
-/// edit — falls back to Etap A [`StrategyKind::Manual`] (show the snippet, change nothing).
+/// Decide *how* a declarative target is offered for `name` (ADR-0056/0058). Any config file
+/// whose declarative list we can read, parse and splice into becomes an
+/// [`StrategyKind::EditFile`] (auto-edit with diff/backup): a user-owned home-manager file
+/// writes directly (`needs_root == false`), while the root-owned NixOS config carries
+/// `needs_root == true` so the CLI performs the write via the privilege path (Etap C). Only an
+/// unreadable file, an already-present package, or a shape we can't safely edit falls back to
+/// [`StrategyKind::Manual`] (show the snippet, change nothing).
 fn strategy_for_target(t: &NixTarget, name: &str) -> StrategyKind {
-    if t.home
-        && let Ok(source) = std::fs::read_to_string(&t.file)
+    if let Ok(source) = std::fs::read_to_string(&t.file)
         && let Insertion::Inserted(new_content) = insert_package(&source, t.attr, name)
     {
         return StrategyKind::EditFile {
@@ -224,6 +226,7 @@ fn strategy_for_target(t: &NixTarget, name: &str) -> StrategyKind {
             diff: line_diff(&source, &new_content),
             new_content,
             apply: t.apply.to_string(),
+            needs_root: !t.home,
         };
     }
     StrategyKind::Manual { guidance: guidance(t, name) }
@@ -774,6 +777,55 @@ mod tests {
         assert!(g.contains("environment.systemPackages = with pkgs; ["));
         assert!(g.contains("ripgrep"));
         assert!(g.contains("sudo nixos-rebuild switch"));
+    }
+
+    #[test]
+    fn strategy_for_target_marks_root_config_needs_root() {
+        // Etap C (ADR-0058): a readable, parseable config becomes an EditFile either way; the
+        // system (non-home) target carries needs_root == true so the CLI writes it via sudo,
+        // while a home-manager target writes directly.
+        let dir = tempfile::tempdir().unwrap();
+
+        let sys = dir.path().join("configuration.nix");
+        std::fs::write(&sys, "{ environment.systemPackages = with pkgs; [ git ]; }\n").unwrap();
+        let sys_target = NixTarget {
+            file: sys,
+            attr: "environment.systemPackages",
+            apply: "sudo nixos-rebuild switch",
+            home: false,
+        };
+        match strategy_for_target(&sys_target, "vim") {
+            StrategyKind::EditFile { needs_root, .. } => assert!(needs_root),
+            other => panic!("expected EditFile, got {other:?}"),
+        }
+
+        let home = dir.path().join("home.nix");
+        std::fs::write(&home, "{ home.packages = with pkgs; [ git ]; }\n").unwrap();
+        let home_target = NixTarget {
+            file: home,
+            attr: "home.packages",
+            apply: "home-manager switch",
+            home: true,
+        };
+        match strategy_for_target(&home_target, "vim") {
+            StrategyKind::EditFile { needs_root, .. } => assert!(!needs_root),
+            other => panic!("expected EditFile, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn strategy_for_target_falls_back_to_manual_when_unreadable() {
+        // A file that doesn't exist (can't be read) → Manual snippet, never a blind EditFile.
+        let target = NixTarget {
+            file: PathBuf::from("/nonexistent/configuration.nix"),
+            attr: "environment.systemPackages",
+            apply: "sudo nixos-rebuild switch",
+            home: false,
+        };
+        assert!(matches!(
+            strategy_for_target(&target, "vim"),
+            StrategyKind::Manual { .. }
+        ));
     }
 
     // ----- Etap B: parser-driven auto-edit (insert_package / find_list / line_diff) -----

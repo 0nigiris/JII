@@ -14,21 +14,29 @@ _Last updated: 2026-07-11_
 
 ## Most recent work (2026-07-11) — read this first
 
-**Declarative install preference + batch/scripted routing LANDED (ADR-0057).** Closes ADR-0056
-follow-up (3). The declarative Nix edit used to be reachable **only** for a single interactive
-install; now a standing preference **`[install] prefer_declarative = ask | always | never`**
-(`config::DeclarativePref`, default `ask`) plus per-run flags **`--nix-config`** (→ always) /
-**`--nix-imperative`** (→ never, mutually exclusive) control it. `ask` = the unchanged single-package
-menu (a batch stays imperative — no prompt-storm); `never` = always imperative; **`always` routes
-every resolved candidate that offers an auto-editable `EditFile` into the config edit — single, batch
-*or* scripted** (`jii install a b c`, `--yes`), each with its own diff→`.jii-bak`backup→write (or a
-shown snippet for a root-owned `Manual`), while non-Nix / no-config packages fall through to the
-normal imperative batch. Source-agnostic (`[install]`, not `[nix]`; no core source-branch — the CLI
-acts only on what `install_strategies` returns). Shared `apply_edit_file` helper (used by menu +
-route) guarantees `--dry-run` writes nothing. `Cli::declarative_pref` + the dry-run no-write guard are
-unit-tested; flag conflict + non-Nix no-op verified live. **255 tests green, clippy + build clean.**
-New `nix.edit_dry_run` locale key (en+ru parity). *Live batch→edit→apply on a home-manager host still
-T7 debt.* Still open from ADR-0056: `configuration.nix` auto-edit (privileged rewrite).
+**Declarative Nix Etap C: privileged auto-edit of the root-owned `configuration.nix` LANDED
+(ADR-0058).** This closes the **last** declarative gap. Etap B auto-edited only a user-owned
+`home.nix`; the NixOS system config stayed snippet-only because writing it needs root. Now
+`strategy_for_target` (nix.rs) produces an `EditFile` for **any** readable/parseable config and tags
+the system target with the new **`StrategyKind::EditFile { needs_root }`** flag (`needs_root == !home`;
+unreadable/unparseable still falls back to the `Manual` snippet). The CLI's `apply_edit_file` branches
+on that flag, *not* on the source: a user file writes directly (`write_nix_config`, unchanged); a
+root file goes through **`write_nix_config_root`** — stage `new_content` in an `O_EXCL` temp, then run
+two **explicit** elevated commands via `privilege.rs` (`cp -a -- <dest> <dest>.jii-bak`, then
+`cp -- <tmp> <dest>`), `prime`d once. The exact `sudo`/`pkexec` argv is **printed before** anything
+runs; `--dry-run` shows it and stages/writes nothing. JII still never runs fully as root — only those
+two `cp` steps escalate, in the one escalation path. New `nix.edit_root_cmds` locale key (en+ru
+parity). **259 tests green, clippy + build clean** (+4: `needs_root` classification, root dry-run
+no-write/no-stage, exact elevated argv, unreadable→Manual). *Live escalated write still needs a real
+NixOS host — extends the ADR-0056/0057 T7 verification debt.*
+
+**Preceded (same day) by ADR-0057** — `[install] prefer_declarative = ask | always | never`
+(`config::DeclarativePref`, default `ask`) + per-run flags `--nix-config` (→always) / `--nix-imperative`
+(→never). `always` routes every resolved candidate offering an `EditFile` into the config edit —
+single, batch *or* scripted — via the shared `apply_edit_file`; `ask` keeps the single-package
+interactive menu (batch stays imperative, no prompt-storm); `never` is always imperative. Etap C plugs
+straight into that routing: with `prefer_declarative = always`/`--nix-config` on a NixOS host,
+`jii install <pkg>` now auto-edits `configuration.nix` (diff + sudo commands shown, backup, write).
 
 ---
 
@@ -92,18 +100,20 @@ platform seam with a cheap imperative provider first.
   into the original source bytes** (no reflow) — mirroring style (multi-line/inline/empty), preserving
   comments, detecting already-present, and returning `NotFound` → **Etap A snippet fallback** for
   anything it can't safely edit (attr absent / value not a plain list / unparseable). The root-owned
-  NixOS `configuration.nix` **stays snippet-only** (privileged rewrite deferred), so Etap B needs **no
-  escalation** — it writes one user-owned file. CLI: show diff → confirm (honours `--yes/--no/--auto`;
+  NixOS `configuration.nix` is now **also auto-edited** via the privilege path — see Etap C (ADR-0058)
+  at the top; in Etap B it was snippet-only. CLI: show diff → confirm (honours `--yes/--no/--auto`;
   `--dry-run` never writes as the menu is already gated off) → back up to `<path>.jii-bak` → write →
   print `home-manager switch`. `insert_package`/`find_list`/`line_diff`/`write_nix_config` unit-tested
   (multi-line, inline, empty, no-`with-pkgs`, comment-preserving, already-present, not-found,
   unparseable, backup+overwrite). **253 tests green, clippy + build clean.** New `[nix]` `edit_*`
   locale keys (en+ru parity). *Full menu→edit→apply flow not yet run on a live home-manager host — T7
   debt.*
-- **Next in this program:** **Windows/macOS** is the remaining big piece — a **separate later epic**
-  (breaks `privilege.rs`, paths, packaging, CI) — scope on its own. Nearer-term: `configuration.nix`
-  auto-edit (ADR-0056 follow-up; the batch/non-interactive wiring is **done** — ADR-0057); the owner
-  running the existing non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) on real hosts (T7).
+- **Next in this program:** the declarative-Nix program is now **complete** through Etap C —
+  `configuration.nix` auto-edit landed (ADR-0058). **Windows/macOS** is the remaining big piece — a
+  **separate later epic** (breaks `privilege.rs`, paths, packaging, CI), explicitly deferred by the
+  owner until the rest is done and bugs are minimal. Nearer-term is verification, not new features:
+  the owner running the non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) and the live Nix
+  edit→apply (home-manager **and** NixOS) on real hosts (T7).
 
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
 (ADR-0050) is finished: **zero user-facing string literals remain in Rust code** — every
@@ -149,13 +159,14 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** the cross-platform program (ADR-0054/0056/0057) is active — Void ✅, declarative-Nix
-Etap A ✅, Gentoo ✅, declarative-Nix Etap B ✅ (parser-driven auto-edit) and the declarative
-preference + batch/scripted routing ✅ (ADR-0057) done; **Windows/macOS** is the remaining big piece
-(separate later epic). Other candidates: `configuration.nix` auto-edit (ADR-0056 follow-up, privileged
-rewrite); richer info cards; more polish; the owner running the existing non-Fedora providers on real
-hosts (T7). GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly parked** until the
-CLI is fully polished — do not start it.
+**Next up:** the cross-platform program (ADR-0054/0056/0057/0058) is active — Void ✅, declarative-Nix
+Etap A ✅, Gentoo ✅, declarative-Nix Etap B ✅ (parser-driven auto-edit), declarative preference +
+batch/scripted routing ✅ (ADR-0057), and declarative-Nix **Etap C ✅** (privileged `configuration.nix`
+auto-edit, ADR-0058) done — the declarative-Nix program is now **complete**. **Windows/macOS** is the
+remaining big piece (separate later epic, explicitly deferred until the rest is done). Other
+candidates: richer info cards; more polish; the owner running the non-Fedora providers and the live Nix
+edit→apply on real hosts (T7). GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly
+parked** until the CLI is fully polished — do not start it.
 
 ---
 

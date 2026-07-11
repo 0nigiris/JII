@@ -326,11 +326,14 @@ ecosystem managers and what's installed. Missing one? `jii providers add npm` bo
 
 On **Nix**, if you manage your system declaratively (a NixOS `configuration.nix` or a home-manager
 `home.nix`), `jii <pkg>` offers a choice: install now with `nix profile install`, or add the package to
-your config. For a home-manager `home.nix` you own, JII **makes the edit for you** — it splices the
-package into your `home.packages` list (keeping your formatting and comments), **shows the diff**, saves
-a `.jii-bak` backup, writes the file, and prints the `home-manager switch` command to apply it. For the
-root-owned NixOS `configuration.nix` (or anything it can't safely edit) it instead **shows the exact
-snippet** to add and changes nothing. No declarative config, no prompt.
+your config. JII **makes the edit for you** — it splices the package into the right list
+(`home.packages` or `environment.systemPackages`), keeping your formatting and comments, **shows the
+diff**, saves a `.jii-bak` backup, writes the file, and prints the apply command (`home-manager switch`
+or `sudo nixos-rebuild switch`). Your own `home.nix` is written directly. The root-owned NixOS
+`configuration.nix` is written through a privileged step: JII **shows the exact `sudo` commands first**
+(back up, then write) and runs only those — it never runs itself as root. If it can't read or safely
+parse the file, it falls back to **showing the exact snippet** and changes nothing. No declarative
+config, no prompt.
 
 By default the choice appears only for a single interactive install. If you live in your config, set
 `[install] prefer_declarative = "always"` and JII routes **every** install into it — including

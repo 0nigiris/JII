@@ -588,7 +588,8 @@ impl Cli {
                                         kind,
                                         assume_yes,
                                         renderer,
-                                    );
+                                    )
+                                    .await;
                                     return Ok(());
                                 }
                                 // Imperative → fall through to the normal preview/confirm/install.
@@ -2492,8 +2493,10 @@ impl Cli {
     /// Show a declarative file-edit's diff, confirm (honouring `--yes/--auto/--no` and
     /// `default_yes`), back up to `<path>.jii-bak` and write — or, under `--dry-run`, show it and
     /// change nothing. Shared by the interactive strategy menu and the `always` auto-route (Nix
-    /// Etap B, ADR-0056). Never runs a privileged command: it writes one user-owned file.
-    fn apply_edit_file(
+    /// Etap B/C, ADR-0056/0058). A user-owned file is written directly; a root-owned one
+    /// (`needs_root`) is written via `privilege.rs`, with the exact `sudo`/`pkexec` commands
+    /// shown first.
+    async fn apply_edit_file(
         &self,
         config_auto: bool,
         kind: &crate::model::StrategyKind,
@@ -2505,12 +2508,22 @@ impl Cli {
             new_content,
             diff,
             apply,
+            needs_root,
         } = kind
         else {
             return; // only EditFile reaches here; other kinds are no-ops
         };
         renderer.info(&crate::t!("nix.edit_intro", file = path.display().to_string()));
         renderer.info(diff);
+        // A root-owned config (e.g. /etc/nixos/configuration.nix) is written via the privilege
+        // path: JII shows the exact elevated commands first, then runs them through privilege.rs.
+        let privilege = needs_root.then(crate::privilege::Privilege::detect);
+        let root_cmds = privilege.as_ref().map(|p| root_write_argv(p, path));
+        if let Some((backup_cmd, write_cmd)) = &root_cmds {
+            renderer.info(&crate::t!("nix.edit_root_cmds"));
+            renderer.info(&format!("  {}", backup_cmd.join(" ")));
+            renderer.info(&format!("  {}", write_cmd.join(" ")));
+        }
         if self.global.dry_run {
             renderer.info(&crate::t!("nix.edit_dry_run"));
             return;
@@ -2520,13 +2533,20 @@ impl Cli {
             renderer.info(&crate::t!("common.aborted"));
             return;
         }
-        match write_nix_config(path, new_content) {
+        let result = match (privilege, root_cmds) {
+            (Some(priv_), Some((backup_cmd, write_cmd))) => {
+                write_nix_config_root(&priv_, path, new_content, &backup_cmd, &write_cmd).await
+            }
+            // User-owned file: write it directly, no escalation.
+            _ => write_nix_config(path, new_content).map_err(|e| e.to_string()),
+        };
+        match result {
             Ok(backup) => {
                 renderer.success(&crate::t!("nix.edit_written", file = path.display().to_string()));
                 renderer.info(&crate::t!("nix.edit_backup", backup = backup.display().to_string()));
                 renderer.info(&crate::t!("nix.edit_apply", cmd = apply.to_string()));
             }
-            Err(e) => renderer.error(&crate::t!("nix.edit_failed", error = e.to_string())),
+            Err(e) => renderer.error(&crate::t!("nix.edit_failed", error = e)),
         }
     }
 
@@ -2556,7 +2576,8 @@ impl Cli {
                 &strat.kind,
                 assume_yes,
                 renderer,
-            );
+            )
+            .await;
             return true;
         }
         if let Some(strat) = strategies
@@ -3031,9 +3052,10 @@ async fn flathub_configured() -> bool {
 }
 
 /// Back up `path` to `<path>.jii-bak` and overwrite it with `content`, returning the backup
-/// path (Nix Etap B, ADR-0056). The provider only produces an `EditFile` for a user-owned
-/// config, so this is plain user-space file IO — no privilege escalation. The backup is
-/// written first, so a failed write always leaves a recoverable copy.
+/// path (Nix Etap B, ADR-0056). Used for a **user-owned** config (`needs_root == false`), so
+/// this is plain user-space file IO — no privilege escalation (the root-owned case goes through
+/// [`write_nix_config_root`]). The backup is written first, so a failed write always leaves a
+/// recoverable copy.
 fn write_nix_config(path: &std::path::Path, content: &str) -> std::io::Result<std::path::PathBuf> {
     let mut backup = path.as_os_str().to_owned();
     backup.push(".jii-bak");
@@ -3041,6 +3063,83 @@ fn write_nix_config(path: &std::path::Path, content: &str) -> std::io::Result<st
     std::fs::copy(path, &backup)?;
     std::fs::write(path, content)?;
     Ok(backup)
+}
+
+/// The `<path>.jii-bak` sibling of a config file (its pre-edit backup).
+fn jii_backup_path(path: &std::path::Path) -> std::path::PathBuf {
+    let mut backup = path.as_os_str().to_owned();
+    backup.push(".jii-bak");
+    std::path::PathBuf::from(backup)
+}
+
+/// The two elevated commands that back up and then overwrite a root-owned config `path`, with
+/// the session's `sudo`/`pkexec` prefix already applied (Nix Etap C, ADR-0058). Returned as
+/// `(backup_cmd, write_cmd)` so the CLI can *show them verbatim* before running anything. The
+/// write command copies from a placeholder temp path (`{tmp}`) that [`write_nix_config_root`]
+/// fills in — the shown form uses the same real temp path it will run.
+fn root_write_argv(
+    privilege: &crate::privilege::Privilege,
+    path: &std::path::Path,
+) -> (Vec<String>, Vec<String>) {
+    let dest = path.display().to_string();
+    let backup = jii_backup_path(path).display().to_string();
+    let tmp = root_tmp_path(path).display().to_string();
+    let backup_cmd = privilege.elevated_argv(
+        &["cp".into(), "-a".into(), "--".into(), dest.clone(), backup],
+        true,
+    );
+    let write_cmd =
+        privilege.elevated_argv(&["cp".into(), "--".into(), tmp, dest], true);
+    (backup_cmd, write_cmd)
+}
+
+/// A per-process temp path (in the system temp dir) used to stage a root config's new contents
+/// before `sudo cp` moves it into place. Deterministic for one `path` within a run so
+/// [`root_write_argv`] and [`write_nix_config_root`] agree; created with `O_EXCL` at write time.
+fn root_tmp_path(path: &std::path::Path) -> std::path::PathBuf {
+    let stem = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "config".into());
+    std::env::temp_dir().join(format!("jii-nixedit-{}-{stem}", std::process::id()))
+}
+
+/// Write a root-owned Nix config via the privilege path (Etap C, ADR-0058): stage `content` in a
+/// user-owned temp file (`O_EXCL`, so an existing path/symlink can't be clobbered), prime the
+/// escalation once, then run the pre-built `backup_cmd` and `write_cmd` (exactly what the CLI
+/// already showed). Returns the backup path on success. JII never runs fully as root — only these
+/// two concrete `cp` steps escalate, through `privilege.rs`.
+async fn write_nix_config_root(
+    privilege: &crate::privilege::Privilege,
+    path: &std::path::Path,
+    content: &str,
+    backup_cmd: &[String],
+    write_cmd: &[String],
+) -> std::result::Result<std::path::PathBuf, String> {
+    use std::io::Write;
+    let tmp = root_tmp_path(path);
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
+    let staged = file
+        .write_all(content.as_bytes())
+        .and_then(|()| file.sync_all());
+    if let Err(e) = staged {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    drop(file);
+    privilege.prime().await.map_err(|e| e.to_string())?;
+    let run = async {
+        privilege.run(backup_cmd, true).await.map_err(|e| e.to_string())?;
+        privilege.run(write_cmd, true).await.map_err(|e| e.to_string())
+    }
+    .await;
+    let _ = std::fs::remove_file(&tmp);
+    run?;
+    Ok(jii_backup_path(path))
 }
 
 #[cfg(test)]
@@ -3082,8 +3181,8 @@ mod tests {
         assert_eq!(cli.declarative_pref(&config), DeclarativePref::Always);
     }
 
-    #[test]
-    fn dry_run_edit_file_never_writes() {
+    #[tokio::test]
+    async fn dry_run_edit_file_never_writes() {
         use clap::Parser;
         // The `always`/`--nix-config` route reaches apply_edit_file under `--dry-run`; it must
         // show the change and touch nothing (no overwrite, no backup).
@@ -3096,14 +3195,54 @@ mod tests {
             new_content: "edited\n".into(),
             diff: "+ edited".into(),
             apply: "home-manager switch".into(),
+            needs_root: false,
         };
         let cli = Cli::parse_from(["jii", "-d", "install", "foo"]);
         let renderer =
             Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
-        cli.apply_edit_file(false, &kind, false, &renderer);
+        cli.apply_edit_file(false, &kind, false, &renderer).await;
 
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "original\n");
         assert!(!cfg.with_file_name("home.nix.jii-bak").exists());
+    }
+
+    #[tokio::test]
+    async fn dry_run_root_edit_never_writes_and_stages_nothing() {
+        use clap::Parser;
+        // Etap C: a root-owned config under `--dry-run` shows the sudo commands but must not
+        // write, back up, or even stage a temp file.
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("configuration.nix");
+        std::fs::write(&cfg, "original\n").unwrap();
+
+        let kind = crate::model::StrategyKind::EditFile {
+            path: cfg.clone(),
+            new_content: "edited\n".into(),
+            diff: "+ edited".into(),
+            apply: "sudo nixos-rebuild switch".into(),
+            needs_root: true,
+        };
+        let cli = Cli::parse_from(["jii", "-d", "install", "foo"]);
+        let renderer =
+            Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
+        cli.apply_edit_file(false, &kind, false, &renderer).await;
+
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "original\n");
+        assert!(!cfg.with_file_name("configuration.nix.jii-bak").exists());
+        assert!(!root_tmp_path(&cfg).exists());
+    }
+
+    #[test]
+    fn root_write_argv_shows_backup_then_write_with_elevation() {
+        // The exact elevated commands JII prints (and later runs) for a root-owned config.
+        let priv_ = crate::privilege::Privilege::detect();
+        let path = std::path::Path::new("/etc/nixos/configuration.nix");
+        let (backup_cmd, write_cmd) = root_write_argv(&priv_, path);
+        // Both back up to <path>.jii-bak and copy the staged temp into place.
+        assert!(backup_cmd.iter().any(|a| a == "/etc/nixos/configuration.nix.jii-bak"));
+        assert!(backup_cmd.iter().any(|a| a == "cp"));
+        assert!(write_cmd.iter().any(|a| a == "/etc/nixos/configuration.nix"));
+        assert!(write_cmd.contains(&root_tmp_path(path).display().to_string()));
     }
 
     #[test]
