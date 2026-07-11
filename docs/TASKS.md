@@ -481,8 +481,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   writes) → back up `<path>.jii-bak` → write → print `home-manager switch`.
                   `insert_package`/`find_list`/`line_diff`/`write_nix_config` unit-tested. 253 tests. New
                   `[nix]` `edit_*` locale keys (en+ru). **T7:** full menu→edit→apply flow unverified on a live
-                  home-manager host. **Follow-ups:** `configuration.nix` auto-edit; wire the edit into
-                  non-interactive/batch installs.
+                  home-manager host. **Follow-up remaining:** `configuration.nix` auto-edit (privileged).
+            - [x] **Declarative install preference + batch/scripted routing** (ADR-0057). Closes the
+                  ADR-0056 "wire the edit into non-interactive/batch installs" follow-up. `[install]
+                  prefer_declarative = ask|always|never` (`config::DeclarativePref`, default `ask`) + per-run
+                  `--nix-config`/`--nix-imperative` (mutually exclusive). `ask` = unchanged single menu (batch
+                  stays imperative, no prompt-storm); `never` = always imperative; **`always` routes every
+                  candidate with an auto-editable `EditFile` into the config edit — single, batch *or*
+                  scripted** (each diff→`.jii-bak`→write; snippet for root-owned `Manual`), non-Nix/no-config
+                  falls through to imperative. Source-agnostic (`[install]`, no core branch). Shared
+                  `apply_edit_file` guarantees `--dry-run` writes nothing. `declarative_pref` + dry-run
+                  no-write unit-tested; flag conflict + non-Nix no-op verified live. 255 tests. New
+                  `nix.edit_dry_run` locale key (en+ru).
             - [x] **Gentoo (Portage/emerge)** (ADR-0054). `provider/gentoo.rs`, id `gentoo`, Official
                   (GPG-verified ::gentoo tree), self-gates on `emerge`. Atom-based (`category/package`):
                   exact search `emerge --search "^name$"` (one candidate per `cat/name`, atom in `raw`),
@@ -491,8 +501,8 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   source-branch. 243 tests. Fixture-tested only — unverified on a live Gentoo host (T7).
             - [ ] **Windows/macOS** — a **separate later epic**, not "another provider": breaks `privilege.rs`
                   (no sudo/pkexec), path handling, packaging, CI. Scope on its own.
-      - **Next (owner to steer):** Windows/macOS (separate epic); ADR-0056 follow-ups (`configuration.nix`
-            auto-edit; wire the Nix edit into non-interactive/batch installs); richer info cards; more polish.
+      - **Next (owner to steer):** Windows/macOS (separate epic); `configuration.nix` auto-edit (ADR-0056
+            follow-up, privileged rewrite); richer info cards; more polish.
             GUI (Steam/KDE Discover/GNOME Software blend) is **parked** until the CLI is fully polished.
 - [~] **BETA-READINESS — FEATURE FREEZE (ACTIVE, owner-set 2026-07-06).** New large features are
       **frozen**; drive to the first public Beta. Full plan + parked backlog in

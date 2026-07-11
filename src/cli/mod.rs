@@ -6,7 +6,7 @@
 
 use clap::{Parser, Subcommand};
 
-use crate::config::{ColorChoice, Config, Profile};
+use crate::config::{ColorChoice, Config, DeclarativePref, Profile};
 use crate::engine::Engine;
 use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PackageSpec, Query};
 use crate::provider::Bootstrap;
@@ -72,6 +72,15 @@ pub struct GlobalArgs {
     /// `$LC_MESSAGES`/`$LANG`.
     #[arg(long, value_name = "LANG", global = true)]
     pub lang: Option<String>,
+
+    /// Prefer editing the Nix config (home-manager) over an imperative `nix profile install`
+    /// for this run — overrides `[install] prefer_declarative`.
+    #[arg(long, global = true, conflicts_with = "nix_imperative")]
+    pub nix_config: bool,
+
+    /// Force an imperative install this run even if the config prefers a declarative edit.
+    #[arg(long, global = true)]
+    pub nix_imperative: bool,
 }
 
 /// Sub-commands. See `docs/ARCHITECTURE.md` §13.
@@ -526,82 +535,83 @@ impl Cli {
             chosen.push(best);
         }
 
-        // 1b. Declarative-vs-imperative install choice (ADR-0054, Etap A). For a single-package
-        //     interactive install, ask the owning source whether it offers alternative install
-        //     *strategies* (Nix: declarative config snippets alongside `nix profile install`).
-        //     Only Nix opts in, and only when it detects a config file on this host — so this is
-        //     silent for every other source and for plain `nix profile` users (no core
-        //     source-branch: the CLI just shows whatever the provider returns). A declarative
-        //     ("show me the snippet") pick prints the guidance and installs nothing; the
-        //     imperative pick falls through to the normal flow below.
-        if single
-            && chosen.len() == 1
-            && !effective_auto
-            && !self.global.yes
-            && !self.global.no
-            && !self.global.dry_run
-            && self.interactive(renderer)
-        {
-            let candidate = &chosen[0];
-            let strategies = engine
-                .install_strategies(&candidate.source_id, candidate)
-                .await;
-            if !strategies.is_empty() {
-                let palette = renderer.palette();
-                let labels: Vec<String> = strategies
-                    .iter()
-                    .map(|s| format!("{}  —  {}", s.label, palette.dim(&s.hint)))
-                    .collect();
-                let header = crate::t!("nix.strategy_header", name = candidate.name.clone());
-                match prompt::choose(renderer, &header, &labels, 0) {
-                    None => {
-                        renderer.info(&crate::t!("common.aborted"));
-                        return Ok(());
-                    }
-                    Some(index) => match &strategies[index].kind {
-                        crate::model::StrategyKind::Manual { guidance } => {
-                            renderer.info(guidance);
-                            renderer.info(&crate::t!("nix.guidance_footer"));
-                            return Ok(());
-                        }
-                        crate::model::StrategyKind::EditFile { path, new_content, diff, apply } => {
-                            // Auto-edit a user-owned config (Nix Etap B, ADR-0056): show the
-                            // diff, confirm, back up, write. One user-owned file, never root.
-                            renderer.info(&crate::t!(
-                                "nix.edit_intro",
-                                file = path.display().to_string()
-                            ));
-                            renderer.info(diff);
-                            let flags = self
-                                .prompt_flags(engine.config().install.auto)
-                                .with_yes(assume_yes);
-                            if !prompt::confirm(renderer, &crate::t!("nix.edit_confirm"), true, &flags)
-                            {
+        // 1b. Declarative-vs-imperative install choice (ADR-0054/0056 + the `prefer_declarative`
+        //     follow-up). The owning source may offer alternative install *strategies* (Nix:
+        //     editing a config file / showing a snippet alongside `nix profile install`). Only Nix
+        //     opts in, and only when it detects a config file on this host — so this is silent for
+        //     every other source and for plain `nix profile` users.
+        //     The CLI only decides *whether* to prefer a declarative strategy; which strategies
+        //     exist is entirely the provider's business (no core source-branch — the menu / route
+        //     just acts on whatever `install_strategies` returns, which is empty for every source
+        //     but Nix-with-a-detected-config). The preference is `ask` (default) / `always` /
+        //     `never`, overridable per-run by `--nix-config` / `--nix-imperative`.
+        match self.declarative_pref(engine.config()) {
+            // Never: everything installs imperatively (the historical fall-through).
+            DeclarativePref::Never => {}
+            // Ask: the single-package interactive chooser. A batch stays imperative to avoid a
+            //   prompt-storm — a batch user who wants the config route sets `always`/`--nix-config`.
+            DeclarativePref::Ask => {
+                if single
+                    && chosen.len() == 1
+                    && !effective_auto
+                    && !self.global.yes
+                    && !self.global.no
+                    && !self.global.dry_run
+                    && self.interactive(renderer)
+                {
+                    let candidate = &chosen[0];
+                    let strategies = engine
+                        .install_strategies(&candidate.source_id, candidate)
+                        .await;
+                    if !strategies.is_empty() {
+                        let palette = renderer.palette();
+                        let labels: Vec<String> = strategies
+                            .iter()
+                            .map(|s| format!("{}  —  {}", s.label, palette.dim(&s.hint)))
+                            .collect();
+                        let header =
+                            crate::t!("nix.strategy_header", name = candidate.name.clone());
+                        match prompt::choose(renderer, &header, &labels, 0) {
+                            None => {
                                 renderer.info(&crate::t!("common.aborted"));
                                 return Ok(());
                             }
-                            match write_nix_config(path, new_content) {
-                                Ok(backup) => {
-                                    renderer.success(&crate::t!(
-                                        "nix.edit_written",
-                                        file = path.display().to_string()
-                                    ));
-                                    renderer.info(&crate::t!(
-                                        "nix.edit_backup",
-                                        backup = backup.display().to_string()
-                                    ));
-                                    renderer
-                                        .info(&crate::t!("nix.edit_apply", cmd = apply.clone()));
+                            Some(index) => match &strategies[index].kind {
+                                crate::model::StrategyKind::Manual { guidance } => {
+                                    renderer.info(guidance);
+                                    renderer.info(&crate::t!("nix.guidance_footer"));
+                                    return Ok(());
                                 }
-                                Err(e) => renderer
-                                    .error(&crate::t!("nix.edit_failed", error = e.to_string())),
-                            }
-                            return Ok(());
+                                kind @ crate::model::StrategyKind::EditFile { .. } => {
+                                    self.apply_edit_file(
+                                        engine.config().install.auto,
+                                        kind,
+                                        assume_yes,
+                                        renderer,
+                                    );
+                                    return Ok(());
+                                }
+                                // Imperative → fall through to the normal preview/confirm/install.
+                                crate::model::StrategyKind::Imperative => {}
+                            },
                         }
-                        // Imperative → fall through to the normal preview/confirm/install.
-                        crate::model::StrategyKind::Imperative => {}
-                    },
+                    }
                 }
+            }
+            // Always: route each package that offers a declarative edit into it — single, batch
+            //   or scripted. Handled packages leave `chosen`; the rest install imperatively.
+            DeclarativePref::Always => {
+                let mut remaining = Vec::with_capacity(chosen.len());
+                for candidate in std::mem::take(&mut chosen) {
+                    if self
+                        .route_declarative(&engine, &candidate, assume_yes, renderer)
+                        .await
+                    {
+                        continue;
+                    }
+                    remaining.push(candidate);
+                }
+                chosen = remaining;
             }
         }
 
@@ -2466,6 +2476,100 @@ impl Cli {
             no: self.global.no,
         }
     }
+
+    /// Resolve the effective declarative preference for this run: the per-run flags
+    /// `--nix-config` / `--nix-imperative` override the `[install] prefer_declarative` config.
+    fn declarative_pref(&self, config: &Config) -> DeclarativePref {
+        if self.global.nix_config {
+            DeclarativePref::Always
+        } else if self.global.nix_imperative {
+            DeclarativePref::Never
+        } else {
+            config.install.prefer_declarative
+        }
+    }
+
+    /// Show a declarative file-edit's diff, confirm (honouring `--yes/--auto/--no` and
+    /// `default_yes`), back up to `<path>.jii-bak` and write — or, under `--dry-run`, show it and
+    /// change nothing. Shared by the interactive strategy menu and the `always` auto-route (Nix
+    /// Etap B, ADR-0056). Never runs a privileged command: it writes one user-owned file.
+    fn apply_edit_file(
+        &self,
+        config_auto: bool,
+        kind: &crate::model::StrategyKind,
+        assume_yes: bool,
+        renderer: &Renderer,
+    ) {
+        let crate::model::StrategyKind::EditFile {
+            path,
+            new_content,
+            diff,
+            apply,
+        } = kind
+        else {
+            return; // only EditFile reaches here; other kinds are no-ops
+        };
+        renderer.info(&crate::t!("nix.edit_intro", file = path.display().to_string()));
+        renderer.info(diff);
+        if self.global.dry_run {
+            renderer.info(&crate::t!("nix.edit_dry_run"));
+            return;
+        }
+        let flags = self.prompt_flags(config_auto).with_yes(assume_yes);
+        if !prompt::confirm(renderer, &crate::t!("nix.edit_confirm"), true, &flags) {
+            renderer.info(&crate::t!("common.aborted"));
+            return;
+        }
+        match write_nix_config(path, new_content) {
+            Ok(backup) => {
+                renderer.success(&crate::t!("nix.edit_written", file = path.display().to_string()));
+                renderer.info(&crate::t!("nix.edit_backup", backup = backup.display().to_string()));
+                renderer.info(&crate::t!("nix.edit_apply", cmd = apply.to_string()));
+            }
+            Err(e) => renderer.error(&crate::t!("nix.edit_failed", error = e.to_string())),
+        }
+    }
+
+    /// Under `prefer_declarative = always`, route one candidate to its declarative install if the
+    /// owning source offers one: an auto-editable file (`EditFile`) is edited (diff → backup →
+    /// write); a config that can only be shown (`Manual`, e.g. root-owned NixOS
+    /// `configuration.nix`) prints its snippet. Returns `true` when handled declaratively (so the
+    /// caller must NOT also install it imperatively); `false` to fall through to an imperative
+    /// install (any non-Nix source, or Nix with no detected config → empty strategies).
+    async fn route_declarative(
+        &self,
+        engine: &Engine,
+        candidate: &PackageCandidate,
+        assume_yes: bool,
+        renderer: &Renderer,
+    ) -> bool {
+        let strategies = engine
+            .install_strategies(&candidate.source_id, candidate)
+            .await;
+        // Prefer a file we can actually edit; else a snippet we can only show.
+        if let Some(strat) = strategies
+            .iter()
+            .find(|s| matches!(s.kind, crate::model::StrategyKind::EditFile { .. }))
+        {
+            self.apply_edit_file(
+                engine.config().install.auto,
+                &strat.kind,
+                assume_yes,
+                renderer,
+            );
+            return true;
+        }
+        if let Some(strat) = strategies
+            .iter()
+            .find(|s| matches!(s.kind, crate::model::StrategyKind::Manual { .. }))
+            && let crate::model::StrategyKind::Manual { guidance } = &strat.kind
+        {
+            renderer.info(guidance);
+            renderer.info(&crate::t!("nix.guidance_footer"));
+            return true;
+        }
+        false
+    }
 }
 
 /// The names covered by a remove/update batch, flattened across plans (each plan may
@@ -2954,6 +3058,52 @@ mod tests {
         assert_eq!(backup, cfg.with_file_name("home.nix.jii-bak"));
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "new\n");
         assert_eq!(std::fs::read_to_string(&backup).unwrap(), "old\n");
+    }
+
+    #[test]
+    fn declarative_pref_flags_override_config() {
+        use clap::Parser;
+        // The per-run flags win over the config; with neither, the config decides.
+        let mut config = Config::default();
+
+        config.install.prefer_declarative = DeclarativePref::Never;
+        let cli = Cli::parse_from(["jii", "install", "foo"]);
+        assert_eq!(cli.declarative_pref(&config), DeclarativePref::Never);
+
+        let cli = Cli::parse_from(["jii", "--nix-config", "install", "foo"]);
+        assert_eq!(cli.declarative_pref(&config), DeclarativePref::Always);
+
+        config.install.prefer_declarative = DeclarativePref::Always;
+        let cli = Cli::parse_from(["jii", "--nix-imperative", "install", "foo"]);
+        assert_eq!(cli.declarative_pref(&config), DeclarativePref::Never);
+
+        // No flags → the `always` config is honoured.
+        let cli = Cli::parse_from(["jii", "install", "foo"]);
+        assert_eq!(cli.declarative_pref(&config), DeclarativePref::Always);
+    }
+
+    #[test]
+    fn dry_run_edit_file_never_writes() {
+        use clap::Parser;
+        // The `always`/`--nix-config` route reaches apply_edit_file under `--dry-run`; it must
+        // show the change and touch nothing (no overwrite, no backup).
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("home.nix");
+        std::fs::write(&cfg, "original\n").unwrap();
+
+        let kind = crate::model::StrategyKind::EditFile {
+            path: cfg.clone(),
+            new_content: "edited\n".into(),
+            diff: "+ edited".into(),
+            apply: "home-manager switch".into(),
+        };
+        let cli = Cli::parse_from(["jii", "-d", "install", "foo"]);
+        let renderer =
+            Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
+        cli.apply_edit_file(false, &kind, false, &renderer);
+
+        assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "original\n");
+        assert!(!cfg.with_file_name("home.nix.jii-bak").exists());
     }
 
     #[test]

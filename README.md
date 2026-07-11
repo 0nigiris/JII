@@ -332,6 +332,11 @@ a `.jii-bak` backup, writes the file, and prints the `home-manager switch` comma
 root-owned NixOS `configuration.nix` (or anything it can't safely edit) it instead **shows the exact
 snippet** to add and changes nothing. No declarative config, no prompt.
 
+By default the choice appears only for a single interactive install. If you live in your config, set
+`[install] prefer_declarative = "always"` and JII routes **every** install into it — including
+`jii install a b c` and scripted `--yes` runs — each with its own diff and backup. `--nix-config`
+forces the config edit for one run; `--nix-imperative` forces a plain `nix profile install`.
+
 ---
 
 ## Trust & safety
@@ -420,6 +425,7 @@ priority = ["dnf", "copr", "apt", "pacman", "zypper", "flatpak", "snap",
 profile = "stable"                    # stable | latest | sandbox | minimal
 default_yes = true                    # prompts default to "yes"…
 default_yes_max_trust = "community"   # …but only at/above this trust; below it JII still asks
+prefer_declarative = "ask"            # ask (default) | always | never — route Nix installs into your config
 
 [ui]
 mode = "friendly"                     # friendly (default) | advanced

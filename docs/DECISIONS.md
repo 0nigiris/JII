@@ -2137,3 +2137,60 @@ package list built by a function (`lib.optionals …`) falls back to the snippet
 menu→edit→apply flow is unit-tested at the seams but not yet exercised on a live home-manager host
 (T7 debt, shared with the Void/Gentoo providers). (3) `configuration.nix` auto-edit and wiring the
 edit into non-interactive/batch installs remain future work.
+
+---
+
+## ADR-0057 — Declarative install preference: `prefer_declarative` config + per-run flags, and batch/scripted routing
+
+**Status:** Accepted (2026-07-11). Landed.
+
+**Context.** ADR-0054/0056 shipped the declarative Nix strategy, but its chooser was reachable **only
+for a single-package interactive install** (`single && !--auto && !--yes && !--no && !--dry-run &&
+tty`). Two real gaps followed from that gate: (a) a home-manager user who lives in their config still
+got a silent imperative `nix profile install` whenever they installed **several** packages
+(`jii install a b c`) or **scripted** one (`--yes`) — there was no way to reach the config edit
+outside the interactive single case; (b) the strategy list is ordered *imperative-first*
+(`nix.rs`: index 0 = `nix profile install`), so any "default without a menu" is imperative — meaning
+the declarative path had no non-interactive entry point at all. This ADR closes ADR-0056 follow-up (3),
+the "wire the edit into non-interactive/batch installs" half.
+
+**Decision.**
+1. **A standing preference in config, source-agnostic.** New `[install] prefer_declarative =
+   ask | always | never` (`config::DeclarativePref`, default `ask`). It records *whether* to prefer a
+   declarative strategy, never *which* — the CLI still acts only on whatever `install_strategies`
+   returns (empty for every source but Nix-with-a-config), so there is **no core source-branch**. It
+   lives in `[install]` (not a `[nix]` section) precisely because it is a general
+   declarative-vs-imperative stance that any future declarative source inherits for free.
+2. **Per-run override flags.** `--nix-config` forces `always` and `--nix-imperative` forces `never`
+   for one invocation (mutually exclusive via clap `conflicts_with`); with neither, the config
+   decides (`Cli::declarative_pref`). Flags beat config — the standard precedence.
+3. **Behaviour per preference.** `ask` = the historical single-package interactive menu, unchanged; a
+   **batch stays imperative** under `ask` to avoid a prompt-storm. `never` = always imperative (the
+   historical fall-through). `always` = route **each** resolved candidate that offers an auto-editable
+   `EditFile` into that edit — single, batch, *or* scripted — via the shared `apply_edit_file`
+   (diff → confirm honouring `--yes/--no/--auto`/`default_yes` → `.jii-bak` backup → write; `--dry-run`
+   shows the diff and writes nothing). A candidate that only exposes a root-owned `Manual` snippet
+   (NixOS `configuration.nix`) prints the snippet and is likewise treated as handled; a candidate with
+   no declarative strategy (any non-Nix source, or Nix with no detected config) falls through to the
+   normal imperative batch. Handled packages simply leave the `chosen` list, so the imperative
+   preview/confirm/install below covers exactly the remainder.
+
+**Alternatives considered.** (a) *Flag only, no config* — rejected: a home-manager user's declarative
+stance is a **standing** preference, not something to retype every install; a per-run flag alone forces
+the friction they were trying to avoid. (b) *Config only, no flag* — rejected: a committed
+declarative user still occasionally wants a one-off imperative install (or vice-versa) without editing
+config. The owner chose **both** (config for the default, flags to override). (c) *Also fire the
+chooser per-package in an interactive batch under `ask`* — rejected: N packages → N menus is the
+prompt-storm ADR-0025/T5 deliberately avoided; a batch user who wants declarative sets `always` or
+passes `--nix-config`. (d) *Source-named config key `[nix] declarative`* — rejected: it would bake a
+source name into the config surface and read wrong the moment a second declarative source appears; the
+source-agnostic `[install] prefer_declarative` avoids that (the CLI flags stay `--nix-*` for now only
+because Nix is the sole strategy source — aliases can be added when a second one lands).
+
+**Consequences.** `jii install firefox vlc` on a home-manager host with `prefer_declarative = always`
+now adds **both** to `home.nix` (each with its own diff + backup), then installs any non-Nix packages
+imperatively in the same run; `--nix-config` gives the same routing one-off, `--nix-imperative` opts
+back out. `ask` and `never` behave exactly as before. `Cli::declarative_pref` (flag-vs-config
+resolution) and `apply_edit_file`'s dry-run no-write guarantee are unit-tested; the live
+batch→edit→apply flow still needs a home-manager host (same T7 debt as ADR-0056). Still open from
+ADR-0056: `configuration.nix` auto-edit (privileged rewrite).

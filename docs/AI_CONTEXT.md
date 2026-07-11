@@ -8,7 +8,27 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-10_
+_Last updated: 2026-07-11_
+
+---
+
+## Most recent work (2026-07-11) — read this first
+
+**Declarative install preference + batch/scripted routing LANDED (ADR-0057).** Closes ADR-0056
+follow-up (3). The declarative Nix edit used to be reachable **only** for a single interactive
+install; now a standing preference **`[install] prefer_declarative = ask | always | never`**
+(`config::DeclarativePref`, default `ask`) plus per-run flags **`--nix-config`** (→ always) /
+**`--nix-imperative`** (→ never, mutually exclusive) control it. `ask` = the unchanged single-package
+menu (a batch stays imperative — no prompt-storm); `never` = always imperative; **`always` routes
+every resolved candidate that offers an auto-editable `EditFile` into the config edit — single, batch
+*or* scripted** (`jii install a b c`, `--yes`), each with its own diff→`.jii-bak`backup→write (or a
+shown snippet for a root-owned `Manual`), while non-Nix / no-config packages fall through to the
+normal imperative batch. Source-agnostic (`[install]`, not `[nix]`; no core source-branch — the CLI
+acts only on what `install_strategies` returns). Shared `apply_edit_file` helper (used by menu +
+route) guarantees `--dry-run` writes nothing. `Cli::declarative_pref` + the dry-run no-write guard are
+unit-tested; flag conflict + non-Nix no-op verified live. **255 tests green, clippy + build clean.**
+New `nix.edit_dry_run` locale key (en+ru parity). *Live batch→edit→apply on a home-manager host still
+T7 debt.* Still open from ADR-0056: `configuration.nix` auto-edit (privileged rewrite).
 
 ---
 
@@ -82,7 +102,7 @@ platform seam with a cheap imperative provider first.
   debt.*
 - **Next in this program:** **Windows/macOS** is the remaining big piece — a **separate later epic**
   (breaks `privilege.rs`, paths, packaging, CI) — scope on its own. Nearer-term: `configuration.nix`
-  auto-edit + wiring the edit into non-interactive/batch installs (ADR-0056 follow-ups); the owner
+  auto-edit (ADR-0056 follow-up; the batch/non-interactive wiring is **done** — ADR-0057); the owner
   running the existing non-Fedora providers (apt/pacman/zypper/void/gentoo/nix) on real hosts (T7).
 
 **#7 localization COMPLETE + first-run onboarding for any command.** The i18n migration
@@ -129,12 +149,13 @@ adjacent transpositions, deduped/capped) and adopts the first that hits, paging 
 and telling the user (`install.gh_corrected`). Live-verified: `jii exeteragram` → "showing results
 for 'exteragram'" → the exteraSquad picker.
 
-**Next up:** the cross-platform program (ADR-0054/0056) is active — Void ✅, declarative-Nix Etap A ✅,
-Gentoo ✅ and declarative-Nix Etap B ✅ (parser-driven auto-edit) done; **Windows/macOS** is the
-remaining big piece (separate later epic). Other candidates: `configuration.nix` auto-edit + wiring the
-Nix edit into non-interactive/batch installs (ADR-0056 follow-ups); richer info cards; more polish; the
-owner running the existing non-Fedora providers on real hosts (T7). GUI (Steam + KDE Discover + GNOME
-Software blend) stays **explicitly parked** until the CLI is fully polished — do not start it.
+**Next up:** the cross-platform program (ADR-0054/0056/0057) is active — Void ✅, declarative-Nix
+Etap A ✅, Gentoo ✅, declarative-Nix Etap B ✅ (parser-driven auto-edit) and the declarative
+preference + batch/scripted routing ✅ (ADR-0057) done; **Windows/macOS** is the remaining big piece
+(separate later epic). Other candidates: `configuration.nix` auto-edit (ADR-0056 follow-up, privileged
+rewrite); richer info cards; more polish; the owner running the existing non-Fedora providers on real
+hosts (T7). GUI (Steam + KDE Discover + GNOME Software blend) stays **explicitly parked** until the
+CLI is fully polished — do not start it.
 
 ---
 

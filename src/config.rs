@@ -48,6 +48,9 @@ pub struct InstallConfig {
     /// Highest trust level that `default_yes` applies to; below it, JII still asks.
     pub default_yes_max_trust: TrustLevel,
     pub auto: bool,
+    /// Prefer a declarative config edit vs an imperative install when a source offers both.
+    #[serde(default)]
+    pub prefer_declarative: DeclarativePref,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +111,24 @@ pub enum OutputMode {
     Advanced,
 }
 
+/// Whether to prefer a declarative config edit over an imperative install when the owning
+/// source offers both (Nix; ADR-0054/0056). Source-agnostic: the config only records the
+/// *preference*; which strategies exist is entirely the provider's business (no core branch).
+/// Overridable per-run by `--nix-config` / `--nix-imperative`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeclarativePref {
+    /// Show the interactive chooser for a single install; stay imperative in batch /
+    /// non-interactive (avoids a prompt-storm). The default.
+    #[default]
+    Ask,
+    /// Route every package that offers a declarative file-edit into that edit — single,
+    /// batch, or scripted (`--yes`). Packages without a declarative target install imperatively.
+    Always,
+    /// Always install imperatively, even when a declarative target exists.
+    Never,
+}
+
 /// Ranking presets. See `docs/ARCHITECTURE.md` §6.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -153,6 +174,7 @@ impl Default for InstallConfig {
             default_yes: true,
             default_yes_max_trust: TrustLevel::Community,
             auto: false,
+            prefer_declarative: DeclarativePref::Ask,
         }
     }
 }
