@@ -343,6 +343,13 @@ impl Engine {
         }
     }
 
+    /// The candidate's public web page, if its owning source exposes one (Flathub app page,
+    /// crates.io / npm / PyPI page, GitHub repo…). Cheap and synchronous — used to let the
+    /// user open it and confirm "this is the one I meant" before installing (ADR-0061 follow-up).
+    pub fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        self.provider(&candidate.source_id).ok()?.web_url(candidate)
+    }
+
     /// Rank candidates, best first, for the name the user typed (`query`) — exact name
     /// matches sort above prefix/substring matches (ADR-0042).
     pub fn rank(&self, query: &str, candidates: Vec<PackageCandidate>) -> Vec<PackageCandidate> {

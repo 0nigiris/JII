@@ -63,6 +63,10 @@ impl Provider for Pipx {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        Some(format!("https://pypi.org/project/{}/", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Python (pipx)",

@@ -62,6 +62,10 @@ impl Provider for Npm {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        Some(format!("https://www.npmjs.com/package/{}", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Node.js (npm)",

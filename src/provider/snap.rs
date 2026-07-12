@@ -56,6 +56,10 @@ impl Provider for Snap {
         which(BIN).await
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        Some(format!("https://snapcraft.io/{}", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Snap",

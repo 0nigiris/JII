@@ -65,6 +65,10 @@ impl Provider for Cargo {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        Some(format!("https://crates.io/crates/{}", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Rust (cargo)",

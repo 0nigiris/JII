@@ -161,6 +161,14 @@ impl Provider for ForgeProvider {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        // The repo page — the whole point of the last-resort GitHub path is that the user can
+        // open it and read the README to decide if this raw binary is really what they want.
+        let slug = candidate.raw.get("slug")?.as_str()?;
+        let (owner, repo) = slug.split_once('/')?;
+        Some(self.forge.repo_url(owner, repo))
+    }
+
     async fn describe(&self, candidate: &PackageCandidate) -> Option<PackageInfo> {
         // Cheap card from what search already captured (`owner/repo`), no extra API call.
         let slug = candidate.raw.get("slug")?.as_str()?;

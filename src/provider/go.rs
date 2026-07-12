@@ -68,6 +68,11 @@ impl Provider for Go {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        // The candidate name is the module path (e.g. github.com/junegunn/fzf).
+        Some(format!("https://pkg.go.dev/{}", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Go",

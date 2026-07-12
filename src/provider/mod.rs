@@ -186,6 +186,16 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// A cheap, synchronous web page for this candidate — the app/package's public page, so
+    /// the user can open it and confirm "yes, this is the one I meant" before installing
+    /// (shown in the single-package preview). Built from the candidate alone (no network),
+    /// e.g. `https://flathub.org/apps/<id>`, `https://crates.io/crates/<name>`. Default
+    /// `None`: sources with no obvious canonical page (dnf/apt/pacman repos) just omit it.
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        let _ = candidate;
+        None
+    }
+
     /// Alternative install **strategies** to offer interactively for `candidate`, beyond the
     /// default imperative `plan_install`. Default: empty → the engine just plans and installs
     /// as usual. Nix overrides it (ADR-0054): when it detects a declarative setup (NixOS

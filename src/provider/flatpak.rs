@@ -73,6 +73,11 @@ impl Provider for Flatpak {
         true
     }
 
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        // The candidate name is the app-id (e.g. md.obsidian.Obsidian) → its Flathub page.
+        Some(format!("https://flathub.org/apps/{}", candidate.name))
+    }
+
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
         // With the CLI present, use it — it respects the user's configured remotes and shows
         // versions. Without it, fall back to Flathub's v2 search API so an uninstalled Flatpak

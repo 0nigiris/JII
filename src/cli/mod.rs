@@ -736,6 +736,18 @@ impl Cli {
             self.preview_batch(&batch, renderer);
         }
 
+        // For a single install, offer the candidate's web page — the user can open it to
+        // confirm "yes, this is the one I meant" before answering (their ask: a link to eyeball
+        // the app/repo, especially for a last-resort GitHub binary). A batch would be a wall of
+        // links, so only single. Shown for dry-run too (it's read-only, and useful there).
+        if single
+            && let [b] = batch.as_slice()
+            && let [c] = b.candidates.as_slice()
+            && let Some(url) = engine.web_url(c)
+        {
+            renderer.info(&renderer.palette().dim(&crate::t!("install.web_url", url = url)));
+        }
+
         if self.global.dry_run {
             renderer.info(&crate::t!("common.dry_run_not_installed"));
             return Ok(());
