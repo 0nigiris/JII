@@ -139,8 +139,13 @@ pub enum Commands {
     },
     /// Show installation history.
     History,
-    /// List installation sources (providers) and whether each is usable here.
-    Sources,
+    /// List installation sources and whether each is usable here. Native managers for other
+    /// distros are hidden by default; `--all` shows every source JII knows about.
+    Sources {
+        /// Show every source, including native managers that don't apply to this system.
+        #[arg(long)]
+        all: bool,
+    },
     /// Manage the ecosystem managers themselves (npm, cargo, brew, Flatpak…): show what
     /// is installed and bootstrap a missing one.
     Providers {
@@ -242,7 +247,7 @@ impl Cli {
                 Some(if *audit { "jii list --audit".to_string() } else { "jii list".to_string() })
             }
             Some(Commands::History) => Some("jii history".to_string()),
-            Some(Commands::Sources) => Some("jii sources".to_string()),
+            Some(Commands::Sources { .. }) => Some("jii sources".to_string()),
             Some(Commands::Providers { .. }) => Some("jii providers".to_string()),
             None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
         }
@@ -319,7 +324,7 @@ impl Cli {
 
             Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
-            Some(Commands::Sources) => self.sources(config, &renderer).await,
+            Some(Commands::Sources { all }) => self.sources(*all, config, &renderer).await,
             Some(Commands::Providers { action }) => match action {
                 None => self.providers(config, &renderer).await,
                 Some(ProvidersAction::Add { name }) => {
@@ -1711,16 +1716,27 @@ impl Cli {
     }
 
     /// Sources path: list enabled providers and whether each is usable on this machine.
-    async fn sources(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+    /// Native managers for other distros (pacman on Fedora) are hidden unless `all` — a user
+    /// shouldn't have to reason about a package manager their system doesn't have.
+    async fn sources(
+        &self,
+        all: bool,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
-        let catalog = engine.source_catalog().await;
+        let full = engine.source_catalog().await;
+        let hidden = full.iter().filter(|e| !e.relevant).count();
+        let shown: Vec<&crate::engine::SourceEntry> =
+            full.iter().filter(|e| all || e.relevant).collect();
 
         if renderer.is_json() {
-            let rows: Vec<_> = catalog
+            let rows: Vec<_> = shown
                 .iter()
                 .map(|e| {
                     serde_json::json!({
-                        "id": e.id, "trust": e.trust.label(), "available": e.available,
+                        "id": e.id, "trust": e.trust.label(),
+                        "available": e.available, "relevant": e.relevant,
                     })
                 })
                 .collect();
@@ -1729,7 +1745,9 @@ impl Cli {
         }
 
         let palette = renderer.palette();
-        let (active, inactive): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.available);
+        type Row<'a> = &'a crate::engine::SourceEntry;
+        let (active, inactive): (Vec<Row>, Vec<Row>) =
+            shown.into_iter().partition(|e| e.available);
         if !active.is_empty() {
             renderer.heading(&crate::t!("sources.active"));
             for e in &active {
@@ -1751,6 +1769,11 @@ impl Cli {
                     e.trust.display()
                 )));
             }
+        }
+        // Nudge that some sources were hidden, so `--all` is discoverable.
+        if !all && hidden > 0 {
+            renderer.info("");
+            renderer.info(&palette.dim(&crate::t!("sources.hidden", count = hidden)));
         }
         Ok(())
     }

@@ -80,6 +80,11 @@ pub struct SourceEntry {
     pub id: &'static str,
     pub trust: TrustLevel,
     pub available: bool,
+    /// Whether this source is relevant on this host: usable now, or usable after a bootstrap
+    /// (network-searchable or a bootstrappable ecosystem). A native manager for another distro
+    /// (pacman on Fedora) is none of these, so `jii sources` hides it unless `--all` (a Fedora
+    /// user shouldn't have to reason about pacman). No source-id branch — pure capability.
+    pub relevant: bool,
 }
 
 /// One row of `jii providers`: an installable *ecosystem* manager (npm, cargo, brew,
@@ -811,10 +816,12 @@ impl Engine {
     pub async fn source_catalog(&self) -> Vec<SourceEntry> {
         let mut out = Vec::new();
         for provider in self.providers.iter() {
+            let available = provider.is_available().await;
             out.push(SourceEntry {
                 id: provider.id(),
                 trust: provider.trust(),
-                available: provider.is_available().await,
+                available,
+                relevant: available || provider.can_search() || provider.ecosystem().is_some(),
             });
         }
         out
