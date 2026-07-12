@@ -16,6 +16,7 @@ use crate::model::{
 };
 
 pub mod apt;
+pub mod aur;
 pub mod cargo;
 pub mod copr;
 pub mod dnf;
@@ -319,6 +320,9 @@ impl ProviderRegistry {
         }
         if config.is_enabled("pacman") {
             providers.push(Box::new(pacman::Pacman::new()));
+        }
+        if config.is_enabled("aur") {
+            providers.push(Box::new(aur::Aur::new()));
         }
         if config.is_enabled("zypper") {
             providers.push(Box::new(zypper::Zypper::new()));

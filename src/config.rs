@@ -15,7 +15,7 @@ use crate::model::TrustLevel;
 /// Providers are wired in over later phases; this list is the contract the config
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
-    "dnf", "copr", "apt", "pacman", "zypper", "void", "gentoo", "flatpak", "snap", "github",
+    "dnf", "copr", "apt", "pacman", "aur", "zypper", "void", "gentoo", "flatpak", "snap", "github",
     "cargo", "npm", "pipx", "go", "brew", "nix",
 ];
 
@@ -160,7 +160,7 @@ impl Default for SourcesConfig {
                 // binary with no package manager behind it, so every real package source —
                 // native, Flatpak/Snap, and every language ecosystem — is preferred first.
                 "dnf", "copr", "apt", "pacman", "zypper", "void", "gentoo", "flatpak", "snap",
-                "cargo", "npm", "pipx", "go", "brew", "nix", "github",
+                "aur", "cargo", "npm", "pipx", "go", "brew", "nix", "github",
             ]
             .iter()
             .map(|s| s.to_string())

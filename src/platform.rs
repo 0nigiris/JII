@@ -51,6 +51,10 @@ pub struct Platform {
     /// the recommend-catalog (to filter entries by distro) and, later, config-seeding /
     /// bootstrap (T6).
     pub distro: Distro,
+    /// Whether this is an Arch-family host (Arch, Manjaro, EndeavourOS, CachyOS, Artix…),
+    /// by `ID`/`ID_LIKE`. A host fact, read by the AUR source/ecosystem so `jii yay`/`jii paru`
+    /// and AUR search are offered **only** where they apply — never on Fedora/Debian/etc.
+    pub arch_like: bool,
     /// Target arch as reported by the compiler (e.g. "x86_64", "aarch64").
     /// Consumed by GitHub release-asset filtering.
     pub arch: &'static str,
@@ -68,12 +72,16 @@ impl Platform {
     /// Detect the current platform (cached for the process lifetime).
     pub fn detect() -> &'static Platform {
         static PLATFORM: OnceLock<Platform> = OnceLock::new();
-        PLATFORM.get_or_init(|| Platform {
-            distro: detect_distro(),
-            arch: std::env::consts::ARCH,
-            is_tty: detect_tty(),
-            unicode: detect_unicode(),
-            path_dirs: detect_path_dirs(),
+        PLATFORM.get_or_init(|| {
+            let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+            Platform {
+                distro: parse_distro(&os_release),
+                arch_like: parse_arch_like(&os_release),
+                arch: std::env::consts::ARCH,
+                is_tty: detect_tty(),
+                unicode: detect_unicode(),
+                path_dirs: detect_path_dirs(),
+            }
         })
     }
 
@@ -90,14 +98,6 @@ impl Platform {
     pub fn is_on_path(&self, dir: &std::path::Path) -> bool {
         self.path_dirs.iter().any(|d| d == dir)
     }
-}
-
-fn detect_distro() -> Distro {
-    let content = match std::fs::read_to_string("/etc/os-release") {
-        Ok(c) => c,
-        Err(_) => return Distro::Unknown,
-    };
-    parse_distro(&content)
 }
 
 /// Parse a distro family from the contents of `/etc/os-release`.
@@ -125,6 +125,22 @@ fn parse_distro(os_release: &str) -> Distro {
     } else {
         Distro::Other(id)
     }
+}
+
+/// Whether `/etc/os-release` describes an Arch-family host. Arch itself sets `ID=arch` (and
+/// no `ID_LIKE`); derivatives (Manjaro, EndeavourOS, CachyOS, Artix, Garuda…) set
+/// `ID_LIKE=arch` (sometimes among others), so a single `arch` token in either field is the
+/// reliable, derivative-proof signal. Split out for unit-testing without touching the FS.
+fn parse_arch_like(os_release: &str) -> bool {
+    let field = |key: &str| -> Option<String> {
+        os_release.lines().find_map(|line| {
+            let (k, v) = line.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().trim_matches('"').to_ascii_lowercase())
+        })
+    };
+    let id = field("ID").unwrap_or_default();
+    let id_like = field("ID_LIKE").unwrap_or_default();
+    id == "arch" || id_like.split_whitespace().any(|t| t == "arch")
 }
 
 fn detect_tty() -> bool {
@@ -188,5 +204,25 @@ ID_LIKE="fedora"
     #[test]
     fn unknown_when_empty() {
         assert_eq!(parse_distro(""), Distro::Unknown);
+    }
+
+    #[test]
+    fn arch_like_by_id() {
+        assert!(parse_arch_like("ID=arch\n"));
+    }
+
+    #[test]
+    fn arch_like_derivatives_by_id_like() {
+        // Manjaro/EndeavourOS/CachyOS all set ID_LIKE=arch (sometimes among other tokens).
+        assert!(parse_arch_like("ID=manjaro\nID_LIKE=arch\n"));
+        assert!(parse_arch_like("ID=endeavouros\nID_LIKE=\"arch\"\n"));
+        assert!(parse_arch_like("ID=cachyos\nID_LIKE=arch\n"));
+    }
+
+    #[test]
+    fn arch_like_false_elsewhere() {
+        assert!(!parse_arch_like("ID=fedora\n"));
+        assert!(!parse_arch_like("ID=ubuntu\nID_LIKE=debian\n"));
+        assert!(!parse_arch_like(""));
     }
 }
