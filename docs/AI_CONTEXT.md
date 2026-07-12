@@ -47,8 +47,14 @@ output tail. The JII self-update GitHub check is now spawned **in parallel** wit
 (`tokio::spawn(selfupdate::latest_release())`), so "Checking for a newer JII…" is near-instant. 271
 tests (+3 summarize). **T7:** the live per-source summary needs a real update run to eyeball.
 
-**Open follow-ups (TASKS "remaining"):** `-d`/`-n` confusion (confirmed live — `-n`=assume-no aborted a
-remove, `-d`=dry-run); mid-word fuzzy (`pipix`→`pipx`).
+**Mid-word fuzzy + `-d`/`-n` — DONE.** `broaden_search` now has a 3rd stage that tries edit-distance-1
+`typo_variants` (moved to `engine`, shared with the GitHub picker) as exact searches → `jii pipix`
+resolves `pipx`. The `-d`/`-n` confusion is addressed by sharper help on all three flags + a `--preview`
+alias for `--dry-run` (no behaviour change).
+
+**Remaining owner backlog:** effectively cleared for the in-scope CLI items. Out of scope (owner):
+Windows/macOS port and the GUI. Open T7 verification debts persist (live Arch AUR/helper install + real
+manager removal + the live `jii update` per-source summary all need real non-Fedora hosts).
 
 ## Most recent work (2026-07-12, earlier) — read this too
 

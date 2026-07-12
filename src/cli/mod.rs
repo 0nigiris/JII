@@ -972,7 +972,7 @@ impl Cli {
         if hits.is_empty() {
             // Recover from a typo (`exeteragram` → `exteragram`): retry the forge with cheap
             // edit-distance-1 variants and take the first that finds anything.
-            for variant in typo_variants(name) {
+            for variant in crate::engine::typo_variants(name) {
                 let found = engine.forge_repo_search(&variant, 1).await;
                 if !found.is_empty() {
                     renderer.info(&crate::t!(
@@ -3105,35 +3105,6 @@ fn repo_label(hit: &crate::model::RepoHit, palette: crate::ui::Palette) -> Strin
     format!("{}{desc}  {stars}", hit.slug)
 }
 
-/// Cheap edit-distance-1 variants of a search term, tried in order when the forge's own fuzzy
-/// match finds nothing — enough to recover from an everyday typo (`exeteragram` → `exteragram`)
-/// without an expensive dictionary. Covers single-character **deletions** first (an extra key
-/// is the common slip) then **adjacent transpositions**; deduped, order-preserving, and capped
-/// so a miss on a long term stays a handful of extra forge calls, not dozens.
-fn typo_variants(query: &str) -> Vec<String> {
-    let chars: Vec<char> = query.chars().collect();
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    let mut push = |v: String, out: &mut Vec<String>| {
-        if v.chars().count() >= 2 && v != query && seen.insert(v.clone()) {
-            out.push(v);
-        }
-    };
-    // Deletions: drop one character.
-    for i in 0..chars.len() {
-        let v: String = chars[..i].iter().chain(&chars[i + 1..]).collect();
-        push(v, &mut out);
-    }
-    // Adjacent transpositions: swap two neighbours.
-    for i in 0..chars.len().saturating_sub(1) {
-        let mut c = chars.clone();
-        c.swap(i, i + 1);
-        push(c.into_iter().collect(), &mut out);
-    }
-    out.truncate(16);
-    out
-}
-
 /// Compact star/download counts: `1234` → `1.2k`, `2_500_000` → `2.5M`.
 fn humanize_count(n: u64) -> String {
     match n {
@@ -3933,8 +3904,11 @@ mod tests {
 
     #[test]
     fn typo_variants_recover_common_slips() {
+        use crate::engine::typo_variants;
         // Extra character: the corrected term is reachable by a single deletion.
         assert!(typo_variants("exeteragram").contains(&"exteragram".to_string()));
+        // A mid-word doubled key (the owner's example): `pipix` → `pipx`.
+        assert!(typo_variants("pipix").contains(&"pipx".to_string()));
         // Swapped neighbours: an adjacent transposition puts them back.
         assert!(typo_variants("gti").contains(&"git".to_string()));
         // Deduped, never echoes the input, and stays a bounded handful.

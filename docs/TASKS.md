@@ -572,10 +572,11 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   failures show `✗` + an output tail. The JII self-update GitHub check runs **in parallel** with
                   the system update (near-instant). `Privilege::run_captured` + `Engine::run_plan_captured`. 271
                   tests (+3). **T7:** eyeball the live summary on a real update.
-            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** Richer fuzzy for mid-word typos
-                  (`pipix`→`pipx`; trailing typos already work). **`-d`/`-n` semantics** unification (users
-                  confuse `-d`=dry-run with `-n`=assume-no — confirmed live: `jii -n sources remove …` aborts,
-                  `-d` dry-runs).
+            - [x] **Cross-system fixes — batch 6 (2026-07-12).** **Mid-word fuzzy:** `broaden_search` gained a
+                  3rd stage trying edit-distance-1 `typo_variants` (moved to `engine`, shared with the GitHub
+                  picker) as exact searches, so `jii pipix` → `pipx` (deletions cover a doubled key). **`-d`/`-n`
+                  disambiguated:** sharpened all three flag help texts + added `--preview` alias for `--dry-run`
+                  (behaviour unchanged). 271 tests.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

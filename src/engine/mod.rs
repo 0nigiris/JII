@@ -389,6 +389,19 @@ impl Engine {
                 return hit;
             }
         }
+
+        // 3. **Mid-word typo** — try cheap edit-distance-1 variants (a dropped/duplicated key or
+        //    a swapped pair, so `pipix` → `pipx`), each as an *exact* search so we don't broaden
+        //    into unrelated prefixes. Only for terms long enough to carry signal.
+        if chars.len() >= 4 {
+            for variant in typo_variants(name) {
+                let q = Query::name(&variant);
+                let hit = self.rank(&variant, self.search(&q).await.candidates);
+                if !hit.is_empty() {
+                    return hit;
+                }
+            }
+        }
         Vec::new()
     }
 
@@ -1065,6 +1078,36 @@ fn group_by_source<T>(items: Vec<T>, source_of: impl Fn(&T) -> &str) -> Vec<(Str
         }
     }
     groups
+}
+
+/// Cheap edit-distance-1 variants of a search term, tried in order when the verbatim term finds
+/// nothing — enough to recover from an everyday typo (`pipix` → `pipx`, `exeteragram` →
+/// `exteragram`) without a dictionary. Covers single-character **deletions** first (an extra key
+/// is the common slip) then **adjacent transpositions**; deduped, order-preserving, and capped so
+/// a miss on a long term stays a handful of extra searches, not dozens. Shared by the by-name
+/// broaden (`broaden_search`) and the GitHub repo picker.
+pub(crate) fn typo_variants(query: &str) -> Vec<String> {
+    let chars: Vec<char> = query.chars().collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    let mut push = |v: String, out: &mut Vec<String>| {
+        if v.chars().count() >= 2 && v != query && seen.insert(v.clone()) {
+            out.push(v);
+        }
+    };
+    // Deletions: drop one character.
+    for i in 0..chars.len() {
+        let v: String = chars[..i].iter().chain(&chars[i + 1..]).collect();
+        push(v, &mut out);
+    }
+    // Adjacent transpositions: swap two neighbours.
+    for i in 0..chars.len().saturating_sub(1) {
+        let mut c = chars.clone();
+        c.swap(i, i + 1);
+        push(c.into_iter().collect(), &mut out);
+    }
+    out.truncate(16);
+    out
 }
 
 /// Build a single-record plan for the given operation. The one spot that maps a
