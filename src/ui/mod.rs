@@ -16,13 +16,35 @@ use crate::model::{Action, InstallPlan, TrustLevel};
 #[derive(Clone, Copy)]
 pub struct Palette {
     enabled: bool,
+    /// Whether the terminal can render non-ASCII status glyphs (✓/✗/⚠).
+    unicode: bool,
 }
 
 impl Palette {
     /// A never-colouring palette (for tests and any plain-text context).
     #[cfg(test)]
     pub fn plain() -> Self {
-        Palette { enabled: false }
+        Palette { enabled: false, unicode: true }
+    }
+
+    /// Success marker — `✓`, or `+` where the terminal can't render it.
+    pub fn mark_ok(&self) -> &'static str {
+        if self.unicode { "✓" } else { "+" }
+    }
+
+    /// Failure marker — `✗`, or `x` where the terminal can't render it.
+    pub fn mark_bad(&self) -> &'static str {
+        if self.unicode { "✗" } else { "x" }
+    }
+
+    /// Warning marker — `⚠`, or `!` where the terminal can't render it.
+    pub fn mark_warn(&self) -> &'static str {
+        if self.unicode { "⚠" } else { "!" }
+    }
+
+    /// Neutral bullet for "available but not installed" — `○`, or `-` as a fallback.
+    pub fn mark_bullet(&self) -> &'static str {
+        if self.unicode { "○" } else { "-" }
     }
 
     /// A trust level in its own hue: official green, community yellow, untrusted red.
@@ -69,6 +91,8 @@ pub struct Renderer {
     color: bool,
     json: bool,
     mode: OutputMode,
+    /// Whether the terminal can render non-ASCII status glyphs (✓/✗/⚠).
+    unicode: bool,
 }
 
 impl Renderer {
@@ -81,7 +105,8 @@ impl Renderer {
             // In JSON mode never colorize; otherwise only when stdout is a terminal.
             ColorChoice::Auto => !json && crate::platform::Platform::detect().is_tty,
         };
-        Renderer { color, json, mode }
+        let unicode = crate::platform::Platform::detect().unicode;
+        Renderer { color, json, mode, unicode }
     }
 
     /// Whether JSON output mode is active.
@@ -91,7 +116,7 @@ impl Renderer {
 
     /// The semantic colour palette for this renderer (a no-op when colour is off).
     pub fn palette(&self) -> Palette {
-        Palette { enabled: self.color }
+        Palette { enabled: self.color, unicode: self.unicode }
     }
 
     /// A bold section heading (falls back to plain text when colour is off / JSON).
@@ -129,10 +154,13 @@ impl Renderer {
     pub fn success(&self, msg: &str) {
         if self.json {
             self.emit_json("success", msg);
-        } else if self.color {
-            println!("{} {msg}", "✓".green());
         } else {
-            println!("✓ {msg}");
+            let m = self.palette().mark_ok();
+            if self.color {
+                println!("{} {msg}", m.green());
+            } else {
+                println!("{m} {msg}");
+            }
         }
     }
 
@@ -140,10 +168,13 @@ impl Renderer {
     pub fn warn(&self, msg: &str) {
         if self.json {
             self.emit_json("warn", msg);
-        } else if self.color {
-            eprintln!("{} {msg}", "⚠".yellow());
         } else {
-            eprintln!("⚠ {msg}");
+            let m = self.palette().mark_warn();
+            if self.color {
+                eprintln!("{} {msg}", m.yellow());
+            } else {
+                eprintln!("{m} {msg}");
+            }
         }
     }
 
@@ -151,10 +182,13 @@ impl Renderer {
     pub fn error(&self, msg: &str) {
         if self.json {
             self.emit_json("error", msg);
-        } else if self.color {
-            eprintln!("{} {msg}", "✗".red());
         } else {
-            eprintln!("✗ {msg}");
+            let m = self.palette().mark_bad();
+            if self.color {
+                eprintln!("{} {msg}", m.red());
+            } else {
+                eprintln!("{m} {msg}");
+            }
         }
     }
 
@@ -176,7 +210,8 @@ impl Renderer {
             println!("{title}");
         }
 
-        let check = if self.color { "✓".green().to_string() } else { "✓".to_string() };
+        let mark = self.palette().mark_ok();
+        let check = if self.color { mark.green().to_string() } else { mark.to_string() };
         for reason in &plan.reasons {
             println!("  {check} {reason}");
         }

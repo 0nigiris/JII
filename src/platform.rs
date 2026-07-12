@@ -56,6 +56,10 @@ pub struct Platform {
     pub arch: &'static str,
     /// Whether stdin/stdout is an interactive terminal.
     pub is_tty: bool,
+    /// Whether the terminal can render non-ASCII glyphs (✓, ✗, ⚠…). The Linux text
+    /// console (`TERM=linux`) and non-UTF-8 locales draw those as tofu boxes, so the
+    /// UI falls back to ASCII markers there. A host fact only — set once, read by the UI.
+    pub unicode: bool,
     /// Directories on `PATH`. Backs the user-space `~/.local/bin` check in `jii doctor`.
     pub path_dirs: Vec<PathBuf>,
 }
@@ -68,6 +72,7 @@ impl Platform {
             distro: detect_distro(),
             arch: std::env::consts::ARCH,
             is_tty: detect_tty(),
+            unicode: detect_unicode(),
             path_dirs: detect_path_dirs(),
         })
     }
@@ -127,6 +132,24 @@ fn detect_tty() -> bool {
     // terminal we must fall back to defaults instead of pretending to ask.
     use std::io::IsTerminal;
     std::io::stdin().is_terminal()
+}
+
+/// Whether the terminal can be trusted to render glyphs like ✓/✗/⚠. Two things break
+/// them: a non-UTF-8 locale (the bytes aren't even encodable), and the Linux text
+/// console `TERM=linux`, whose built-in font has no glyph for them even under UTF-8 —
+/// which is exactly what showed up as `▪` boxes on a Void live console. Conservative:
+/// require a UTF-8 locale AND not a known glyph-poor console.
+fn detect_unicode() -> bool {
+    let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok().filter(|v| !v.is_empty()))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let utf8 = locale.contains("utf-8") || locale.contains("utf8");
+    let poor_console = std::env::var("TERM")
+        .map(|t| t == "linux" || t == "dumb")
+        .unwrap_or(false);
+    utf8 && !poor_console
 }
 
 fn detect_path_dirs() -> Vec<PathBuf> {

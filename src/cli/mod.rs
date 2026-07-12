@@ -1572,7 +1572,7 @@ impl Cli {
             source = palette.source(&best.source_id)
         ));
         let highlights = engine.candidate_highlights(best);
-        let check = palette.good("✓");
+        let check = palette.good(palette.mark_ok());
         for reason in recommendation_reasons(best, highlights) {
             renderer.info(&format!("  {check} {reason}"));
         }
@@ -1640,7 +1640,7 @@ impl Cli {
         if !active.is_empty() {
             renderer.heading(&crate::t!("sources.active"));
             for e in &active {
-                let mark = palette.good("✓");
+                let mark = palette.good(palette.mark_ok());
                 renderer.info(&format!(
                     "  {mark} {} ({})",
                     palette.source(&format!("{:8}", e.id)),
@@ -1651,7 +1651,12 @@ impl Cli {
         if !inactive.is_empty() {
             renderer.heading(&crate::t!("sources.unavailable"));
             for e in &inactive {
-                renderer.info(&palette.dim(&format!("  ✗ {:8} ({})", e.id, e.trust.display())));
+                renderer.info(&palette.dim(&format!(
+                    "  {} {:8} ({})",
+                    palette.mark_bad(),
+                    e.id,
+                    e.trust.display()
+                )));
             }
         }
         Ok(())
@@ -1684,7 +1689,7 @@ impl Cli {
         if !have.is_empty() {
             renderer.heading(&crate::t!("providers.installed"));
             for e in &have {
-                renderer.info(&format!("  {} {}", palette.good("✓"), e.label));
+                renderer.info(&format!("  {} {}", palette.good(palette.mark_ok()), e.label));
             }
         }
         if !missing.is_empty() {
@@ -1694,7 +1699,8 @@ impl Cli {
             renderer.heading(&crate::t!("providers.available"));
             for e in &missing {
                 renderer.info(&palette.dim(&format!(
-                    "  ○ {}",
+                    "  {} {}",
+                    palette.mark_bullet(),
                     crate::t!("providers.add_hint", label = e.label, id = e.id)
                 )));
             }
@@ -1943,8 +1949,9 @@ impl Cli {
                     source = record.source_id.clone(),
                     date = record.installed_at.format("%Y-%m-%d %H:%M").to_string()
                 ));
-                renderer.info(&format!("  ✓ {}", crate::t!("how.version_line", version = version)));
-                renderer.info(&format!("  ✓ {}", crate::t!("how.trust_line", trust = trust)));
+                let ok = renderer.palette().mark_ok();
+                renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
+                renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
             }
         }
         Ok(())
@@ -2030,7 +2037,8 @@ impl Cli {
         let palette = renderer.palette();
         renderer.heading(&crate::t!("doctor.sources_header"));
         for d in &diagnostics {
-            let mark = if d.available { palette.good("✓") } else { palette.dim("✗") };
+            let mark =
+                if d.available { palette.good(palette.mark_ok()) } else { palette.dim(palette.mark_bad()) };
             let detail = match &d.detail {
                 Some(text) => palette.dim(&format!("  ({text})")),
                 None => String::new(),
@@ -2426,6 +2434,7 @@ impl Cli {
         }
 
         let mut flagged = 0;
+        let warn_mark = renderer.palette().mark_warn();
         let rows: Vec<Vec<String>> = entries
             .iter()
             .map(|e| {
@@ -2435,7 +2444,7 @@ impl Cli {
                 } else {
                     flagged += 1;
                     let reasons: Vec<&str> = e.concerns.iter().map(|c| c.message()).collect();
-                    format!("⚠ {}", reasons.join(", "))
+                    format!("{warn_mark} {}", reasons.join(", "))
                 };
                 vec![
                     e.name.clone(),

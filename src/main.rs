@@ -52,8 +52,10 @@ async fn main() -> std::process::ExitCode {
 /// Kept here (not the `Renderer`) because a config-load failure happens before a renderer
 /// exists; JSON callers surface their own structured errors upstream.
 fn report(err: &crate::error::JiiError) {
-    eprintln!("✗ {err}");
+    let uni = crate::platform::Platform::detect().unicode;
+    let (bad, arrow) = if uni { ("✗", "→") } else { ("x", "->") };
+    eprintln!("{bad} {err}");
     if let Some(remedy) = err.remedy() {
-        eprintln!("  → {remedy}");
+        eprintln!("  {arrow} {remedy}");
     }
 }
