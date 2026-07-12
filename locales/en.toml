@@ -81,6 +81,11 @@ sys_via = "System update via: {sources}"
 tracked_up_to_date = "({count} tracked package(s) already up to date)"
 prompt_system = "Update your system now?"
 complete = "System update complete."
+sum_none = "nothing to update"
+sum_done = "updated"
+sum_changed = "{count} packages updated"
+sum_deprecated = "{count} deprecation warning(s)"
+sum_eol = "{count} end-of-life runtime(s) — run `flatpak uninstall --unused` to clean up"
 
 [install]
 searching = "Searching…"

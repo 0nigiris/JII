@@ -79,6 +79,11 @@ sys_via = "Обновление системы через: {sources}"
 tracked_up_to_date = "({count} отслеживаемых пакетов уже актуальны)"
 prompt_system = "Обновить систему сейчас?"
 complete = "Обновление системы завершено."
+sum_none = "обновлять нечего"
+sum_done = "обновлено"
+sum_changed = "обновлено пакетов: {count}"
+sum_deprecated = "предупреждений об устаревании: {count}"
+sum_eol = "снятых с поддержки рантаймов: {count} — очистите: `flatpak uninstall --unused`"
 
 [install]
 searching = "Поиск…"

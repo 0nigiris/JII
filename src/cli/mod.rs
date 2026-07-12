@@ -1262,7 +1262,7 @@ impl Cli {
         // action, not a registry package. Handle it, then update any remaining names.
         let wants_self = packages.iter().any(|p| p == selfupdate::SELF_NAME);
         if wants_self {
-            self.self_update(config.clone(), renderer).await?;
+            self.self_update(config.clone(), renderer, None).await?;
         }
         let rest: Vec<String> = packages
             .iter()
@@ -1278,8 +1278,12 @@ impl Cli {
         // upgrade, D10) and then JII itself. Self-update runs last so the atomic binary swap
         // happens after the system upgrade completes.
         if packages.is_empty() {
+            // We already know our own version, so the "is there a newer JII?" GitHub check can
+            // run **in parallel** with the (slower, interactive) system update — by the time the
+            // system finishes, the release lookup is usually already done, so it feels instant.
+            let prefetch = tokio::spawn(selfupdate::latest_release());
             self.update_system(config.clone(), renderer).await?;
-            self.self_update(config, renderer).await?;
+            self.self_update(config, renderer, Some(prefetch)).await?;
             return Ok(());
         }
 
@@ -1391,14 +1395,27 @@ impl Cli {
     /// `jii update jii` — update JII itself from the newest GitHub release, the right way
     /// for how it was installed (user-space binary swap, or a `.rpm`/`.deb` via dnf/apt).
     /// Everything is a previewable plan; `--dry-run` shows it and stops.
-    async fn self_update(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+    async fn self_update(
+        &self,
+        config: Config,
+        renderer: &Renderer,
+        prefetch: Option<tokio::task::JoinHandle<crate::error::Result<selfupdate::Latest>>>,
+    ) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let install = selfupdate::detect_install().await?;
         renderer.info(&crate::t!("selfupdate.checking"));
-        let latest = match selfupdate::latest_release().await {
+        // Use the release lookup started in parallel with the system update when available,
+        // otherwise fetch it now (the direct `jii update jii` path).
+        let fetched = match prefetch {
+            Some(handle) => handle.await.unwrap_or_else(|e| {
+                Err(crate::error::JiiError::Other(anyhow::anyhow!(e.to_string())))
+            }),
+            None => selfupdate::latest_release().await,
+        };
+        let latest = match fetched {
             Ok(l) => l,
             Err(e) => {
-                renderer.error(&crate::t!("selfupdate.check_failed", error = e));
+                renderer.error(&crate::t!("selfupdate.check_failed", error = e.to_string()));
                 return Ok(());
             }
         };

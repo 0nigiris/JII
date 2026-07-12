@@ -73,6 +73,23 @@ impl Privilege {
         }
         Ok(())
     }
+
+    /// Run one command **capturing** its output (stdout+stderr merged) instead of streaming it,
+    /// elevating if `needs_root`. Used by the whole-system update so a chatty manager (npm,
+    /// flatpak) can be reduced to a one-line summary rather than flooding the terminal. Returns
+    /// `(success, combined_output)`; a spawn failure is still a hard error. The caller must have
+    /// `prime`d first (so `sudo` doesn't need to prompt with stdin captured).
+    pub async fn run_captured(&self, argv: &[String], needs_root: bool) -> Result<(bool, String)> {
+        let argv = self.elevated_argv(argv, needs_root);
+        let output = Command::new(&argv[0])
+            .args(&argv[1..])
+            .output()
+            .await
+            .map_err(|e| JiiError::spawn(&argv[0], e))?;
+        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+        Ok((output.status.success(), combined))
+    }
 }
 
 #[cfg(test)]

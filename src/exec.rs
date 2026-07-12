@@ -38,6 +38,76 @@ pub async fn run_actions(plan: &InstallPlan, privilege: &Privilege, renderer: &R
     Ok(())
 }
 
+/// A one-line, source-agnostic digest of a manager's update output (for the whole-system
+/// update summary — so npm/flatpak don't flood the terminal). Built by [`summarize_update`]
+/// from universal signals in the text, **not** by branching on the source id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateSummary {
+    /// The headline result ("nothing to update", "984 packages updated", "updated").
+    pub headline: String,
+    /// Extra one-line notes worth surfacing (deprecation count, end-of-life runtimes).
+    pub notes: Vec<String>,
+}
+
+/// Reduce a manager's (possibly huge) update output to a headline + a few notes, using only
+/// universal textual signals so it works across dnf/apt/flatpak/npm/… without a source branch.
+pub fn summarize_update(output: &str) -> UpdateSummary {
+    let lower = output.to_ascii_lowercase();
+    let nothing = [
+        "nothing to do",
+        "nothing to update",
+        "0 upgraded",
+        "0 to upgrade",
+        "up to date",
+    ]
+    .iter()
+    .any(|s| lower.contains(s));
+    // A stated package count wins over "nothing" (npm prints both a warning stream and a count).
+    let headline = if let Some(n) = changed_count(&lower) {
+        crate::t!("update.sum_changed", count = n.to_string())
+    } else if nothing {
+        crate::t!("update.sum_none")
+    } else {
+        crate::t!("update.sum_done")
+    };
+
+    let mut notes = Vec::new();
+    let deprecations = output.lines().filter(|l| l.to_ascii_lowercase().contains("deprecated")).count();
+    if deprecations > 0 {
+        notes.push(crate::t!("update.sum_deprecated", count = deprecations.to_string()));
+    }
+    let eol = output.lines().filter(|l| l.to_ascii_lowercase().contains("end-of-life")).count();
+    if eol > 0 {
+        notes.push(crate::t!("update.sum_eol", count = eol.to_string()));
+    }
+    UpdateSummary { headline, notes }
+}
+
+/// Pull a "changed/upgraded N packages" count out of update output, if one is stated.
+/// Recognises npm's `changed N packages` and apt's `N upgraded` — both plain, universal shapes.
+fn changed_count(lower: &str) -> Option<usize> {
+    // npm: "changed 984 packages in 42s"
+    if let Some(idx) = lower.find("changed ") {
+        let rest = &lower[idx + "changed ".len()..];
+        if let Some(n) = rest.split_whitespace().next().and_then(|w| w.parse::<usize>().ok())
+            && rest.contains("package")
+            && n > 0
+        {
+            return Some(n);
+        }
+    }
+    // apt: "5 upgraded, 0 newly installed" — take the number before "upgraded" when > 0.
+    if let Some(idx) = lower.find(" upgraded") {
+        let head = &lower[..idx];
+        if let Some(n) = head.split_whitespace().last().and_then(|w| w.parse::<usize>().ok())
+            && n > 0
+        {
+            return Some(n);
+        }
+    }
+    None
+}
+
 /// Dispatch a single action to its handler.
 async fn run_action(action: &Action, privilege: &Privilege) -> Result<()> {
     match action {
@@ -278,6 +348,30 @@ mod tests {
         // Known digest of b"hello".
         let expected = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
         assert_eq!(hex_digest(b"hello"), expected);
+    }
+
+    #[test]
+    fn summarize_detects_nothing_to_do() {
+        assert_eq!(summarize_update("Repositories loaded.\nNothing to do.\n").headline, "nothing to update");
+        assert_eq!(summarize_update("Looking for updates…\nNothing to update.\n").headline, "nothing to update");
+        assert_eq!(summarize_update("up to date in 512ms\n").headline, "nothing to update");
+    }
+
+    #[test]
+    fn summarize_counts_npm_changes_and_deprecations() {
+        let out = "npm warn deprecated uuid@8\nnpm warn deprecated koa-router@14\n\nchanged 984 packages in 42s\n";
+        let s = summarize_update(out);
+        assert_eq!(s.headline, "984 packages updated");
+        assert!(s.notes.iter().any(|n| n.contains('2') && n.contains("deprecation")));
+    }
+
+    #[test]
+    fn summarize_counts_apt_upgrades_and_flatpak_eol() {
+        assert_eq!(summarize_update("5 upgraded, 0 newly installed\n").headline, "5 packages updated");
+        let s = summarize_update("Info: runtime org.kde.Platform is end-of-life\nNothing to update.\n");
+        // A real update stream: "nothing to update" headline, but the EOL note still surfaces.
+        assert_eq!(s.headline, "nothing to update");
+        assert!(s.notes.iter().any(|n| n.contains("end-of-life")));
     }
 
     #[test]

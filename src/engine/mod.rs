@@ -610,8 +610,31 @@ impl Engine {
         all.extend(fallback.iter().map(|b| &b.plan));
         crate::exec::prime_for(&all, &self.privilege).await?;
 
+        // Bulk managers can be very chatty (npm/flatpak flood the terminal). Capture each one's
+        // output and reduce it to a one-line, source-agnostic summary instead of streaming it.
+        let palette = renderer.palette();
         for plan in system_plans {
-            crate::exec::run_actions(plan, &self.privilege, renderer).await?;
+            let (ok, out) = self.run_plan_captured(plan).await?;
+            let summary = crate::exec::summarize_update(&out);
+            let mark = if ok {
+                palette.good(palette.mark_ok())
+            } else {
+                palette.mark_bad().to_string()
+            };
+            renderer.info(&format!(
+                "  {:8} {mark} {}",
+                palette.source(&plan.source_id),
+                summary.headline
+            ));
+            for note in &summary.notes {
+                renderer.info(&format!("      {}", palette.dim(note)));
+            }
+            // On failure, show a short tail of the captured output so the error isn't swallowed.
+            if !ok {
+                for line in out.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev() {
+                    renderer.info(&palette.dim(&format!("      {line}")));
+                }
+            }
         }
 
         let mut outcome = Ok(());
@@ -634,6 +657,26 @@ impl Engine {
         }
         self.registry.save()?;
         outcome
+    }
+
+    /// Run every action of a bulk-update `plan` capturing output (for the whole-system update
+    /// summary). Update-all plans are `RunCommand`s (e.g. `apt-get update` then `apt-get
+    /// upgrade`); their combined output is concatenated. Returns `(all_ok, combined_output)` —
+    /// a spawn failure is still a hard error. Priming happens in the caller.
+    async fn run_plan_captured(&self, plan: &InstallPlan) -> Result<(bool, String)> {
+        let mut combined = String::new();
+        let mut ok = true;
+        for action in &plan.actions {
+            if let crate::model::Action::RunCommand { argv, needs_root } = action {
+                let (step_ok, out) = self.privilege.run_captured(argv, *needs_root).await?;
+                combined.push_str(&out);
+                if !step_ok {
+                    ok = false;
+                    break; // a failed step (e.g. `apt update`) aborts the rest of this plan
+                }
+            }
+        }
+        Ok((ok, combined))
     }
 
     /// Run a single self-management plan (jii updating or removing **itself**) through the

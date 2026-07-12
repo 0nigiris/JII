@@ -38,11 +38,17 @@ _Last updated: 2026-07-12_
   `-d` dry-run of `remove flatpak`→`dnf5 remove -y flatpak` and `remove go`→`golang`; `add yay`
   refused off-Arch. **T7:** live helper install/AUR search + real manager removal need an Arch host.
 
-**Open follow-ups (TASKS "remaining"):** `-d`/`-n` confusion (confirmed live — `-n`=assume-no
-aborted a remove, `-d`=dry-run); mid-word fuzzy (`pipix`→`pipx`); and a **new owner request
-(mid-session):** `jii update` output polish — capture per-source output into a compact summary
-(`npm ✓ 984 packages updated`, flatpak EOL runtimes collapsed) + a per-source result table, and run
-the JII self-update GitHub check in parallel with the system update (near-instant).
+**`jii update` output polish (ADR-0063) — DONE.** Owner ran `jii update` and npm/flatpak flooded the
+terminal. Now the whole-system update **captures** each bulk manager's output (`Privilege::run_captured`,
+`Engine::run_plan_captured`) and renders one line per source — `  <source>  ✓ <headline>` + indented
+notes — from `exec::summarize_update` (source-agnostic scanner: nothing-to-do / `changed N packages` /
+`N upgraded` / `deprecated` count / `end-of-life` count; no source branch). Failures show `✗` + a short
+output tail. The JII self-update GitHub check is now spawned **in parallel** with the system update
+(`tokio::spawn(selfupdate::latest_release())`), so "Checking for a newer JII…" is near-instant. 271
+tests (+3 summarize). **T7:** the live per-source summary needs a real update run to eyeball.
+
+**Open follow-ups (TASKS "remaining"):** `-d`/`-n` confusion (confirmed live — `-n`=assume-no aborted a
+remove, `-d`=dry-run); mid-word fuzzy (`pipix`→`pipx`).
 
 ## Most recent work (2026-07-12, earlier) — read this too
 

@@ -2437,3 +2437,37 @@ registry (things JII installed); the manager wasn't, so a dedicated path is clea
 removal is safe-by-construction (system managers refused, exact command shown, default-no, installed-only
 targets). No core source-branch: gating lives in the AUR provider and in capability checks. `Platform`
 gains a durable `arch_like` family predicate (the first real consumer, as ADR-0029 anticipated).
+
+## ADR-0063 — Whole-system update: capture per-source output into a summary + parallel self-check
+
+**Status:** Accepted (2026-07-12).
+
+**Context.** Owner ran `jii update` and the bulk managers **flooded the terminal**: npm dumped every
+deprecation warning + a `changed 984 packages` line, flatpak printed a wall of end-of-life notices.
+The result buries the one thing that matters — *what actually changed, per source*. Owner asked for a
+compact per-source summary (`npm ✓ 984 packages updated`, EOL runtimes collapsed to a note) and, since
+JII knows its own version up front, to run the "newer JII?" GitHub check **in parallel** with the
+system update so it feels instant.
+
+**Decision.** The whole-system update (bare `jii update`) now **captures** each bulk plan's output
+instead of streaming it (`Privilege::run_captured`, `Engine::run_plan_captured`) and renders one line
+per source: `  <source>  ✓ <headline>` plus indented notes. The headline/notes come from
+`exec::summarize_update(&output)` — a **source-agnostic** heuristic scanning universal textual signals
+(`nothing to do`/`up to date`/`0 upgraded` → "nothing to update"; npm `changed N packages` / apt `N
+upgraded` → "N packages updated"; count `deprecated` lines; count `end-of-life` lines) so there is **no
+branch on the source id**. On failure the source is marked `✗` and a short tail of the captured output
+is shown so errors aren't swallowed. The per-record *fallback* updates (github/cargo/…) still stream —
+they're small and already quiet. Separately, bare `jii update` spawns `selfupdate::latest_release()`
+as a task before the system update and awaits it in `self_update`, so the self-check is near-instant.
+
+**Alternatives rejected.** (a) *Keep streaming* — the flood is the whole complaint. (b) *Per-provider
+`summarize` trait method* — cleaner in theory but 10+ impls for a display heuristic; the universal-signal
+scanner covers dnf/apt/flatpak/npm/… with one tested function and no core coupling. (c) *A spinner with
+live tail* — more machinery; the owner explicitly wants *less* output, and each source prints its result
+as it finishes, which is enough progress feedback.
+
+**Consequences.** `jii update` output is now a scannable per-source ledger instead of a wall of manager
+noise; the self-update check no longer waits on the system update. Trade-off: no live progress *within* a
+long single source (e.g. a big dnf download) — acceptable given the goal is less noise, and the result
+line lands as soon as that source finishes. `run_captured` requires priming first (done by `prime_for`),
+so `sudo` never prompts with stdin captured.

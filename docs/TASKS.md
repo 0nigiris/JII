@@ -565,15 +565,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   shown, default-no confirm; **system managers refused**; script-installed brew/nix → manual;
                   yay/paru → `pacman -Rs`). 268 tests, clippy clean; verified on Fedora (merge view, refuse dnf,
                   dry-run flatpak/go removal, `add yay` off-Arch refused).
+            - [x] **`jii update` output polish (owner, 2026-07-12, ADR-0063).** The whole-system update now
+                  **captures** each bulk manager's output and shows one line per source (`  <source>  ✓
+                  <headline>` + notes) via `exec::summarize_update` (source-agnostic: nothing-to-do / `changed N
+                  packages` / `N upgraded` / deprecation count / EOL count) instead of flooding the terminal;
+                  failures show `✗` + an output tail. The JII self-update GitHub check runs **in parallel** with
+                  the system update (near-instant). `Privilege::run_captured` + `Engine::run_plan_captured`. 271
+                  tests (+3). **T7:** eyeball the live summary on a real update.
             - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** Richer fuzzy for mid-word typos
                   (`pipix`→`pipx`; trailing typos already work). **`-d`/`-n` semantics** unification (users
                   confuse `-d`=dry-run with `-n`=assume-no — confirmed live: `jii -n sources remove …` aborts,
-                  `-d` dry-runs). **`jii update` output polish (owner, 2026-07-12, mid-session):** the whole-system
-                  update floods the terminal with raw npm/flatpak output — instead capture per-source output and
-                  show a compact summary (`npm ✓ 984 packages updated`, `⚠ N deprecation warnings`; flatpak EOL
-                  runtimes collapsed to a note) + a per-source result table (`DNF ✓ nothing to update / Flatpak ✓
-                  … / npm ✓ 984 updated`); start the JII self-update GitHub check **in parallel** with the system
-                  update (current version is known up-front) so "Checking for a newer JII…" is near-instant.
+                  `-d` dry-runs).
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
