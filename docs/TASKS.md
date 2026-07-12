@@ -555,15 +555,25 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
             - [x] **Cross-system fixes — batch 4 (2026-07-12).** `jii sources disable|enable <id>`
                   (flip `[sources] disabled`, validated vs KNOWN_SOURCES). All remaining output glyphs
                   (`⭐ ℹ ❯`) now TTY-safe via `palette.mark_*` — Unicode fallback complete.
-            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** `jii yay`/`jii paru` (an
-                  AUR-helper ecosystem — Arch-specific, needs an AUR provider). Richer fuzzy for mid-word typos
-                  (`pipix`→`pipx`; trailing typos already work). `-d`/`-n` semantics unification.
-                  **Architecture (need ADRs):** finish the sources redesign — `remove --purge` (deinstall the
-                  manager from the OS; dangerous, per-manager removal commands) + the full
-                  merge of `jii sources`+`jii providers` into one `jii sources` with
-                  enable/disable + `remove --purge` (deinstall the manager from the OS, confirmed) + **hide
-                  non-applicable native sources by default** (all via a flag); should first-run force `setup`,
-                  and put the git-key setup hint in `doctor` too. Unify `-d`/`-n` semantics (users confuse them).
+            - [x] **Cross-system fixes — batch 5 (2026-07-12, ADR-0062).** **AUR provider** (`provider/aur.rs`,
+                  Arch-family only via new `Platform::arch_like`): AUR RPC search + install/remove/update through
+                  a helper (paru/yay, `needs_root=false`), `pacman -Qm` list; `jii yay`/`jii paru` bootstrap a
+                  helper (makepkg shown, never run). **`jii providers` merged into `jii sources`** (hidden alias):
+                  one view annotates ecosystem managers with `[add:…]`/`[remove:…]`. **`jii sources add <id>`**
+                  (bootstrap) + **`jii sources remove <id>`** (uninstall a manager via the host system manager —
+                  `SysManager` dnf/apt/pacman/zypper/xbps/portage, installed-only targets, exact elevated command
+                  shown, default-no confirm; **system managers refused**; script-installed brew/nix → manual;
+                  yay/paru → `pacman -Rs`). 268 tests, clippy clean; verified on Fedora (merge view, refuse dnf,
+                  dry-run flatpak/go removal, `add yay` off-Arch refused).
+            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** Richer fuzzy for mid-word typos
+                  (`pipix`→`pipx`; trailing typos already work). **`-d`/`-n` semantics** unification (users
+                  confuse `-d`=dry-run with `-n`=assume-no — confirmed live: `jii -n sources remove …` aborts,
+                  `-d` dry-runs). **`jii update` output polish (owner, 2026-07-12, mid-session):** the whole-system
+                  update floods the terminal with raw npm/flatpak output — instead capture per-source output and
+                  show a compact summary (`npm ✓ 984 packages updated`, `⚠ N deprecation warnings`; flatpak EOL
+                  runtimes collapsed to a note) + a per-source result table (`DNF ✓ nothing to update / Flatpak ✓
+                  … / npm ✓ 984 updated`); start the JII self-update GitHub check **in parallel** with the system
+                  update (current version is known up-front) so "Checking for a newer JII…" is near-instant.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

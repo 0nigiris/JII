@@ -69,7 +69,6 @@ impl Provider for Snap {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Snap",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["snapd"]),
         })
     }

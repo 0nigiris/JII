@@ -74,8 +74,8 @@ has it.
 JII is **not** a package manager. It sits *on top of* the ones you already have and
 orchestrates them:
 
-> **DNF · COPR · apt · pacman · zypper · XBPS · Portage · Nix · Flatpak · Snap · GitHub Releases
-> (incl. AppImage assets) · Cargo · npm · pipx · Go · Homebrew**
+> **DNF · COPR · apt · pacman · AUR · zypper · XBPS · Portage · Nix · Flatpak · Snap · GitHub
+> Releases (incl. AppImage assets) · Cargo · npm · pipx · Go · Homebrew**
 
 It searches all of them at once, ranks the results by trust, freshness and your chosen profile,
 recommends the single best option, and installs it — transparently, and without ever running
@@ -230,9 +230,9 @@ jii update jii       update JII itself from the latest GitHub release (self-upda
 jii search <query>   show ranked candidates without installing
 jii info <name>      app card: description, homepage, license, author + all sources & why
 jii how <name>       explain how JII would install (or did install) it   (alias: jii why)
-jii sources          list installation sources and whether each is usable here
-jii providers        show ecosystem managers (npm, cargo, brew, Flatpak…) + what's installed
-jii providers add    bootstrap a missing manager (e.g. jii providers add npm)
+jii sources          list installation sources + ecosystem managers usable here
+jii sources add      bootstrap a missing manager (e.g. jii sources add npm; yay/paru on Arch)
+jii sources remove   uninstall an ecosystem manager (system managers are refused)
 jii doctor           diagnose sources + host, then interactively set up what's missing
                      (git/curl, PATH, Flathub, RPM Fusion, codecs, fonts…) — one y/n per item
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
@@ -318,6 +318,7 @@ JII uses whatever is present on your machine — mix and match freely.
 | **COPR** | Fedora community build service | 🟡 Community |
 | **apt** | Debian / Ubuntu repositories | 🟢 Official |
 | **pacman** | Arch Linux repositories | 🟢 Official |
+| **AUR** | Arch User Repository (via `yay`/`paru`, Arch only) | 🟡 Community |
 | **zypper** | openSUSE repositories | 🟢 Official |
 | **XBPS** | Void Linux repositories | 🟢 Official |
 | **Portage** | Gentoo repositories (`emerge`, from source) | 🟢 Official |
@@ -331,8 +332,9 @@ JII uses whatever is present on your machine — mix and match freely.
 | **Go** | Go modules | 🟡 Community |
 | **Homebrew** | Linuxbrew | 🟡 Community |
 
-Run **`jii sources`** to see which are usable on *your* box, and **`jii providers`** to see the
-ecosystem managers and what's installed. Missing one? `jii providers add npm` bootstraps it.
+Run **`jii sources`** to see which are usable on *your* box — including the ecosystem managers and
+what's installed. Missing one? `jii sources add npm` bootstraps it (or `jii sources add yay` on
+Arch); `jii sources remove <manager>` uninstalls one (system managers are refused).
 
 On **Nix**, if you manage your system declaratively (a NixOS `configuration.nix` or a home-manager
 `home.nix`), `jii <pkg>` offers a choice: install now with `nix profile install`, or add the package to

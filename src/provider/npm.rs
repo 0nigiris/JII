@@ -69,7 +69,6 @@ impl Provider for Npm {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Node.js (npm)",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["nodejs-npm", "npm"]),
         })
     }

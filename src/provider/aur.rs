@@ -77,7 +77,6 @@ impl Provider for Aur {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Platform::detect().arch_like.then_some(Ecosystem {
             label: "AUR helper (yay/paru)",
-            binary: "yay",
             bootstrap: Bootstrap::Script(
                 "git clone https://aur.archlinux.org/yay-bin.git && cd yay-bin && makepkg -si",
             ),

@@ -12,7 +12,39 @@ _Last updated: 2026-07-12_
 
 ---
 
-## Most recent work (2026-07-12, later) — read this first
+## Most recent work (2026-07-12, batch 5) — read this first
+
+**AUR provider + `jii sources` redesign (ADR-0062).**
+- **AUR provider** (`provider/aur.rs`, id `aur`, Community) — **Arch-family only.** New
+  `Platform::arch_like` (from `/etc/os-release` `ID`/`ID_LIKE`, derivative-proof via the `arch`
+  token) gates every entry point *plus* a helper (paru/yay) being present. Searches the AUR RPC v5;
+  installs/removes/updates via the helper with `needs_root=false` (a helper escalates to pacman
+  itself — the Flatpak-polkit precedent); `pacman -Qm` list. `search()`/`ecosystem()` both return
+  empty/None off-Arch, so AUR never surfaces on Fedora/Debian. Ranked below Flatpak/Snap, above the
+  language registries and github. Deliberately **not** `can_search`.
+- **`jii providers` merged into `jii sources`** (providers is now a hidden alias). One view:
+  ecosystem managers are annotated `[add: jii sources add <id>]` (missing) / `[remove: jii sources
+  remove <id>]` (installed); system repos get no hint.
+- **`jii sources add <id>`** = the old bootstrap (`yay`/`paru` show the manual `makepkg` install,
+  shown-never-run). **`jii yay`/`jii paru`** likewise bootstrap a helper (routed in `route_managers`).
+- **`jii sources remove <id>`** — uninstall an ecosystem manager. Reuses each ecosystem's
+  `Bootstrap::Packages` as the OS package(s); detects the host system manager (`SysManager`:
+  dnf/apt/pacman/zypper/xbps/portage), narrows to the package(s) actually installed (per-manager
+  `pkg_installed` probe — never guess-removes a wrong name across distros), **shows the exact
+  elevated command first**, confirms **default-no**, runs via `privilege.rs`. **System package
+  managers are refused** (would break the OS); script-installed brew/nix → manual note; yay/paru →
+  `pacman -Rs`. Removed the now-dead `Ecosystem.binary` field + `Palette::mark_bullet`.
+- **268 tests, clippy clean.** Verified on Fedora: merged `jii sources` view; `remove dnf` refused;
+  `-d` dry-run of `remove flatpak`→`dnf5 remove -y flatpak` and `remove go`→`golang`; `add yay`
+  refused off-Arch. **T7:** live helper install/AUR search + real manager removal need an Arch host.
+
+**Open follow-ups (TASKS "remaining"):** `-d`/`-n` confusion (confirmed live — `-n`=assume-no
+aborted a remove, `-d`=dry-run); mid-word fuzzy (`pipix`→`pipx`); and a **new owner request
+(mid-session):** `jii update` output polish — capture per-source output into a compact summary
+(`npm ✓ 984 packages updated`, flatpak EOL runtimes collapsed) + a per-source result table, and run
+the JII self-update GitHub check in parallel with the system update (near-instant).
+
+## Most recent work (2026-07-12, earlier) — read this too
 
 **Cross-system testing round → a batch of fixes.** The owner personally tested every distro
 except Gentoo/NixOS (report + screenshots in `~/Documents/suka/`) and filed ~26 issues (bugs,

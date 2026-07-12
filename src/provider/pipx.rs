@@ -70,7 +70,6 @@ impl Provider for Pipx {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Python (pipx)",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["pipx"]),
         })
     }

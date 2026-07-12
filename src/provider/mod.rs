@@ -263,14 +263,13 @@ pub enum Bootstrap {
 }
 
 /// An installable *ecosystem* manager (npm, cargo, brew, flatpak…), surfaced by
-/// `jii providers`. Returned by [`Provider::ecosystem`]; base system repos and
+/// `jii sources`. Returned by [`Provider::ecosystem`]; base system repos and
 /// non-managers return `None`. Pure metadata — no I/O, no per-host branching.
 pub struct Ecosystem {
     /// Human label, e.g. "Node.js (npm)".
     pub label: &'static str,
-    /// The command that proves the manager is present.
-    pub binary: &'static str,
-    /// How JII bootstraps it when it is missing.
+    /// How JII bootstraps it when it is missing (and, for a `Packages` manager, the OS
+    /// package(s) `jii sources remove` uninstalls).
     pub bootstrap: Bootstrap,
 }
 
@@ -589,7 +588,6 @@ mod tests {
         ];
         for (id, eco) in ecos {
             let eco = eco.unwrap_or_else(|| panic!("{id} should declare an ecosystem"));
-            assert!(!eco.binary.is_empty(), "{id} has an empty binary");
             match eco.bootstrap {
                 Bootstrap::Packages(names) => {
                     assert!(!names.is_empty(), "{id} declares no bootstrap packages")

@@ -2388,3 +2388,52 @@ barrier (ADR-0006) applies unchanged.
 generally, not just for Flatpak. Cost: a `Provider` API change (`can_search`), a `PackageCandidate`
 flag, new Flathub/Snap/brew search paths, and install-flow wiring — a multi-file change, so it lands as
 its own focused pass rather than bolted onto the batch-1 fixes.
+
+## ADR-0062 — AUR provider (Arch-only) + merge `jii providers` into `jii sources` with add/remove
+
+**Status:** Accepted (2026-07-12).
+
+**Context.** Two owner requests from the cross-system testing round: (1) `jii yay`/`jii paru`
+should work, **only on Arch-family** systems, backed by a real AUR source; (2) the ecosystem
+managers (`jii providers`) and the source list (`jii sources`) are two views of the same thing —
+merge them, and let a user **disable** a manager (JII stops seeing it) or **remove** it from the OS
+— but **never** remove a *system* package manager (that would break the OS).
+
+**Decision.**
+
+*AUR provider* (`provider/aur.rs`, id `aur`, Community). Searches the AUR RPC v5
+(`aur.archlinux.org/rpc`) and installs/removes/updates via an AUR helper (`paru`/`yay`), with
+`needs_root = false` — a helper must never run as root; it escalates to `pacman` itself (the
+Flatpak-polkit precedent). **Every entry point self-gates on Arch:** new `Platform::arch_like`
+(parsed from `/etc/os-release` `ID`/`ID_LIKE`, derivative-proof via the `arch` token) AND a helper
+present. `search()` returns empty off-Arch; `ecosystem()` returns `None` off-Arch, so AUR never
+shows in `jii sources` on Fedora/Debian/etc. Deliberately **not** `can_search` (unlike the language
+registries): without a helper there's nothing to install with, and AUR hits are meaningless off-Arch.
+`list_installed` = `pacman -Qm` (foreign packages). Ranked just below Flatpak/Snap, above the
+language registries and github.
+
+*Merge.* `jii providers` is now a hidden alias; `jii sources` is the single view. It annotates each
+ecosystem manager inline with `[add: …]` (when missing) or `[remove: …]` (when installed); system
+repos get no such hint. New subcommands: `jii sources add <id>` (bootstrap — the old `providers add`,
+plus `yay`/`paru` showing the manual `makepkg` install, shown-never-run) and
+`jii sources remove <id>`.
+
+*Removal.* Reuses each ecosystem's existing `Bootstrap::Packages` as the OS package(s) to uninstall
+(no new metadata): the host system manager is detected (`SysManager`: dnf/apt/pacman/zypper/xbps/
+portage), removal is narrowed to the package(s) actually installed (per-manager `pkg_installed`
+probe, so we never guess-remove a wrong name — go is `golang`/`go`/`golang-go` across distros), the
+**exact elevated command is shown first**, confirmation defaults to **no**, and it runs through
+`privilege.rs`. A `Bootstrap::Script` manager (Homebrew/Nix) can't be auto-removed → its own
+uninstaller is pointed to. A **system** package manager id is refused outright. AUR helpers (yay/paru)
+are removed via `pacman -Rs`.
+
+**Alternatives rejected.** (a) *Add a `Removal` field to `Ecosystem`* — unnecessary; the bootstrap
+package list already names the OS package. (b) *Guess-remove the first candidate name* — wrong across
+distros; the installed-probe is safer. (c) *Two tiny yay/paru providers* — boilerplate; one Arch-gated
+AUR provider + name aliases is enough. (d) *Let `jii remove` handle managers* — it operates on JII's
+registry (things JII installed); the manager wasn't, so a dedicated path is clearer and safer.
+
+**Consequences.** One `jii sources` view for everything; Arch users get real AUR + `jii yay`/`jii paru`;
+removal is safe-by-construction (system managers refused, exact command shown, default-no, installed-only
+targets). No core source-branch: gating lives in the AUR provider and in capability checks. `Platform`
+gains a durable `arch_like` family predicate (the first real consumer, as ADR-0029 anticipated).

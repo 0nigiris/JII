@@ -62,7 +62,6 @@ impl Provider for Nix {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Nix",
-            binary: BIN,
             // Nix bootstraps via its own multi-user installer, not a distro package.
             bootstrap: Bootstrap::Script("sh <(curl -L https://nixos.org/nix/install) --daemon"),
         })

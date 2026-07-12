@@ -76,7 +76,6 @@ impl Provider for Go {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Go",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["golang", "go", "golang-go"]),
         })
     }

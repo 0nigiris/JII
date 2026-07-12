@@ -62,7 +62,6 @@ impl Provider for Flatpak {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Flatpak",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["flatpak"]),
         })
     }

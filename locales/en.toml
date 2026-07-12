@@ -162,6 +162,17 @@ enabled = "Enabled source '{id}'."
 disabled_ok = "Disabled source '{id}' — JII will no longer consider it."
 already_enabled = "Source '{id}' is already enabled."
 already_disabled = "Source '{id}' is already disabled."
+add_hint2 = "[add: jii sources add {id}]"
+remove_hint = "[remove: jii sources remove {id}]"
+remove_system = "'{id}' is a system package manager — JII won't uninstall it (that would break your OS)."
+remove_not_installed = "{label} isn't installed — nothing to remove."
+remove_script = "{label} was installed by its own script, so JII won't remove it — use its own uninstaller."
+remove_no_system_mgr = "No system package manager was found to uninstall {label} with."
+remove_unknown_pkg = "Couldn't tell which package provides {label} here (tried: {names}) — remove it with your package manager."
+remove_confirm = "This will remove {label} from your system:"
+remove_prompt = "Remove it?"
+removed = "Removed {label}."
+remove_failed = "Could not remove {label}: {error}"
 
 [cache]
 path = "Search cache: {path}"
@@ -188,6 +199,12 @@ not_found = "Couldn't find a package for {label} in your active sources."
 tried = "Tried: {names}"
 script_only = "{label} isn't in your distro's repositories — it installs via its own script."
 script_wont_run = "JII won't run an installer script for you. To install it, run:"
+
+[aur]
+no_helper = "No AUR helper (yay/paru) is installed."
+not_arch = "{helper} is an AUR helper — it only applies to Arch-based systems."
+helper_present = "{helper} is already installed."
+helper_intro = "{helper} is built from the AUR with makepkg. JII won't run makepkg for you; to install {helper}, run:"
 
 [prompt]
 menu_hint = "↑/↓ move · Enter select · click to pick · Esc cancel"

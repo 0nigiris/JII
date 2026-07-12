@@ -160,6 +160,17 @@ enabled = "Источник «{id}» включён."
 disabled_ok = "Источник «{id}» отключён — JII больше не будет его учитывать."
 already_enabled = "Источник «{id}» уже включён."
 already_disabled = "Источник «{id}» уже отключён."
+add_hint2 = "[поставить: jii sources add {id}]"
+remove_hint = "[удалить: jii sources remove {id}]"
+remove_system = "«{id}» — системный менеджер пакетов; JII не станет его удалять (это сломает вашу ОС)."
+remove_not_installed = "{label} не установлен — удалять нечего."
+remove_script = "{label} был установлен своим скриптом, поэтому JII его не удаляет — используйте его собственный деинсталлятор."
+remove_no_system_mgr = "Не найден системный менеджер пакетов, чтобы удалить {label}."
+remove_unknown_pkg = "Не удалось определить, каким пакетом предоставлен {label} (пробовал: {names}) — удалите его своим менеджером пакетов."
+remove_confirm = "Это удалит {label} из вашей системы:"
+remove_prompt = "Удалить?"
+removed = "{label} удалён."
+remove_failed = "Не удалось удалить {label}: {error}"
 
 [cache]
 path = "Кеш поиска: {path}"
@@ -186,6 +197,12 @@ not_found = "Не удалось найти пакет для {label} в акт�
 tried = "Пробовал: {names}"
 script_only = "{label} нет в репозиториях вашего дистрибутива — он ставится своим скриптом."
 script_wont_run = "JII не будет запускать установочный скрипт за вас. Чтобы установить, выполните:"
+
+[aur]
+no_helper = "AUR-хелпер (yay/paru) не установлен."
+not_arch = "{helper} — это AUR-хелпер, он применим только к системам на базе Arch."
+helper_present = "{helper} уже установлен."
+helper_intro = "{helper} собирается из AUR через makepkg. JII не будет запускать makepkg за вас; чтобы установить {helper}, выполните:"
 
 [prompt]
 menu_hint = "↑/↓ выбрать · Enter подтвердить · клик мышью · Esc отмена"

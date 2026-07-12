@@ -140,8 +140,10 @@ pub enum Commands {
     /// Show installation history.
     History,
     /// List installation sources and whether each is usable here (native managers for other
-    /// distros are hidden by default; `--all` shows all). `jii sources disable <id>` / `enable
-    /// <id>` turn a source off/on so JII stops/starts considering it.
+    /// distros are hidden by default; `--all` shows all). Ecosystem managers (Flatpak, Snap,
+    /// cargo, npm, AUR helpers…) are annotated with how to add or remove them.
+    /// `jii sources disable|enable <id>` turns a source off/on; `jii sources add|remove <id>`
+    /// installs/uninstalls an ecosystem manager (system managers can't be removed).
     Sources {
         /// Show every source, including native managers that don't apply to this system.
         #[arg(long)]
@@ -149,8 +151,8 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<SourcesAction>,
     },
-    /// Manage the ecosystem managers themselves (npm, cargo, brew, Flatpak…): show what
-    /// is installed and bootstrap a missing one.
+    /// Deprecated alias for `jii sources` (the ecosystem managers are now shown there).
+    #[command(hide = true)]
     Providers {
         #[command(subcommand)]
         action: Option<ProvidersAction>,
@@ -210,6 +212,20 @@ pub enum SourcesAction {
     /// Turn a previously disabled source back on.
     Enable {
         /// The source id to re-enable.
+        id: String,
+    },
+    /// Bootstrap a missing ecosystem manager, e.g. `jii sources add flatpak` (or `yay`/`paru`
+    /// on Arch). Managers in the distro repos install through the normal flow; script-only
+    /// ones (Homebrew, Nix, an AUR helper) are shown, never run.
+    Add {
+        /// The ecosystem id (flatpak, snap, cargo, npm, pipx, go, brew, nix, yay, paru…).
+        id: String,
+    },
+    /// Uninstall an ecosystem manager from the system (confirmed; exact command shown first).
+    /// **System package managers (dnf/apt/pacman…) are refused** — removing them would break
+    /// the OS. Script-installed managers (Homebrew, Nix) print manual removal steps.
+    Remove {
+        /// The ecosystem id to uninstall (flatpak, snap, cargo, pipx, go, yay, paru…).
         id: String,
     },
 }
@@ -350,11 +366,16 @@ impl Cli {
                 Some(SourcesAction::Enable { id }) => {
                     self.sources_set_enabled(id, true, config, &renderer)
                 }
+                Some(SourcesAction::Add { id }) => self.sources_add(id, config, &renderer).await,
+                Some(SourcesAction::Remove { id }) => {
+                    self.sources_remove(id, config, &renderer).await
+                }
             },
+            // `jii providers` is the old name for `jii sources` (kept as a hidden alias).
             Some(Commands::Providers { action }) => match action {
-                None => self.providers(config, &renderer).await,
+                None => self.sources(false, config, &renderer).await,
                 Some(ProvidersAction::Add { name }) => {
-                    self.providers_add(name, config, &renderer).await
+                    self.sources_add(name, config, &renderer).await
                 }
             },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
@@ -1753,6 +1774,15 @@ impl Cli {
     ) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let full = engine.source_catalog().await;
+        // Which sources are ecosystem *managers* (bootstrappable/removable), by id → is it a
+        // pure script install (brew/nix/AUR helper)? System repos aren't here, so they get no
+        // add/remove hint — you don't uninstall the package manager your OS is built on.
+        let managers: std::collections::HashMap<&str, bool> = engine
+            .ecosystem_catalog()
+            .await
+            .into_iter()
+            .map(|e| (e.id, matches!(e.bootstrap, crate::provider::Bootstrap::Script(_))))
+            .collect();
         let hidden = full.iter().filter(|e| !e.relevant).count();
         let shown: Vec<&crate::engine::SourceEntry> =
             full.iter().filter(|e| all || e.relevant).collect();
@@ -1764,6 +1794,7 @@ impl Cli {
                     serde_json::json!({
                         "id": e.id, "trust": e.trust.label(),
                         "available": e.available, "relevant": e.relevant,
+                        "manager": managers.contains_key(e.id),
                     })
                 })
                 .collect();
@@ -1773,6 +1804,15 @@ impl Cli {
 
         let palette = renderer.palette();
         type Row<'a> = &'a crate::engine::SourceEntry;
+        // A right-hand hint for an ecosystem manager: `[remove: …]` when installed,
+        // `[add: …]` when not. Empty for system repos (not in `managers`).
+        let hint = |e: &crate::engine::SourceEntry| -> String {
+            if !managers.contains_key(e.id) {
+                return String::new();
+            }
+            let key = if e.available { "sources.remove_hint" } else { "sources.add_hint2" };
+            format!("  {}", palette.dim(&crate::t!(key, id = e.id)))
+        };
         let (active, inactive): (Vec<Row>, Vec<Row>) =
             shown.into_iter().partition(|e| e.available);
         if !active.is_empty() {
@@ -1780,21 +1820,21 @@ impl Cli {
             for e in &active {
                 let mark = palette.good(palette.mark_ok());
                 renderer.info(&format!(
-                    "  {mark} {} ({})",
+                    "  {mark} {} ({}){}",
                     palette.source(&format!("{:8}", e.id)),
-                    palette.trust(e.trust)
+                    palette.trust(e.trust),
+                    hint(e),
                 ));
             }
         }
         if !inactive.is_empty() {
             renderer.heading(&crate::t!("sources.unavailable"));
             for e in &inactive {
-                renderer.info(&palette.dim(&format!(
-                    "  {} {:8} ({})",
-                    palette.mark_bad(),
-                    e.id,
-                    e.trust.display()
-                )));
+                renderer.info(&format!(
+                    "  {}{}",
+                    palette.dim(&format!("{} {:8} ({})", palette.mark_bad(), e.id, e.trust.display())),
+                    hint(e),
+                ));
             }
         }
         // Nudge that some sources were hidden, so `--all` is discoverable.
@@ -1840,75 +1880,185 @@ impl Cli {
         Ok(())
     }
 
-    /// `jii providers` — the ecosystem *marketplace* view (#7): which language/app managers
-    /// (npm, cargo, brew, Flatpak…) are installed on this host, and how to bootstrap the
-    /// missing ones. Read-only; base system repos (dnf/apt) and non-managers (github) don't
-    /// appear — you don't install those, they *are* the system.
-    async fn providers(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
-        let engine = Engine::new(config)?;
-        let catalog = engine.ecosystem_catalog().await;
-
-        if renderer.is_json() {
-            let rows: Vec<_> = catalog
-                .iter()
-                .map(|e| {
-                    serde_json::json!({
-                        "id": e.id, "label": e.label, "binary": e.binary,
-                        "trust": e.trust.label(), "installed": e.installed,
-                    })
-                })
-                .collect();
-            renderer.json_value(&serde_json::json!(rows));
-            return Ok(());
-        }
-
-        let palette = renderer.palette();
-        let (have, missing): (Vec<_>, Vec<_>) = catalog.iter().partition(|e| e.installed);
-        if !have.is_empty() {
-            renderer.heading(&crate::t!("providers.installed"));
-            for e in &have {
-                renderer.info(&format!("  {} {}", palette.good(palette.mark_ok()), e.label));
-            }
-        }
-        if !missing.is_empty() {
-            if !have.is_empty() {
-                renderer.info("");
-            }
-            renderer.heading(&crate::t!("providers.available"));
-            for e in &missing {
-                renderer.info(&palette.dim(&format!(
-                    "  {} {}",
-                    palette.mark_bullet(),
-                    crate::t!("providers.add_hint", label = e.label, id = e.id)
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    /// `jii providers add <name>` — bootstrap a missing ecosystem manager (#8). Two honest
-    /// paths, no magic: a manager that lives in the distro repos (npm, cargo, go, pipx,
-    /// flatpak, snap) is resolved cross-distro (`nodejs-npm` on Fedora, `npm` elsewhere) and
-    /// handed to the **normal install path** — so it gets the same preview → confirm →
-    /// execute → record flow as any package (the doctor `--fix` pattern). A manager that
-    /// bootstraps via its own upstream script (Homebrew, Nix) is **shown, never run** — JII
-    /// does not pipe an installer into your shell (ADR-0005/0006 trust boundary).
-    async fn providers_add(
+    /// `jii sources add <id>` — bootstrap a missing ecosystem manager. Two honest paths, no
+    /// magic: a manager that lives in the distro repos (npm, cargo, go, pipx, flatpak, snap) is
+    /// resolved cross-distro (`nodejs-npm` on Fedora, `npm` elsewhere) and handed to the
+    /// **normal install path** — same preview → confirm → execute → record as any package. A
+    /// manager that bootstraps via its own upstream script (Homebrew, Nix, an AUR helper) is
+    /// **shown, never run** — JII does not pipe an installer into your shell (ADR-0005/0006).
+    async fn sources_add(
         &self,
-        name: &str,
+        id: &str,
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
+        // `jii sources add yay|paru` — an AUR helper, only meaningful on Arch.
+        if matches!(id, "yay" | "paru") {
+            return self.add_aur_helper(id, renderer).await;
+        }
         let engine = Engine::new(config.clone())?;
         let catalog = engine.ecosystem_catalog().await;
 
-        let Some(eco) = catalog.iter().find(|e| e.id == name) else {
-            renderer.error(&crate::t!("providers.unknown", name = name));
+        let Some(eco) = catalog.iter().find(|e| e.id == id) else {
+            renderer.error(&crate::t!("providers.unknown", name = id));
             let known: Vec<_> = catalog.iter().map(|e| e.id).collect();
             renderer.info(&crate::t!("providers.known", names = known.join(", ")));
             return Ok(());
         };
         self.bootstrap_ecosystem(&engine, eco, config, renderer).await
+    }
+
+    /// `jii sources add yay|paru` — an AUR helper is built from a PKGBUILD via `makepkg`, which
+    /// JII will **show, never run** (the same trust boundary as the brew/nix installer scripts).
+    /// If a helper is already present, say so. Arch-only: refuse elsewhere with a clear note.
+    async fn add_aur_helper(&self, helper: &str, renderer: &Renderer) -> crate::error::Result<()> {
+        if !crate::platform::Platform::detect().arch_like {
+            renderer.error(&crate::t!("aur.not_arch", helper = helper.to_string()));
+            return Ok(());
+        }
+        if crate::provider::which(helper).await {
+            renderer.success(&crate::t!("aur.helper_present", helper = helper.to_string()));
+            return Ok(());
+        }
+        renderer.info(&crate::t!("aur.helper_intro", helper = helper.to_string()));
+        renderer.info(&format!(
+            "  git clone https://aur.archlinux.org/{helper}-bin.git",
+        ));
+        renderer.info(&format!("  cd {helper}-bin && makepkg -si"));
+        Ok(())
+    }
+
+    /// `jii sources remove <id>` — uninstall an ecosystem manager from the system. Refuses the
+    /// system package managers (dnf/apt/pacman…): removing them would break the OS. A
+    /// script-installed manager (Homebrew, Nix) can't be auto-removed — its own uninstall is
+    /// pointed to. A repo-provided manager (flatpak/snap/cargo/pipx/go) is removed through the
+    /// host's system package manager, with the **exact elevated command shown first** and a
+    /// default-no confirmation. AUR helpers (yay/paru) are removed via pacman.
+    async fn sources_remove(
+        &self,
+        id: &str,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        // AUR helpers are ordinary pacman packages — remove them directly.
+        if matches!(id, "yay" | "paru") {
+            return self.remove_via_pacman(id, renderer).await;
+        }
+        let engine = Engine::new(config.clone())?;
+        let catalog = engine.ecosystem_catalog().await;
+
+        let Some(eco) = catalog.iter().find(|e| e.id == id) else {
+            // Not an ecosystem manager. If it's a *known* source, it's a system manager we
+            // refuse to uninstall; otherwise it's just an unknown id.
+            if crate::config::KNOWN_SOURCES.contains(&id) {
+                renderer.error(&crate::t!("sources.remove_system", id = id));
+            } else {
+                renderer.error(&crate::t!("sources.unknown", id = id));
+                let known: Vec<_> = catalog.iter().map(|e| e.id).collect();
+                renderer.info(&crate::t!("providers.known", names = known.join(", ")));
+            }
+            return Ok(());
+        };
+        if !eco.installed {
+            renderer.info(&crate::t!("sources.remove_not_installed", label = eco.label));
+            return Ok(());
+        }
+        let names = match eco.bootstrap {
+            // A script-installed manager (brew/nix/AUR): JII can't cleanly uninstall it.
+            crate::provider::Bootstrap::Script(_) => {
+                renderer.info(&crate::t!("sources.remove_script", label = eco.label));
+                return Ok(());
+            }
+            crate::provider::Bootstrap::Packages(names) => names,
+        };
+        let Some(mgr) = detect_system_manager().await else {
+            renderer.error(&crate::t!("sources.remove_no_system_mgr", label = eco.label));
+            return Ok(());
+        };
+        // Only remove the package(s) actually installed on this host, so we never guess-remove
+        // a wrong name (go is `golang` on Fedora, `go` on Arch, `golang-go` on Debian).
+        let mut installed = Vec::new();
+        for n in names {
+            if mgr.pkg_installed(n).await {
+                installed.push((*n).to_string());
+            }
+        }
+        if installed.is_empty() {
+            renderer.warn(&crate::t!(
+                "sources.remove_unknown_pkg",
+                label = eco.label,
+                names = names.join(", ")
+            ));
+            return Ok(());
+        }
+        self.run_system_remove(&mgr, &installed, eco.label, config, renderer).await
+    }
+
+    /// Remove an AUR helper (yay/paru) via pacman — the exact elevated command shown first,
+    /// default-no confirmation. Arch-only; a no-op with a note if it isn't installed.
+    async fn remove_via_pacman(
+        &self,
+        helper: &str,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        if !crate::provider::which(helper).await {
+            renderer.info(&crate::t!("sources.remove_not_installed", label = helper.to_string()));
+            return Ok(());
+        }
+        let argv = vec![
+            "pacman".to_string(),
+            "-Rs".to_string(),
+            "--noconfirm".to_string(),
+            helper.to_string(),
+        ];
+        self.confirm_and_run_removal(&argv, true, helper, renderer).await
+    }
+
+    /// Show the elevated system-manager removal command, confirm (default no), then run it.
+    async fn run_system_remove(
+        &self,
+        mgr: &SysManager,
+        pkgs: &[String],
+        label: &str,
+        _config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let (argv, needs_root) = mgr.remove_argv(pkgs);
+        self.confirm_and_run_removal(&argv, needs_root, label, renderer).await
+    }
+
+    /// Shared tail of every manager removal: print the exact elevated command, honour
+    /// `--dry-run`, ask a default-no confirmation, then run it through the privilege layer.
+    async fn confirm_and_run_removal(
+        &self,
+        argv: &[String],
+        needs_root: bool,
+        label: &str,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let privilege = crate::privilege::Privilege::detect();
+        let shown = privilege.elevated_argv(argv, needs_root);
+        renderer.warn(&crate::t!("sources.remove_confirm", label = label.to_string()));
+        renderer.info(&format!("  {}", shown.join(" ")));
+        if self.global.dry_run {
+            renderer.info(&crate::t!("common.dry_run_unchanged"));
+            return Ok(());
+        }
+        let flags = self.prompt_flags(false);
+        if !prompt::confirm(renderer, &crate::t!("sources.remove_prompt"), false, &flags) {
+            renderer.info(&crate::t!("common.aborted"));
+            return Ok(());
+        }
+        privilege.prime().await?;
+        match privilege.run(argv, needs_root).await {
+            Ok(()) => renderer.success(&crate::t!("sources.removed", label = label.to_string())),
+            Err(e) => renderer.error(&crate::t!(
+                "sources.remove_failed",
+                label = label.to_string(),
+                error = e.to_string()
+            )),
+        }
+        Ok(())
     }
 
     /// Split ecosystem-manager names out of an install request and bootstrap each (#4),
@@ -1925,8 +2075,14 @@ impl Cli {
         let ids = engine.ecosystem_ids();
         let pinned_globally = self.global.source.is_some();
         let bare_name = |p: &str| p.split([':', '@']).next().unwrap_or(p).to_string();
-        let is_manager_name =
-            |p: &str| !pinned_globally && !p.contains(':') && ids.iter().any(|id| *id == bare_name(p));
+        // `yay`/`paru` are AUR helpers (Arch-only) — bare-name manager requests like any other.
+        let arch_like = crate::platform::Platform::detect().arch_like;
+        let is_helper = move |name: &str| arch_like && matches!(name, "yay" | "paru");
+        let is_manager_name = |p: &str| {
+            !pinned_globally
+                && !p.contains(':')
+                && (ids.iter().any(|id| *id == bare_name(p)) || is_helper(&bare_name(p)))
+        };
 
         // Common case (no manager among the names): return untouched, no catalog I/O.
         if !packages.iter().any(|p| is_manager_name(p)) {
@@ -1936,8 +2092,11 @@ impl Cli {
         let catalog = engine.ecosystem_catalog().await;
         let mut rest = Vec::new();
         for p in packages {
-            if is_manager_name(p)
-                && let Some(eco) = catalog.iter().find(|e| e.id == bare_name(p))
+            let name = bare_name(p);
+            if is_helper(&name) {
+                self.add_aur_helper(&name, renderer).await?;
+            } else if is_manager_name(p)
+                && let Some(eco) = catalog.iter().find(|e| e.id == name)
             {
                 self.bootstrap_ecosystem(engine, eco, config.clone(), renderer).await?;
             } else {
@@ -3412,10 +3571,118 @@ async fn write_nix_config_root(
     Ok(jii_backup_path(path))
 }
 
+/// The host's system package manager, used to **uninstall** an ecosystem manager that was
+/// installed as a distro package (`jii sources remove flatpak`). Detected by binary presence;
+/// each variant knows both how to remove a package and how to check one is installed, so we
+/// never guess-remove a package name that doesn't exist on this distro.
+enum SysManager {
+    /// dnf/dnf5 (Fedora/RHEL) — RPM-based.
+    Dnf(&'static str),
+    /// apt-get (Debian/Ubuntu).
+    Apt,
+    /// pacman (Arch).
+    Pacman,
+    /// zypper (openSUSE) — RPM-based.
+    Zypper,
+    /// xbps (Void).
+    Xbps,
+    /// portage/emerge (Gentoo).
+    Portage,
+}
+
+/// Detect the host's system package manager, in the order distros ship them. `xbps` is
+/// detected via `xbps-install` (the remove tool `xbps-remove` ships in the same package).
+async fn detect_system_manager() -> Option<SysManager> {
+    use crate::provider::which;
+    if which("dnf5").await {
+        Some(SysManager::Dnf("dnf5"))
+    } else if which("dnf").await {
+        Some(SysManager::Dnf("dnf"))
+    } else if which("apt-get").await {
+        Some(SysManager::Apt)
+    } else if which("pacman").await {
+        Some(SysManager::Pacman)
+    } else if which("zypper").await {
+        Some(SysManager::Zypper)
+    } else if which("xbps-install").await {
+        Some(SysManager::Xbps)
+    } else if which("emerge").await {
+        Some(SysManager::Portage)
+    } else {
+        None
+    }
+}
+
+impl SysManager {
+    /// The elevated argv (and `needs_root`) to remove `pkgs` with this manager.
+    fn remove_argv(&self, pkgs: &[String]) -> (Vec<String>, bool) {
+        let mut argv: Vec<String> = match self {
+            SysManager::Dnf(bin) => vec![bin.to_string(), "remove".into(), "-y".into()],
+            SysManager::Apt => vec!["apt-get".into(), "remove".into(), "-y".into()],
+            SysManager::Pacman => vec!["pacman".into(), "-Rs".into(), "--noconfirm".into()],
+            SysManager::Zypper => vec!["zypper".into(), "--non-interactive".into(), "remove".into()],
+            SysManager::Xbps => vec!["xbps-remove".into(), "-Ry".into()],
+            SysManager::Portage => vec!["emerge".into(), "--unmerge".into()],
+        };
+        argv.extend(pkgs.iter().cloned());
+        (argv, true)
+    }
+
+    /// Whether `name` is currently installed, checked with a cheap query so removal targets only
+    /// packages that actually exist here. Portage has no cheap universal probe, so it optimistically
+    /// includes the name (the shown `emerge --unmerge` no-ops harmlessly on an absent package).
+    async fn pkg_installed(&self, name: &str) -> bool {
+        let ok = |argv: &[&str]| {
+            let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+            async move {
+                tokio::process::Command::new(&argv[0])
+                    .args(&argv[1..])
+                    .output()
+                    .await
+                    .is_ok_and(|o| o.status.success())
+            }
+        };
+        match self {
+            SysManager::Dnf(_) | SysManager::Zypper => ok(&["rpm", "-q", name]).await,
+            SysManager::Apt => tokio::process::Command::new("dpkg-query")
+                .args(["-W", "-f=${Status}", name])
+                .output()
+                .await
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("install ok installed")),
+            SysManager::Pacman => ok(&["pacman", "-Q", name]).await,
+            SysManager::Xbps => ok(&["xbps-query", name]).await,
+            SysManager::Portage => true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{PkgVersion, TrustLevel};
+
+    #[test]
+    fn sys_manager_remove_argv_is_per_manager_and_root() {
+        let pkgs = vec!["flatpak".to_string()];
+        let (argv, root) = SysManager::Dnf("dnf5").remove_argv(&pkgs);
+        assert_eq!(argv, ["dnf5", "remove", "-y", "flatpak"]);
+        assert!(root);
+        let (argv, _) = SysManager::Apt.remove_argv(&pkgs);
+        assert_eq!(argv, ["apt-get", "remove", "-y", "flatpak"]);
+        let (argv, _) = SysManager::Pacman.remove_argv(&pkgs);
+        assert_eq!(argv, ["pacman", "-Rs", "--noconfirm", "flatpak"]);
+        let (argv, _) = SysManager::Zypper.remove_argv(&pkgs);
+        assert_eq!(argv, ["zypper", "--non-interactive", "remove", "flatpak"]);
+        let (argv, _) = SysManager::Xbps.remove_argv(&pkgs);
+        assert_eq!(argv, ["xbps-remove", "-Ry", "flatpak"]);
+    }
+
+    #[test]
+    fn sys_manager_remove_argv_carries_all_packages() {
+        let pkgs = vec!["cargo".to_string(), "rust".to_string()];
+        let (argv, _) = SysManager::Dnf("dnf").remove_argv(&pkgs);
+        assert_eq!(argv, ["dnf", "remove", "-y", "cargo", "rust"]);
+    }
 
     #[test]
     fn write_nix_config_backs_up_then_overwrites() {

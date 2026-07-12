@@ -42,11 +42,6 @@ impl Palette {
         if self.unicode { "⚠" } else { "!" }
     }
 
-    /// Neutral bullet for "available but not installed" — `○`, or `-` as a fallback.
-    pub fn mark_bullet(&self) -> &'static str {
-        if self.unicode { "○" } else { "-" }
-    }
-
     /// "Recommended" flag — `⭐`, or `*` where the terminal can't render it.
     pub fn mark_star(&self) -> &'static str {
         if self.unicode { "⭐" } else { "*" }

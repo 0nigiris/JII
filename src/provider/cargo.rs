@@ -72,7 +72,6 @@ impl Provider for Cargo {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Rust (cargo)",
-            binary: BIN,
             bootstrap: Bootstrap::Packages(&["cargo", "rust"]),
         })
     }

@@ -72,7 +72,6 @@ impl Provider for Homebrew {
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Homebrew",
-            binary: BIN,
             // Homebrew is not in any distro repo — it bootstraps via its own installer.
             bootstrap: Bootstrap::Script(
                 "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",

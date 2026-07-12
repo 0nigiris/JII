@@ -93,8 +93,6 @@ pub struct SourceEntry {
 pub struct EcosystemStatus {
     pub id: &'static str,
     pub label: &'static str,
-    pub binary: &'static str,
-    pub trust: TrustLevel,
     pub installed: bool,
     pub bootstrap: crate::provider::Bootstrap,
 }
@@ -850,8 +848,6 @@ impl Engine {
                 out.push(EcosystemStatus {
                     id: provider.id(),
                     label: eco.label,
-                    binary: eco.binary,
-                    trust: provider.trust(),
                     installed: provider.is_available().await,
                     bootstrap: eco.bootstrap,
                 });
