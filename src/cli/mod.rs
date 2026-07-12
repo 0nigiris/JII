@@ -2106,7 +2106,7 @@ impl Cli {
 
     /// The `doctor` setup questionnaire (ADR-0041). Walks every actionable item — each fixable
     /// system check (git/curl, Flathub, PATH) and each distro-appropriate catalog suggestion
-    /// (RPM Fusion, codecs, fonts, …) — asks a plain yes/no (Enter = skip, default no), and on
+    /// (RPM Fusion, codecs, fonts, …) — asks a plain yes/no (Enter = accept, default yes), and on
     /// "yes" applies it immediately. The single question is the consent, so installs don't ask
     /// twice (`with_yes`); the trust barrier (ADR-0006) still gates anything untrusted.
     /// `--dry-run` shows what each "yes" *would* do without changing anything.
@@ -2158,7 +2158,7 @@ impl Cli {
                 Fix::PathExport { dir } => crate::t!("doctor.q_add_path", dir = dir.display()),
                 Fix::Command { .. } => crate::t!("doctor.q_fix", label = check.label),
             };
-            if !prompt::confirm(renderer, &format!("  {question}"), false, &flags) {
+            if !prompt::confirm(renderer, &format!("  {question}"), true, &flags) {
                 continue;
             }
             self.apply_fix(fix, config.clone(), renderer).await?;
@@ -2179,7 +2179,7 @@ impl Cli {
                 renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
             }
             let question = crate::t!("doctor.q_setup", title = r.title);
-            if !prompt::confirm(renderer, &format!("    {question}"), false, &flags) {
+            if !prompt::confirm(renderer, &format!("    {question}"), true, &flags) {
                 continue;
             }
             // Enable a prerequisite repo first (e.g. RPM Fusion for codecs/VLC). The exact

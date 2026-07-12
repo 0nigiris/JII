@@ -304,6 +304,52 @@ fn ask(renderer: &Renderer, question: &str, default_yes: bool) -> bool {
     }
 
     let hint = if default_yes { "[Y/n]" } else { "[y/N]" };
+    // Prefer a single keypress (y/n acts immediately, no Enter). Fall back to line input
+    // if raw mode is unavailable (a limited terminal), so we never lose the ability to ask.
+    match ask_key(question, hint, default_yes) {
+        Ok(answer) => answer,
+        Err(_) => ask_line(question, hint, default_yes),
+    }
+}
+
+/// Read a single y/n keypress — no Enter needed. `y`/`n` answer immediately; Enter takes
+/// the default; Esc or Ctrl-C cancel to "no". Raw mode is always restored, and the chosen
+/// letter is echoed (raw mode doesn't echo) so the transcript still reads naturally.
+/// Returns `Err` if raw mode can't be enabled, so the caller can fall back to line input.
+fn ask_key(question: &str, hint: &str, default_yes: bool) -> io::Result<bool> {
+    let mut out = io::stdout();
+    write!(out, "{question} {hint} ")?;
+    out.flush()?;
+
+    terminal::enable_raw_mode()?;
+    let result = (|| -> io::Result<bool> {
+        loop {
+            match event::read()? {
+                Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => return Ok(true),
+                    KeyCode::Char('n') | KeyCode::Char('N') => return Ok(false),
+                    KeyCode::Enter => return Ok(default_yes),
+                    KeyCode::Esc => return Ok(false),
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Ok(false);
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    })();
+    // Restore the terminal whatever happened, then echo the resolved answer + newline.
+    let _ = terminal::disable_raw_mode();
+    if let Ok(answer) = result {
+        let _ = writeln!(out, "{}", if answer { "y" } else { "n" });
+        let _ = out.flush();
+    }
+    result
+}
+
+/// Line-based yes/no fallback (Enter to submit) for terminals without raw mode.
+fn ask_line(question: &str, hint: &str, default_yes: bool) -> bool {
     print!("{question} {hint} ");
     let _ = io::stdout().flush();
 
