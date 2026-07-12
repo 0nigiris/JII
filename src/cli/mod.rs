@@ -147,6 +147,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<ProvidersAction>,
     },
+    /// Show or set the interface language, saved to the config so it sticks. `auto` follows
+    /// the system locale. Example: `jii lang ru`. (Per-run override: the global `--lang`.)
+    Lang {
+        /// Language to set: en, ru, or auto. Omit to show the current setting.
+        code: Option<String>,
+    },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
     /// Remove JII itself (same as `jii remove jii`).
@@ -200,6 +206,7 @@ impl Cli {
     fn onboarding_task_summary(&self) -> Option<String> {
         match &self.command {
             Some(Commands::Setup)
+            | Some(Commands::Lang { .. })
             | Some(Commands::Doctor { .. })
             | Some(Commands::Uninstall)
             | Some(Commands::Completions { .. })
@@ -295,6 +302,7 @@ impl Cli {
                     self.providers_add(name, config, &renderer).await
                 }
             },
+            Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
             Some(Commands::Setup) => self.setup(config, &renderer, false).await,
             Some(Commands::Uninstall) => self.self_uninstall(config, &renderer).await,
             Some(Commands::Completions { shell }) => {
@@ -1808,6 +1816,41 @@ impl Cli {
                 Ok(())
             }
         }
+    }
+
+    /// `jii lang [code]` — show or persist the interface language. With no argument it prints
+    /// the saved setting and the choices; with `en`/`ru`/`auto` it writes `[ui] locale` to the
+    /// config so the choice sticks across runs (the global `--lang` stays a per-run override).
+    fn lang(
+        &self,
+        code: Option<&str>,
+        mut config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        const SUPPORTED: &[&str] = &["auto", "en", "ru"];
+        match code {
+            None => {
+                renderer.info(&crate::t!("lang.current", lang = config.ui.locale.clone()));
+                renderer.info(&crate::t!("lang.available", list = SUPPORTED.join(", ")));
+            }
+            Some(raw) => {
+                let c = raw.trim().to_ascii_lowercase();
+                if !SUPPORTED.contains(&c.as_str()) {
+                    renderer.error(&crate::t!(
+                        "lang.unknown",
+                        code = c.clone(),
+                        list = SUPPORTED.join(", ")
+                    ));
+                    return Ok(());
+                }
+                config.ui.locale = c.clone();
+                config.save()?;
+                // The active language is fixed for this process, so confirm in the language
+                // just chosen (it takes effect for real on the next run).
+                renderer.success(&crate::i18n::tr_in(&c, "lang.set", &[("lang", c.clone())]));
+            }
+        }
+        Ok(())
     }
 
     /// The first-run wizard (and `jii setup`). Warm, short, jargon-free — written for someone

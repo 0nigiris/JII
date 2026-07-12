@@ -69,6 +69,24 @@ pub fn tr_args(key: &str, args: &[(&str, String)]) -> String {
     s
 }
 
+/// Translate a key in a *specific* shipped language, bypassing the globally active one
+/// (which is fixed for the process by [`init`]). `jii lang <code>` uses this to confirm in
+/// the language just chosen. `code` accepts `auto` — it resolves against the environment.
+pub fn tr_in(code: &str, key: &str, args: &[(&str, String)]) -> String {
+    let lang = if code == "auto" { resolve_lang(None, "auto") } else { normalize(code) };
+    let table = if lang == "ru" { flatten(RU) } else { flatten(EN) };
+    let english = flatten(EN);
+    let mut s = table
+        .get(key)
+        .or_else(|| english.get(key))
+        .cloned()
+        .unwrap_or_else(|| key.to_string());
+    for (name, val) in args {
+        s = s.replace(&format!("{{{name}}}"), val);
+    }
+    s
+}
+
 /// Resolve the language code (`"en"`/`"ru"`) from, in order: an explicit `--lang` flag, the
 /// config `[ui] locale` (unless `"auto"`/empty), then `$LC_ALL`/`$LC_MESSAGES`/`$LANG`, then
 /// English. Only the languages we ship are honoured; anything else falls back to English.

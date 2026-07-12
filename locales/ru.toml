@@ -369,3 +369,9 @@ edit_apply = "Примените, когда будете готовы:  {cmd}"
 edit_failed = "Не удалось изменить файл: {error}"
 edit_dry_run = "Пробный прогон — файл не изменён."
 edit_root_cmds = "Этот конфиг принадлежит root; JII выполнит от root (через sudo/pkexec):"
+
+[lang]
+current = "Текущий язык: {lang}"
+available = "Доступные: {list}"
+set = "Язык переключён на {lang}."
+unknown = "Неизвестный язык «{code}». Доступные: {list}"

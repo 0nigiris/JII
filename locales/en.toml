@@ -371,3 +371,9 @@ edit_apply = "Apply it when ready:  {cmd}"
 edit_failed = "Could not edit the file: {error}"
 edit_dry_run = "Dry run — the file was not changed."
 edit_root_cmds = "This config is root-owned; JII will run these as root (via sudo/pkexec):"
+
+[lang]
+current = "Current language: {lang}"
+available = "Available: {list}"
+set = "Language set to {lang}."
+unknown = "Unknown language '{code}'. Available: {list}"
