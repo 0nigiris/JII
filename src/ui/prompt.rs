@@ -105,7 +105,7 @@ pub fn choose(renderer: &Renderer, header: &str, options: &[String], default: us
 /// One menu item line: `❯ text` (highlighted) or `  text`.
 fn menu_line(selected: bool, text: &str, palette: crate::ui::Palette) -> String {
     if selected {
-        format!("{} {}", palette.good("❯"), palette.heading(text))
+        format!("{} {}", palette.good(palette.mark_pointer()), palette.heading(text))
     } else {
         format!("  {text}")
     }

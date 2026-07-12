@@ -47,6 +47,21 @@ impl Palette {
         if self.unicode { "○" } else { "-" }
     }
 
+    /// "Recommended" flag — `⭐`, or `*` where the terminal can't render it.
+    pub fn mark_star(&self) -> &'static str {
+        if self.unicode { "⭐" } else { "*" }
+    }
+
+    /// Informational prefix — `ℹ`, or `i` as a fallback.
+    pub fn mark_info(&self) -> &'static str {
+        if self.unicode { "ℹ" } else { "i" }
+    }
+
+    /// Menu selection pointer — `❯`, or `>` where the terminal can't render it.
+    pub fn mark_pointer(&self) -> &'static str {
+        if self.unicode { "❯" } else { ">" }
+    }
+
     /// A trust level in its own hue: official green, community yellow, untrusted red.
     pub fn trust(&self, level: TrustLevel) -> String {
         let s = level.display();

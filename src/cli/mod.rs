@@ -574,8 +574,9 @@ impl Cli {
                     .map(|(i, c)| {
                         if i == 0 {
                             format!(
-                                "{}  ⭐ {}",
+                                "{}  {} {}",
                                 candidate_line(c, palette),
+                                palette.mark_star(),
                                 crate::t!("install.recommended_tag")
                             )
                         } else {
@@ -1736,7 +1737,7 @@ impl Cli {
         }
         if let Some(note) = &card.note {
             renderer.info("");
-            renderer.info(&format!("ℹ {note}"));
+            renderer.info(&format!("{} {note}", palette.mark_info()));
         }
         Ok(())
     }
