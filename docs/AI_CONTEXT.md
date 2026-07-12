@@ -12,28 +12,44 @@ _Last updated: 2026-07-12_
 
 ---
 
-## Most recent work (2026-07-12) — read this first
+## Most recent work (2026-07-12, later) — read this first
 
-**"JII everywhere" — packaging recipes for every mainstream channel (ADR-0060).** Continuing the
-install-easy epic toward the owner's goal ("installable from everywhere; every COPR chroot; server
-distros"). Landed this session (all in `packaging/`, each a prebuilt-binary repack of the release
-tarball, no compile):
+**Cross-system testing round → a batch of fixes.** The owner personally tested every distro
+except Gentoo/NixOS (report + screenshots in `~/Documents/suka/`) and filed ~26 issues (bugs,
+UX, and architecture). Landed this session, most-critical first:
 
-- **`homebrew/jii.rb`** (Linux/Linuxbrew tap), **`alpine/APKBUILD`** (musl-native; `sha512sums` via
-  `abuild checksum`), **`void/template`** (real sha256), **`gentoo/jii-bin-*.ebuild`** (overlay),
-  **`nix/jii.nix`** (SRI hashes baked in, static → no autoPatchelf).
-- **crates.io ready**: `Cargo.toml` gained `repository`/`homepage`/`readme`/`keywords`/`categories`/
-  `rust-version`; `cargo publish --dry-run` packages + compiles clean → `cargo install jii` works on
-  **any OS with Rust** once published (needs a crates.io token — owner action).
-- **A shareable cross-system test guide** was published as an Artifact from `docs/SUPPORTED_SYSTEMS.md`
-  (for the owner to hand a friend); `docs/SUPPORTED_SYSTEMS.md` install section extended with the new
-  channels; `packaging/README.md` documents each recipe + "which channel serves whom".
-- **Not build-tested off-Fedora.** This dev host is Fedora-only, so the new recipes ship
-  validated-by-construction (same tarball/layout as the proven `.rpm`/AUR paths), each still needs one
-  real build on its target distro + the owner's account to publish. **No core Rust behaviour changed.**
+- **`install.sh` checksum bug (was breaking native install on Ubuntu + openSUSE).** nfpm writes the
+  package's real version `0.1.5~beta` into the `.sha256` sidecar, but GitHub rewrites `~`→`.` in
+  uploaded asset names, so `sha256sum -c` looked for a file not on disk and failed even though the
+  bytes matched. Now verifies by **hash, not filename** (`verify_sha256` helper). Fix is live on
+  `master` immediately (install.sh is served raw). Verified on the real released `.rpm` + `.deb`.
+- **TTY/Unicode fallback.** `✓/✗/⚠/○` rendered as `▪` tofu on the Void live console (`TERM=linux`).
+  `Platform::detect().unicode` (UTF-8 locale AND not a glyph-poor console) now drives `+/x/!/-`
+  ASCII markers, centralised behind `Palette::mark_*`.
+- **Prompt UX:** doctor's setup questionnaire now defaults to **yes** (`[Y/n]`, Enter accepts);
+  destructive prompts stay default-no. `ask()` reads a **single keypress** (no Enter) via crossterm
+  raw mode, with a line-input fallback.
+- **`jii doctor` prints the config file path** (recurring "where's the config?" question).
+- **`jii lang [en|ru|auto]`** — view/set the UI language from the CLI (writes `[ui] locale`);
+  confirms in the newly chosen language via `i18n::tr_in`. `--lang` remains a per-run override.
 
-**Still open (owner directive, awaiting go): T6 bootstrap-a-missing-manager + rank GitHub strictly last.**
-Deferred until after the install-easy epic; see TASKS.md "Next".
+**Owner-decided scope for the remaining architecture items (see TASKS.md "Next"):**
+GitHub ranked strictly last + bootstrap-the-source-before-github (pt.17); merge `jii sources` +
+`jii providers` into one `jii sources` with enable/disable + **`remove --purge`** (deinstall the
+manager from the OS, with confirmation) + **hide non-applicable native sources by default**
+(show all via a flag). These need ADRs and are the next core work.
+
+<details><summary>Earlier the same day (2026-07-12) — "JII everywhere" packaging recipes (ADR-0060)</summary>
+
+Prebuilt-binary recipes for every mainstream channel (all in `packaging/`, each a repack of the
+release tarball, no compile): **`homebrew/jii.rb`**, **`alpine/APKBUILD`** (sha512 via `abuild
+checksum`), **`void/template`**, **`gentoo/jii-bin-*.ebuild`**, **`nix/jii.nix`**. **crates.io
+ready** (`Cargo.toml` metadata; `cargo publish --dry-run` clean → `cargo install jii`). Not
+build-tested off-Fedora (dev host is Fedora-only) — validated-by-construction, each needs one real
+build + the owner's account to publish. A shareable cross-system test guide was produced from
+`docs/SUPPORTED_SYSTEMS.md`. No core Rust behaviour changed.
+
+</details>
 
 <details><summary>Previous session (2026-07-11) — install.sh native install + multi-arch spec</summary>
 

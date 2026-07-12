@@ -528,6 +528,27 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (`cargo publish --dry-run` clean → `cargo install jii`). Cross-system test guide
                   published as an Artifact for a friend. **Owner actions:** publish each (their accounts)
                   + one real build per off-Fedora recipe; exotic arches wait on the CI cross-compile epic.
+            - [x] **Cross-system testing fixes — batch 1 (2026-07-12).** Owner tested every distro but
+                  Gentoo/NixOS (report + screenshots in `~/Documents/suka/`), filed ~26 issues. Fixed:
+                  (1) **`install.sh` checksum** — verify by hash not filename; GitHub rewrites `~`→`.` in
+                  asset names so `sha256sum -c` failed on the `~beta` sidecar name, breaking native
+                  `.deb`/`.rpm` install on Ubuntu+openSUSE (portable was fine). Live on `master`.
+                  (2) **TTY/Unicode fallback** — `Platform::unicode` drives `+/x/!/-` when `TERM=linux`
+                  or non-UTF-8 locale (was `▪` tofu on Void console); centralised behind `Palette::mark_*`.
+                  (3) **Prompt UX** — doctor setup defaults to yes (`[Y/n]`), single-keypress y/n (no Enter).
+                  (4) **`jii doctor`** shows the config path. (5) **`jii lang [en|ru|auto]`** view/set UI language.
+            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** Bugs: apt update should be
+                  `apt-get update && upgrade` and mention snap; openSUSE `jii firefox` shows "closest" not an
+                  exact match; Arch didn't offer fonts/vlc suggestions; portable install should offer the PATH
+                  hint everywhere (openSUSE missed it). Features: fuzzy "did you mean?" on **all** sources (not
+                  just github); a GitHub repo **link** when no package matches / to confirm the right app;
+                  `jii cache clear`; a short alias for `--source <native>`; `jii yay`/`jii paru` (bootstrap AUR
+                  helpers); flatpak sudo/password detection. **Architecture (need ADRs):** GitHub ranked strictly
+                  last + **bootstrap the source before falling to github** (pt.17, = the frozen T6 + github-last,
+                  now owner-approved); merge `jii sources`+`jii providers` into one `jii sources` with
+                  enable/disable + `remove --purge` (deinstall the manager from the OS, confirmed) + **hide
+                  non-applicable native sources by default** (all via a flag); should first-run force `setup`,
+                  and put the git-key setup hint in `doctor` too. Unify `-d`/`-n` semantics (users confuse them).
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
