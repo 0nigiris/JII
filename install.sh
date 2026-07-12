@@ -57,6 +57,17 @@ else
   err "need curl or wget to download."
 fi
 
+# Verify FILE against a sha256 SIDECAR by comparing digests only — never by the
+# filename recorded inside the sidecar. nfpm writes the package's real version into
+# the sidecar (jii-0.1.5~beta-…), but GitHub rewrites '~' to '.' in uploaded asset
+# names (jii-0.1.5.beta-…), so `sha256sum -c` looks for a file that isn't on disk and
+# fails spuriously even though the bytes are correct. Compare the hash, ignore the name.
+verify_sha256() {
+  _want=$(awk '{print $1; exit}' "$2" 2>/dev/null)
+  _got=$(sha256sum "$1" 2>/dev/null | awk '{print $1; exit}')
+  [ -n "$_want" ] && [ "$_want" = "$_got" ]
+}
+
 # --- 2. Detect architecture -------------------------------------------------
 case "$(uname -m)" in
   x86_64 | amd64) ARCH="x86_64"; RPMARCH="x86_64"; DEBARCH="amd64" ;;
@@ -166,7 +177,7 @@ native_install() {
   }
   if dl "$URL.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
     info "Verifying checksum…"
-    ( cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1 ) \
+    verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
       || err "checksum verification failed — refusing to install."
   fi
 
@@ -197,8 +208,7 @@ portable_install() {
 
   if dl "$BASE/$ASSET.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
     info "Verifying checksum…"
-    # The .sha256 file records the asset's basename; verify from inside $TMP.
-    ( cd "$TMP" && sha256sum -c "$ASSET.sha256" >/dev/null 2>&1 ) \
+    verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
       || err "checksum verification failed — refusing to install."
   else
     info "No checksum published for this asset; skipping verification."
