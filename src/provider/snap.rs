@@ -56,6 +56,12 @@ impl Provider for Snap {
         which(BIN).await
     }
 
+    /// The Snap Store info API is a network call — no snapd needed to find a match, so a host
+    /// without snap can still be offered "install snap, then this" (ADR-0061 part B).
+    fn can_search(&self) -> bool {
+        true
+    }
+
     fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
         Some(format!("https://snapcraft.io/{}", candidate.name))
     }

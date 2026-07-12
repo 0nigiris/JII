@@ -59,6 +59,16 @@ impl Provider for Homebrew {
         which(BIN).await
     }
 
+    /// The Homebrew formulae API is a network call — no brew needed to find a match, so a host
+    /// without Homebrew can still be offered "install brew, then this" (ADR-0061 part B).
+    fn can_search(&self) -> bool {
+        true
+    }
+
+    fn web_url(&self, candidate: &PackageCandidate) -> Option<String> {
+        Some(format!("https://formulae.brew.sh/formula/{}", candidate.name))
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Homebrew",
