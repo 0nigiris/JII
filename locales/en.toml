@@ -156,6 +156,12 @@ plan_remove_pkg = "Remove JII via the system package manager"
 active = "Active sources:"
 unavailable = "Enabled but unavailable (tool not installed):"
 hidden = "{count} native manager(s) for other systems hidden — `jii sources --all` to show."
+unknown = "Unknown source '{id}'."
+known = "Known sources: {list}"
+enabled = "Enabled source '{id}'."
+disabled_ok = "Disabled source '{id}' — JII will no longer consider it."
+already_enabled = "Source '{id}' is already enabled."
+already_disabled = "Source '{id}' is already disabled."
 
 [cache]
 path = "Search cache: {path}"

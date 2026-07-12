@@ -139,12 +139,15 @@ pub enum Commands {
     },
     /// Show installation history.
     History,
-    /// List installation sources and whether each is usable here. Native managers for other
-    /// distros are hidden by default; `--all` shows every source JII knows about.
+    /// List installation sources and whether each is usable here (native managers for other
+    /// distros are hidden by default; `--all` shows all). `jii sources disable <id>` / `enable
+    /// <id>` turn a source off/on so JII stops/starts considering it.
     Sources {
         /// Show every source, including native managers that don't apply to this system.
         #[arg(long)]
         all: bool,
+        #[command(subcommand)]
+        action: Option<SourcesAction>,
     },
     /// Manage the ecosystem managers themselves (npm, cargo, brew, Flatpak…): show what
     /// is installed and bootstrap a missing one.
@@ -194,6 +197,21 @@ pub enum ProvidersAction {
 pub enum CacheAction {
     /// Delete the on-disk search cache (rebuilt on the next search).
     Clear,
+}
+
+/// Actions under `jii sources` (bare `jii sources` lists them).
+#[derive(Debug, Subcommand)]
+pub enum SourcesAction {
+    /// Turn a source off — JII stops considering it (e.g. `jii sources disable snap`).
+    Disable {
+        /// The source id (dnf, flatpak, cargo, snap…).
+        id: String,
+    },
+    /// Turn a previously disabled source back on.
+    Enable {
+        /// The source id to re-enable.
+        id: String,
+    },
 }
 
 impl Cli {
@@ -247,7 +265,7 @@ impl Cli {
                 Some(if *audit { "jii list --audit".to_string() } else { "jii list".to_string() })
             }
             Some(Commands::History) => Some("jii history".to_string()),
-            Some(Commands::Sources { .. }) => Some("jii sources".to_string()),
+            Some(Commands::Sources { .. }) => None,
             Some(Commands::Providers { .. }) => Some("jii providers".to_string()),
             None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
         }
@@ -324,7 +342,15 @@ impl Cli {
 
             Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
-            Some(Commands::Sources { all }) => self.sources(*all, config, &renderer).await,
+            Some(Commands::Sources { all, action }) => match action {
+                None => self.sources(*all, config, &renderer).await,
+                Some(SourcesAction::Disable { id }) => {
+                    self.sources_set_enabled(id, false, config, &renderer)
+                }
+                Some(SourcesAction::Enable { id }) => {
+                    self.sources_set_enabled(id, true, config, &renderer)
+                }
+            },
             Some(Commands::Providers { action }) => match action {
                 None => self.providers(config, &renderer).await,
                 Some(ProvidersAction::Add { name }) => {
@@ -1775,6 +1801,41 @@ impl Cli {
             renderer.info("");
             renderer.info(&palette.dim(&crate::t!("sources.hidden", count = hidden)));
         }
+        Ok(())
+    }
+
+    /// `jii sources disable|enable <id>` — flip a source's `[sources] disabled` entry and save.
+    /// A disabled source is dropped when the provider registry is built, so JII stops searching
+    /// it everywhere at once. The id is validated so a typo fails loudly instead of silently.
+    fn sources_set_enabled(
+        &self,
+        id: &str,
+        enable: bool,
+        mut config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        if !crate::config::KNOWN_SOURCES.contains(&id) {
+            renderer.error(&crate::t!("sources.unknown", id = id));
+            renderer.info(&crate::t!(
+                "sources.known",
+                list = crate::config::KNOWN_SOURCES.join(", ")
+            ));
+            return Ok(());
+        }
+        let currently_enabled = config.is_enabled(id);
+        if enable == currently_enabled {
+            let key = if enable { "sources.already_enabled" } else { "sources.already_disabled" };
+            renderer.info(&crate::t!(key, id = id));
+            return Ok(());
+        }
+        if enable {
+            config.sources.disabled.retain(|s| s != id);
+        } else {
+            config.sources.disabled.push(id.to_string());
+        }
+        config.save()?;
+        let key = if enable { "sources.enabled" } else { "sources.disabled_ok" };
+        renderer.success(&crate::t!(key, id = id));
         Ok(())
     }
 
