@@ -155,6 +155,11 @@ plan_remove_pkg = "Remove JII via the system package manager"
 active = "Active sources:"
 unavailable = "Enabled but unavailable (tool not installed):"
 
+[bootstrap]
+needed = "{name} is available via {label}, which isn't installed yet."
+confirm = "Install {label} and get {name} through it?"
+declined = "Skipped — {name} can't be installed without {label}."
+
 [providers]
 installed = "Installed ecosystems:"
 available = "Available to install:"

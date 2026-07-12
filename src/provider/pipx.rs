@@ -57,6 +57,12 @@ impl Provider for Pipx {
         which(BIN).await
     }
 
+    /// PyPI lookups are network calls — no pipx CLI needed to find a match, so a host without
+    /// pipx can still be offered "install pipx, then this application" (ADR-0061).
+    fn can_search(&self) -> bool {
+        true
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Python (pipx)",

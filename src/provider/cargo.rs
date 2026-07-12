@@ -59,6 +59,12 @@ impl Provider for Cargo {
         which(BIN).await
     }
 
+    /// crates.io search is a network API call — no cargo CLI needed to find a match, so a
+    /// host without cargo can still be offered "install cargo, then this crate" (ADR-0061).
+    fn can_search(&self) -> bool {
+        true
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Rust (cargo)",

@@ -322,7 +322,14 @@ impl Engine {
             // contribute nothing silently (a stale cache entry still counts if we have one).
             // Not a circuit-breaker failure either — a missing local tool is instant, not slow.
             // `jii sources`/`jii doctor` remain the place to see what's unavailable.
-            Ok(false) => return Ok(self.cache.get_stale(&id, &query.raw).unwrap_or_default()),
+            //
+            // Exception (ADR-0061, part B): a source that can search over the network without its
+            // CLI still runs, so an uninstalled manager can answer "do I have this?" — the hit is
+            // later tagged needs_bootstrap so installing it first offers to bootstrap the manager.
+            Ok(false) if !provider.can_search() => {
+                return Ok(self.cache.get_stale(&id, &query.raw).unwrap_or_default());
+            }
+            Ok(false) => {}
             Err(_) => return or_stale(fail("timeout")),
         }
         match tokio::time::timeout(timeout, provider.search(query)).await {

@@ -62,6 +62,12 @@ impl Provider for Go {
         run_capture(&[BIN, "version"]).await.is_ok()
     }
 
+    /// The Go module proxy is queried over the network — no go toolchain needed to find a
+    /// match, so a host without go can still be offered "install go, then this" (ADR-0061).
+    fn can_search(&self) -> bool {
+        true
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Go",

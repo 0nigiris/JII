@@ -364,7 +364,7 @@ impl Cli {
         // bootstrap. A pinned source (`npm:dnf` or `--source`) opts out. Runs before the
         // usable-source gate so a fresh box can still bootstrap its very first manager.
         let rest = if route_managers {
-            self.route_managers(&engine, packages, config, renderer).await?
+            self.route_managers(&engine, packages, config.clone(), renderer).await?
         } else {
             packages.to_vec()
         };
@@ -551,6 +551,49 @@ impl Cli {
                 best
             };
             chosen.push(best);
+        }
+
+        // 1a-bis. Bootstrap a source that searched over the network but whose CLI isn't installed
+        //   here (ADR-0061 part B). A chosen candidate from such a source (cargo/npm/pipx/go/…)
+        //   can't be installed until its manager is present, so — since GitHub is now the strict
+        //   last resort — offer to install the manager first ("found in Flatpak, not installed;
+        //   install it and get it there?") instead of silently falling to a raw GitHub binary.
+        //   github itself has no ecosystem(), so it never routes here: it stays the plain binary.
+        if !chosen.is_empty() {
+            let catalog = engine.ecosystem_catalog().await;
+            let flags = self.prompt_flags(effective_auto).with_yes(assume_yes);
+            let mut i = 0;
+            while i < chosen.len() {
+                let src = chosen[i].source_id.clone();
+                let name = chosen[i].name.clone();
+                let Some(eco) = catalog.iter().find(|e| e.id == src.as_str() && !e.installed) else {
+                    i += 1;
+                    continue;
+                };
+                renderer.info(&crate::t!("bootstrap.needed", name = name.clone(), label = eco.label));
+                // dry-run previews the plan without changing anything, so don't prompt — just
+                // note the manager would be bootstrapped and keep the candidate in the preview.
+                let proceed = self.global.dry_run
+                    || prompt::confirm(
+                        renderer,
+                        &crate::t!("bootstrap.confirm", label = eco.label, name = name.clone()),
+                        true,
+                        &flags,
+                    );
+                if !proceed {
+                    renderer.info(&crate::t!("bootstrap.declined", label = eco.label, name = name));
+                    chosen.remove(i);
+                    continue;
+                }
+                if !self.global.dry_run {
+                    self.bootstrap_ecosystem(&engine, eco, config.clone(), renderer).await?;
+                }
+                i += 1;
+            }
+            // Everything was declined — nothing left to install.
+            if chosen.is_empty() {
+                return Ok(());
+            }
         }
 
         // 1b. Declarative-vs-imperative install choice (ADR-0054/0056 + the `prefer_declarative`

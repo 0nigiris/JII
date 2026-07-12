@@ -48,6 +48,17 @@ pub trait Provider: Send + Sync {
     /// Whether this source is usable on the current machine (binary present, etc.).
     async fn is_available(&self) -> bool;
 
+    /// Whether this source can **search** without its CLI installed — i.e. purely over the
+    /// network (crates.io / npm registry / PyPI / Flathub…). Distinct from
+    /// [`is_available`](Provider::is_available), which reports whether the CLI needed to
+    /// *install* is present. When true, the engine searches this source even on a host where
+    /// the manager isn't installed; a hit then carries `needs_bootstrap` so installing it
+    /// first offers to bootstrap the manager (ADR-0061, part B). Default **false**: most
+    /// sources search through their own CLI, so an absent CLI means no search.
+    fn can_search(&self) -> bool {
+        false
+    }
+
     /// Find candidates for a query. Must not panic on failure — a returned `Err`
     /// lets the engine tag the source and continue with the rest.
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>>;

@@ -56,6 +56,12 @@ impl Provider for Npm {
         which(BIN).await
     }
 
+    /// npm registry lookups are network calls — no npm CLI needed to find a match, so a host
+    /// without npm can still be offered "install npm, then this package" (ADR-0061).
+    fn can_search(&self) -> bool {
+        true
+    }
+
     fn ecosystem(&self) -> Option<Ecosystem> {
         Some(Ecosystem {
             label: "Node.js (npm)",
