@@ -68,12 +68,16 @@ UX, and architecture). Landed this session, most-critical first:
 - **`jii sources` hides other-distros' native managers by default** (`--all` to show). Pure-capability
   rule via new `SourceEntry.relevant` (usable | can_search | bootstrappable ecosystem) — no source-id
   branch; exactly pacman/apt/zypper/void/gentoo drop out on Fedora.
+- **`jii sources disable|enable <id>`** — flip `[sources] disabled` (validated vs KNOWN_SOURCES); the
+  provider registry already drops disabled sources, so JII stops considering it everywhere at once.
+- **All remaining output glyphs are TTY-safe** (`⭐ ℹ ❯` → `* i >` via `palette.mark_*`), completing
+  the Unicode fallback.
 
-**Next open work (TASKS.md "remaining"):** the rest of the **`jii sources` redesign** — merge with
-`jii providers`, `disable`/`enable` (config already has `sources.disabled` + `is_enabled`), and
-`remove --purge` (deinstall the manager from the OS) — owner-approved, needs an ADR; `jii yay`/`jii
-paru` (an AUR-helper ecosystem — Arch-specific, needs an AUR provider); richer fuzzy for mid-word typos
-(`pipix`→`pipx`; trailing typos already work); `-d`/`-n` semantics unification.
+**Next open work (TASKS.md "remaining"):** finish the **`jii sources` redesign** — `remove --purge`
+(deinstall the manager from the OS; **dangerous**, needs an ADR + per-manager removal commands) and the
+full merge with `jii providers` into one view; `jii yay`/`jii paru` (an AUR-helper ecosystem —
+Arch-specific, needs an AUR provider); richer fuzzy for mid-word typos (`pipix`→`pipx`; trailing typos
+already work); `-d`/`-n` semantics unification. Windows/macOS + GUI remain explicitly out of scope.
 
 <details><summary>Earlier the same day (2026-07-12) — "JII everywhere" packaging recipes (ADR-0060)</summary>
 

@@ -552,11 +552,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   installs `--user` (no sudo/polkit; fixes the Void-live system-bus failure). Arch doctor
                   suggestions (VLC/codecs/fonts/Steam). `jii sources` hides other-distros' native managers
                   by default (`--all` to show; `SourceEntry.relevant`, pure-capability).
+            - [x] **Cross-system fixes — batch 4 (2026-07-12).** `jii sources disable|enable <id>`
+                  (flip `[sources] disabled`, validated vs KNOWN_SOURCES). All remaining output glyphs
+                  (`⭐ ℹ ❯`) now TTY-safe via `palette.mark_*` — Unicode fallback complete.
             - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** `jii yay`/`jii paru` (an
                   AUR-helper ecosystem — Arch-specific, needs an AUR provider). Richer fuzzy for mid-word typos
                   (`pipix`→`pipx`; trailing typos already work). `-d`/`-n` semantics unification.
-                  **Architecture (need ADRs):** the rest of the sources redesign — `disable`/`enable`
-                  (`sources.disabled` + `is_enabled` already exist) and `remove --purge`; the full
+                  **Architecture (need ADRs):** finish the sources redesign — `remove --purge` (deinstall the
+                  manager from the OS; dangerous, per-manager removal commands) + the full
                   merge of `jii sources`+`jii providers` into one `jii sources` with
                   enable/disable + `remove --purge` (deinstall the manager from the OS, confirmed) + **hide
                   non-applicable native sources by default** (all via a flag); should first-run force `setup`,
