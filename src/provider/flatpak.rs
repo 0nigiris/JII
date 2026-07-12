@@ -1,8 +1,9 @@
 //! Flatpak provider.
 //!
-//! Uses `flatpak search --columns=…` for stable machine output. Flatpak performs
-//! its own privilege handling (polkit) for system installs, so its steps are not
-//! marked `needs_root` — JII does not wrap them in sudo/pkexec.
+//! Uses `flatpak search --columns=…` for stable machine output. All plans use
+//! `--user` (install/uninstall/update and the Flathub remote), so they run entirely in
+//! user space — no root, no polkit prompt, and no dependency on a running system D-Bus
+//! (which minimal/live systems may lack). Steps are therefore not marked `needs_root`.
 //!
 //! Flatpak packages are identified by application id (e.g. `org.gimp.GIMP`); that
 //! id is used as the candidate/record `name`. (Known limitation: removing a Flatpak
@@ -116,18 +117,18 @@ impl Provider for Flatpak {
             reasons.push(crate::t!("reason.version", v = v.clone()));
         }
 
-        Ok(user_plan(appid, &["install", "-y", remote, appid], reasons))
+        Ok(user_plan(appid, &["install", "--user", "-y", remote, appid], reasons))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "flatpak")];
-        Ok(user_plan(&record.name, &["uninstall", "-y", &record.name], reasons))
+        Ok(user_plan(&record.name, &["uninstall", "--user", "-y", &record.name], reasons))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        // One `flatpak uninstall -y a b c` (flatpak handles its own polkit — no JII root).
+        // One `flatpak uninstall --user -y a b c` — a user-scope op, so no polkit/root at all.
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
-        let mut args = vec!["uninstall", "-y"];
+        let mut args = vec!["uninstall", "--user", "-y"];
         args.extend_from_slice(&names);
         let reasons = vec![crate::t!("reason.remove_many", mgr = "flatpak", names = names.join(", "))];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
@@ -135,25 +136,26 @@ impl Provider for Flatpak {
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "flatpak")];
-        Ok(user_plan(&record.name, &["update", "-y", &record.name], reasons))
+        Ok(user_plan(&record.name, &["update", "--user", "-y", &record.name], reasons))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        // One `flatpak update -y a b c`.
+        // One `flatpak update --user -y a b c`.
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
-        let mut args = vec!["update", "-y"];
+        let mut args = vec!["update", "--user", "-y"];
         args.extend_from_slice(&names);
         let reasons = vec![crate::t!("reason.update_many", mgr = "flatpak", names = names.join(", "))];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
-        // `flatpak update -y` with no refs = update every installed app/runtime (D10).
+        // `flatpak update --user -y` with no refs = update every user-installed app/runtime (D10).
         let reasons = vec![crate::t!("reason.flatpak_upgrade_all")];
-        Ok(Some(user_plan("all flatpaks", &["update", "-y"], reasons)))
+        Ok(Some(user_plan("all flatpaks", &["update", "--user", "-y"], reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
+        // List across both installations so a record installed elsewhere still resolves.
         let out = run_capture(&[BIN, "list", "--app", "--columns=application,version"]).await?;
         Ok(parse_installed_records(&out, self.id()))
     }
@@ -375,7 +377,10 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert!(!plan.needs_root());
         match &plan.actions[0] {
             Action::RunCommand { argv, .. } => {
-                assert_eq!(argv, &["flatpak", "update", "-y", "org.gimp.GIMP", "org.videolan.VLC"]);
+                assert_eq!(
+                    argv,
+                    &["flatpak", "update", "--user", "-y", "org.gimp.GIMP", "org.videolan.VLC"]
+                );
             }
             other => panic!("expected run, got {other:?}"),
         }
@@ -391,7 +396,7 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert!(!plan.needs_root());
         match &plan.actions[0] {
             Action::RunCommand { argv, .. } => {
-                assert_eq!(argv, &["flatpak", "update", "-y"]);
+                assert_eq!(argv, &["flatpak", "update", "--user", "-y"]);
             }
             other => panic!("expected run, got {other:?}"),
         }

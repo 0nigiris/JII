@@ -3083,14 +3083,18 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
                 crate::t!("check.flathub_advice"),
             )
             .fixable(Fix::Command {
+                // --user: a user-scope remote needs no root/polkit and matches how JII installs
+                // (`flatpak install --user`). It also avoids "Unable to connect to system bus"
+                // on minimal/live systems with no running system D-Bus (seen on Void live).
                 argv: vec![
                     "flatpak".into(),
                     "remote-add".into(),
+                    "--user".into(),
                     "--if-not-exists".into(),
                     "flathub".into(),
                     "https://flathub.org/repo/flathub.flatpakrepo".into(),
                 ],
-                show: "flatpak remote-add --if-not-exists flathub \
+                show: "flatpak remote-add --user --if-not-exists flathub \
                        https://flathub.org/repo/flathub.flatpakrepo"
                     .into(),
             })
