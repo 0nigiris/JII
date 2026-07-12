@@ -547,13 +547,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   `org.mozilla.firefox` — the openSUSE "closest" papercut). `apt` update runs `apt-get update`
                   before upgrade. `jii cache [clear]`. `Provider::web_url` shown in the single-install preview
                   ("have a look first"). `install.sh` always speaks to PATH after a portable install.
-            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** pt.17 part B **stage 3**
-                  (Snap/brew network search — same pattern as Flathub). `jii yay`/`jii paru` (an AUR-helper
-                  ecosystem — Arch-specific, needs an AUR provider). Arch didn't offer fonts/vlc suggestions
-                  (recommend-catalog distro filter for Arch). A short alias for `--source <native>`. flatpak
-                  sudo/password detection (or default `--user`). Richer fuzzy for mid-word typos (`pipix`→`pipx`;
-                  trailing typos already work). **Architecture (need ADRs):**
-                  merge `jii sources`+`jii providers` into one `jii sources` with
+            - [x] **Cross-system fixes — batch 3 (2026-07-12).** pt.17 part B **stage 3** (Snap+Homebrew
+                  can_search → part B complete for all network sources). `-s` alias for `--source`. Flatpak
+                  installs `--user` (no sudo/polkit; fixes the Void-live system-bus failure). Arch doctor
+                  suggestions (VLC/codecs/fonts/Steam). `jii sources` hides other-distros' native managers
+                  by default (`--all` to show; `SourceEntry.relevant`, pure-capability).
+            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** `jii yay`/`jii paru` (an
+                  AUR-helper ecosystem — Arch-specific, needs an AUR provider). Richer fuzzy for mid-word typos
+                  (`pipix`→`pipx`; trailing typos already work). `-d`/`-n` semantics unification.
+                  **Architecture (need ADRs):** the rest of the sources redesign — `disable`/`enable`
+                  (`sources.disabled` + `is_enabled` already exist) and `remove --purge`; the full
+                  merge of `jii sources`+`jii providers` into one `jii sources` with
                   enable/disable + `remove --purge` (deinstall the manager from the OS, confirmed) + **hide
                   non-applicable native sources by default** (all via a flag); should first-run force `setup`,
                   and put the git-key setup hint in `doctor` too. Unify `-d`/`-n` semantics (users confuse them).

@@ -56,12 +56,24 @@ UX, and architecture). Landed this session, most-critical first:
   crates.io / npm / PyPI / pkg.go.dev / snapcraft / GitHub-repo — "have a look first" before installing.
 - **`install.sh` always speaks to PATH** after a portable install (confirm when already on PATH,
   else the add-to-PATH hint + full-path fallback); dropped its `⚠` glyph.
+- **pt.17 part B stage 3 — Snap + Homebrew `can_search`** (api.snapcraft.io / formulae.brew.sh). Part B
+  now covers every network-searchable source (cargo/npm/pipx/go/flatpak/snap/brew). `jii node:brew`,
+  `jii hello:snap` verified bootstrap-first with neither installed.
+- **`-s` short alias for `--source`.**
+- **Flatpak installs are `--user`** (install/uninstall/update + the Flathub remote): never needs
+  sudo/polkit, and no system-bus dependency — fixes the polkit prompt and the "Unable to connect to
+  system bus" Flathub-remote failure on Void live.
+- **Arch `jii doctor` suggestions** (VLC, GStreamer codecs+ffmpeg, Noto fonts, Steam-Flatpak) — the
+  catalog was Fedora-only; title-uniqueness test is now per-distro.
+- **`jii sources` hides other-distros' native managers by default** (`--all` to show). Pure-capability
+  rule via new `SourceEntry.relevant` (usable | can_search | bootstrappable ecosystem) — no source-id
+  branch; exactly pacman/apt/zypper/void/gentoo drop out on Fedora.
 
-**Next open work (TASKS.md "remaining"):** pt.17 part B **stage 3** (Snap/brew network search);
-**`jii sources` redesign** (merge with `jii providers`, enable/disable, `remove --purge`, hide
-non-applicable — owner-approved, needs ADR); `jii yay`/`jii paru` (an AUR-helper ecosystem — bigger,
-Arch-specific); a short alias for `--source`; flatpak sudo/password detection; richer fuzzy match for
-mid-word typos (`pipix`→`pipx`; trailing typos already work); `-d`/`-n` semantics unification.
+**Next open work (TASKS.md "remaining"):** the rest of the **`jii sources` redesign** — merge with
+`jii providers`, `disable`/`enable` (config already has `sources.disabled` + `is_enabled`), and
+`remove --purge` (deinstall the manager from the OS) — owner-approved, needs an ADR; `jii yay`/`jii
+paru` (an AUR-helper ecosystem — Arch-specific, needs an AUR provider); richer fuzzy for mid-word typos
+(`pipix`→`pipx`; trailing typos already work); `-d`/`-n` semantics unification.
 
 <details><summary>Earlier the same day (2026-07-12) — "JII everywhere" packaging recipes (ADR-0060)</summary>
 
