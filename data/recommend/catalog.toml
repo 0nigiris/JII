@@ -86,3 +86,42 @@ category = "power"
 distros = ["fedora"]
 packages = ["tuned-ppd"]
 note = "Mainly useful on laptops; harmless on a desktop but unnecessary."
+
+# --- Arch (and Arch-based: CachyOS, Manjaro, EndeavourOS…) -------------------
+# Arch ships codecs/VLC straight from the official repos — no extra-repo prerequisite
+# like Fedora's RPM Fusion, so these have no `requires`. (Verified against the repos;
+# names may differ on other distros, which is why each entry declares its distros.)
+
+[[recommendation]]
+id = "vlc-arch"
+title = "VLC media player"
+why = "Plays practically any media file without hunting for codecs."
+category = "media"
+distros = ["arch"]
+packages = ["vlc"]
+
+[[recommendation]]
+id = "multimedia-codecs-arch"
+title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+why = "Lets most players and browsers decode H.264/H.265/AAC and friends."
+category = "media"
+distros = ["arch"]
+packages = ["gst-plugins-good", "gst-plugins-bad", "gst-plugins-ugly", "gst-libav"]
+
+[[recommendation]]
+id = "fonts-core-arch"
+title = "Common fonts (emoji + broad Unicode coverage)"
+why = "Emoji and non-Latin text render instead of showing empty boxes."
+category = "fonts"
+distros = ["arch"]
+packages = ["noto-fonts", "noto-fonts-emoji", "noto-fonts-cjk"]
+
+# Steam via Flatpak is the same everywhere, so it applies to every distro (empty distros).
+[[recommendation]]
+id = "steam-flatpak"
+title = "Steam (Flatpak)"
+why = "The main PC games store; the Flatpak build is sandboxed and cross-distro."
+category = "gaming"
+distros = ["arch"]
+packages = ["steam:flatpak"]
+check = "com.valvesoftware.Steam"

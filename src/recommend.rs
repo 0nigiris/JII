@@ -153,12 +153,17 @@ mod tests {
 
     #[test]
     fn entry_titles_are_unique() {
+        // Titles must be unique *within a distro* (that's all a user ever sees at once);
+        // the same title across distros — "VLC media player" for Fedora and Arch — is fine.
         let catalog = Catalog::load().unwrap();
-        let mut titles: Vec<&str> = catalog.recommendation.iter().map(|r| r.title.as_str()).collect();
-        titles.sort_unstable();
-        let before = titles.len();
-        titles.dedup();
-        assert_eq!(before, titles.len(), "duplicate recommendation title");
+        for distro in ["fedora", "arch"] {
+            let mut titles: Vec<&str> =
+                catalog.for_distro(distro).iter().map(|r| r.title.as_str()).collect();
+            titles.sort_unstable();
+            let before = titles.len();
+            titles.dedup();
+            assert_eq!(before, titles.len(), "duplicate recommendation title on {distro}");
+        }
     }
 
     #[test]
