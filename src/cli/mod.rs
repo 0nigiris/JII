@@ -153,6 +153,12 @@ pub enum Commands {
         /// Language to set: en, ru, or auto. Omit to show the current setting.
         code: Option<String>,
     },
+    /// Show the search-cache location, or clear it. `jii cache` prints the path; `jii cache
+    /// clear` deletes it (JII rebuilds it on the next search).
+    Cache {
+        #[command(subcommand)]
+        action: Option<CacheAction>,
+    },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
     /// Remove JII itself (same as `jii remove jii`).
@@ -176,6 +182,13 @@ pub enum ProvidersAction {
         /// The ecosystem id (npm, cargo, go, pipx, flatpak, snap, brew, nix).
         name: String,
     },
+}
+
+/// Actions under `jii cache` (bare `jii cache` shows the path).
+#[derive(Debug, Subcommand)]
+pub enum CacheAction {
+    /// Delete the on-disk search cache (rebuilt on the next search).
+    Clear,
 }
 
 impl Cli {
@@ -207,6 +220,7 @@ impl Cli {
         match &self.command {
             Some(Commands::Setup)
             | Some(Commands::Lang { .. })
+            | Some(Commands::Cache { .. })
             | Some(Commands::Doctor { .. })
             | Some(Commands::Uninstall)
             | Some(Commands::Completions { .. })
@@ -313,6 +327,7 @@ impl Cli {
                 }
             },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
+            Some(Commands::Cache { action }) => self.cache(action.as_ref(), &renderer),
             Some(Commands::Setup) => self.setup(config, &renderer, false, true).await,
             Some(Commands::Uninstall) => self.self_uninstall(config, &renderer).await,
             Some(Commands::Completions { shell }) => {
@@ -1907,6 +1922,33 @@ impl Cli {
                 // just chosen (it takes effect for real on the next run).
                 renderer.success(&crate::i18n::tr_in(&c, "lang.set", &[("lang", c.clone())]));
             }
+        }
+        Ok(())
+    }
+
+    /// `jii cache [clear]` — show the on-disk search-cache path, or delete it. Clearing just
+    /// removes the file; JII rebuilds it on the next search, so it's always safe.
+    fn cache(&self, action: Option<&CacheAction>, renderer: &Renderer) -> crate::error::Result<()> {
+        match action {
+            None => match crate::cache::Cache::path() {
+                Some(p) => {
+                    let mut line = crate::t!("cache.path", path = p.display().to_string());
+                    if !p.exists() {
+                        line.push_str(&format!(" ({})", crate::t!("cache.absent")));
+                    }
+                    renderer.info(&line);
+                }
+                None => renderer.info(&crate::t!("cache.no_path")),
+            },
+            Some(CacheAction::Clear) => match crate::cache::Cache::clear_disk() {
+                Ok(Some(p)) => {
+                    renderer.success(&crate::t!("cache.cleared", path = p.display().to_string()))
+                }
+                Ok(None) => renderer.info(&crate::t!("cache.already_empty")),
+                Err(e) => {
+                    renderer.error(&crate::t!("cache.clear_failed", error = e.to_string()))
+                }
+            },
         }
         Ok(())
     }

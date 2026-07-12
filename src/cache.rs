@@ -55,6 +55,24 @@ impl Cache {
             .map(|d| d.cache_dir().join("search-cache.json"))
     }
 
+    /// The on-disk cache file path (backs `jii cache`).
+    pub fn path() -> Option<PathBuf> {
+        Self::default_path()
+    }
+
+    /// Delete the on-disk search cache (backs `jii cache clear`). Returns the removed path,
+    /// or `None` if there was nothing to remove. In-memory state is untouched — this is a
+    /// one-shot CLI action that exits right after.
+    pub fn clear_disk() -> std::io::Result<Option<PathBuf>> {
+        match Self::default_path() {
+            Some(p) if p.exists() => {
+                std::fs::remove_file(&p)?;
+                Ok(Some(p))
+            }
+            _ => Ok(None),
+        }
+    }
+
     /// Load the cache from disk (empty if missing/corrupt), with the given TTL and
     /// per-source failure cooldown.
     pub fn load(ttl_secs: u64, failure_cooldown_secs: u64) -> Self {

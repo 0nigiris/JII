@@ -155,6 +155,14 @@ plan_remove_pkg = "Remove JII via the system package manager"
 active = "Active sources:"
 unavailable = "Enabled but unavailable (tool not installed):"
 
+[cache]
+path = "Search cache: {path}"
+absent = "empty — nothing cached yet"
+no_path = "No cache location could be resolved on this system."
+cleared = "Cleared the search cache ({path})."
+already_empty = "The search cache is already empty."
+clear_failed = "Could not clear the cache: {error}"
+
 [bootstrap]
 needed = "{name} is available via {label}, which isn't installed yet."
 confirm = "Install {label} and get {name} through it?"
