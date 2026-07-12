@@ -32,12 +32,19 @@ UX, and architecture). Landed this session, most-critical first:
 - **`jii doctor` prints the config file path** (recurring "where's the config?" question).
 - **`jii lang [en|ru|auto]`** — view/set the UI language from the CLI (writes `[ui] locale`);
   confirms in the newly chosen language via `i18n::tr_in`. `--lang` remains a per-run override.
+- **First-run `jii doctor` now onboards.** A first-ever run that is `jii doctor` used to skip
+  onboarding entirely (no mode choice, first-run left unmarked → next command re-onboarded). It now
+  runs the wizard with `offer_doctor=false`, then doctor once. Other `setup` callers pass `true`.
+- **GitHub ranked strictly last (part A of pt.17, ADR-0061).** `github` moved to the end of the
+  default `priority` (below cargo/npm/pipx/go/brew/nix); every real package source is preferred.
 
-**Owner-decided scope for the remaining architecture items (see TASKS.md "Next"):**
-GitHub ranked strictly last + bootstrap-the-source-before-github (pt.17); merge `jii sources` +
-`jii providers` into one `jii sources` with enable/disable + **`remove --purge`** (deinstall the
-manager from the OS, with confirmation) + **hide non-applicable native sources by default**
-(show all via a flag). These need ADRs and are the next core work.
+**Next core work — pt.17 part B (ADR-0061, design done, awaiting owner's UX sign-off):** bootstrap an
+**uninstalled** source before falling to github (owner's `jii obsidian`→Flatpak example). Key finding:
+cargo/npm/pipx/go already search over the network; only the CLI gates *install*. Plan: split
+`can_search` from `is_available`, tag `needs_bootstrap` candidates, prepend the T6 manager-bootstrap to
+their plan, and add Flathub/Snap/brew network search. Multi-file — its own focused pass. Also still
+open: merge `jii sources`+`jii providers` (enable/disable, `remove --purge`, hide non-applicable), and
+the smaller batch-2 items in TASKS.md.
 
 <details><summary>Earlier the same day (2026-07-12) — "JII everywhere" packaging recipes (ADR-0060)</summary>
 

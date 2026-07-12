@@ -2333,3 +2333,53 @@ plus crates.io, all from one static binary. Each still needs the **owner's accou
 **one real build on the target distro** before going live (this dev host is Fedora-only, so the recipes
 ship validated-by-construction, not build-tested on Alpine/Void/Gentoo/Nix/brew). Per-release upkeep
 grows: bump the version + refresh checksums in each recipe (noted in `packaging/README.md`).
+
+## ADR-0061 — GitHub strictly last + bootstrap an uninstalled source before it (part B design)
+
+**Status:** Part A **Accepted & landed** (2026-07-12); Part B **Proposed** (design below, awaiting
+owner sign-off on the UX forks before implementation).
+
+**Context.** Owner directive from cross-system testing: "search GitHub *really* last." Concretely
+(owner's example): `jii obsidian` on a box where Flatpak isn't installed should **offer to install
+Flatpak and get obsidian there**, rather than falling to a raw GitHub Releases binary — "and this
+should work with everything, any package and any source."
+
+**Part A (done).** `github` moved to the end of the default source `priority` (below cargo/npm/pipx/
+go/brew/nix). Ranking already keys on source priority after the name-match tier, so among equally-good
+name matches github now sorts last. This fixes the case where the other source **is installed**.
+
+**Part B (the hard case): the preferred source's CLI isn't installed.** Today `Engine::search_one`
+gates every provider on `is_available()` (= `which(cli)`), so an uninstalled source contributes
+nothing and github can win by default. Key finding while scoping this: **search and install have
+different needs.** cargo/npm/pipx/go already *search over the network* (crates.io / registry.npmjs.org
+/ pypi.org APIs) and only need the CLI to *install*; flatpak/snap/brew search **through their CLI**, so
+for the owner's own example (Flatpak) a network search means talking to the **Flathub API** directly.
+
+**Proposed decision.**
+1. Split provider capability into **`can_search`** (often network-only) vs **`is_available`** (CLI
+   present, needed to install). `search_one` includes a source when it can search, even if its CLI is
+   absent — tagging any resulting candidate `needs_bootstrap = true` (the manager must be installed
+   first). github stays last by priority, so a real package source outranks it whenever one matches.
+2. On installing a `needs_bootstrap` candidate, the plan **prepends the manager bootstrap** (reuse the
+   existing T6 `bootstrap_ecosystem` / `Bootstrap` metadata): e.g. "install Flatpak, then obsidian via
+   Flatpak" — one preview, one confirmation, exact commands shown, escalation batched as always.
+3. Add **network search to the CLI-only sources** that have a public API: **Flatpak → Flathub API**
+   (`flathub.org/api`), Snap → snapcraft API, Homebrew → formulae.brew.sh JSON. Each behind `can_search`
+   so an uninstalled manager can still answer "do I have this?".
+
+**Alternatives rejected.** (a) *Blindly offer to install a manager without knowing the package is
+there.* Rejected — installing Flatpak on a maybe is a bad surprise; we must confirm the package exists
+first (hence real network search). (b) *Only reorder priority (part A) and stop.* Insufficient — it
+doesn't cover the owner's example where the better source isn't installed at all. (c) *Bootstrap then
+re-run the normal search.* Simpler but wastes an install when the package isn't in that source; the
+`can_search`-first approach only bootstraps once we know it's worth it.
+
+**Open UX forks (owner to decide before coding):** (i) auto-offer the bootstrap, or gate it behind a
+flag / prompt only? (ii) which sources join `can_search` first — start with the already-network ones
+(cargo/npm/pipx/go) and add Flatpak/Snap/Homebrew APIs incrementally? (iii) trust: a `needs_bootstrap`
+Flatpak app is still `community` — the normal trust barrier (ADR-0006) applies unchanged.
+
+**Consequences.** Delivers the owner's "github truly last, bootstrap the right source instead" vision
+generally, not just for Flatpak. Cost: a `Provider` API change (`can_search`), a `PackageCandidate`
+flag, new Flathub/Snap/brew search paths, and install-flow wiring — a multi-file change, so it lands as
+its own focused pass rather than bolted onto the batch-1 fixes.
