@@ -2035,6 +2035,18 @@ impl Cli {
         }
 
         let palette = renderer.palette();
+
+        // Where the config lives — a common ask ("how do I change the language / defaults?").
+        // Shown whether or not the file exists yet, so the user knows exactly what to create.
+        if let Some(p) = crate::config::Config::default_path() {
+            let mut line = crate::t!("doctor.config_line", path = p.display().to_string());
+            if !p.exists() {
+                line.push_str(&format!(" ({})", crate::t!("doctor.config_absent")));
+            }
+            renderer.info(&palette.dim(&line));
+            renderer.info("");
+        }
+
         renderer.heading(&crate::t!("doctor.sources_header"));
         for d in &diagnostics {
             let mark =

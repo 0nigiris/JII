@@ -109,6 +109,8 @@ gh_corrected = "Nothing for '{name}' — showing results for '{fixed}' instead."
 
 [doctor]
 all_good = "Nothing to set up — you're all good."
+config_line = "Config file: {path}"
+config_absent = "not created yet — built-in defaults in use"
 sources_header = "Sources:"
 checks_header = "System checks:"
 all_looks_good = "Everything looks good."
