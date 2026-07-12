@@ -32,11 +32,13 @@ pub struct Cli {
 /// Flags available on every command.
 #[derive(Debug, clap::Args)]
 pub struct GlobalArgs {
-    /// Assume "yes" to prompts.
+    /// Answer "yes" to every prompt, so it runs without stopping to ask (still within trust limits).
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 
-    /// Assume "no" to prompts.
+    /// Answer "no" to every prompt — it previews, then declines and aborts (nothing is changed).
+    /// Not the same as `-d`/`--dry-run`: `--no` still resolves and previews the *real* action it
+    /// would take; `--dry-run` shows the full plan and exits.
     #[arg(short = 'n', long, global = true)]
     pub no: bool,
 
@@ -52,8 +54,10 @@ pub struct GlobalArgs {
     #[arg(long, value_enum, global = true)]
     pub profile: Option<Profile>,
 
-    /// Show the plan without executing anything.
-    #[arg(short = 'd', long, global = true)]
+    /// Preview: show the full plan and exit without doing anything (alias: `--preview`). This is
+    /// the flag to reach for when you just want to see what would happen — unlike `-n`/`--no`,
+    /// which answers "no" to a prompt on the real action.
+    #[arg(short = 'd', long, visible_alias = "preview", global = true)]
     pub dry_run: bool,
 
     /// Increase verbosity (repeatable).
