@@ -11,7 +11,9 @@ use serde_json::json;
 
 use super::{Provider, command_plan, run_capture, run_capture_lax, which};
 use crate::error::Result;
-use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
+use crate::model::{
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+};
 
 /// The apt binary that runs (privileged) transactions. `apt-get` has a stable scripting
 /// interface (unlike `apt`, which warns it has none), so plans and availability use it.
@@ -113,9 +115,22 @@ impl Provider for Apt {
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
-        // `apt-get upgrade -y` upgrades every installed package (D10).
+        // `apt-get update` refreshes the package lists first — without it `upgrade` sees only
+        // the versions from the last refresh and reports "nothing to do" on a stale index —
+        // then `apt-get upgrade -y` upgrades every installed package (D10). Two steps, but one
+        // escalation: the privilege layer batches consecutive root actions into a single sudo.
         let reasons = vec![crate::t!("reason.upgrade_all_system", mgr = "apt")];
-        Ok(Some(root_plan("system", &["upgrade", "-y"], reasons)))
+        let step = |args: &[&str]| Action::RunCommand {
+            argv: std::iter::once(BIN).chain(args.iter().copied()).map(String::from).collect(),
+            needs_root: true,
+        };
+        Ok(Some(InstallPlan {
+            candidate_ref: "system".to_string(),
+            source_id: ID.to_string(),
+            actions: vec![step(&["update"]), step(&["upgrade", "-y"])],
+            download_size: None,
+            reasons,
+        }))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
