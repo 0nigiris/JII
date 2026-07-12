@@ -244,7 +244,7 @@ no hidden ML.
 
 ```
 score(candidate) =
-    priority_rank(source)      // from config: dnf=0, copr=10, flatpak=20, github=30…
+    priority_rank(source)      // from config: dnf=0, copr=1, flatpak=7… github last
   + trust_penalty(trust)       // untrusted → large penalty
   − official_bonus             // "Official Fedora package"
   − freshness_bonus            // version newer than others / upstream
@@ -449,8 +449,10 @@ TOML at `~/.config/jii/config.toml` (optional — sane defaults). Precedence:
 
 ```toml
 [sources]
-priority = ["dnf", "copr", "flatpak", "github", "cargo", "npm", "pipx", "go"]
+priority = ["dnf", "copr", "flatpak", "cargo", "npm", "pipx", "go", "github"]
 disabled = []
+# github is the deliberate last resort (a raw upstream binary, no package manager);
+# every real package source is preferred first.
 
 [install]
 profile = "stable"                  # stable | latest | sandbox | minimal

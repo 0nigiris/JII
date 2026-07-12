@@ -156,8 +156,11 @@ impl Default for SourcesConfig {
     fn default() -> Self {
         SourcesConfig {
             priority: [
+                // GitHub Releases is the deliberate last resort: it installs a raw upstream
+                // binary with no package manager behind it, so every real package source —
+                // native, Flatpak/Snap, and every language ecosystem — is preferred first.
                 "dnf", "copr", "apt", "pacman", "zypper", "void", "gentoo", "flatpak", "snap",
-                "github", "cargo", "npm", "pipx", "go", "brew", "nix",
+                "cargo", "npm", "pipx", "go", "brew", "nix", "github",
             ]
             .iter()
             .map(|s| s.to_string())
