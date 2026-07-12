@@ -443,12 +443,17 @@ impl Cli {
                 continue;
             }
             // Be explicit when the best match isn't what was typed, so a broadened result
-            // never silently installs a differently-named package.
-            if !ranked[0].name.eq_ignore_ascii_case(name) {
+            // never silently installs a differently-named package. A Flatpak app-id counts as
+            // a match on its last segment (`firefox` == `org.mozilla.firefox`), so we don't
+            // cry "no exact match" when the app-id *is* exactly what the user meant (the
+            // openSUSE `jii firefox` papercut).
+            let best_name = &ranked[0].name;
+            let tail = best_name.rsplit('.').next().unwrap_or(best_name);
+            if !best_name.eq_ignore_ascii_case(name) && !tail.eq_ignore_ascii_case(name) {
                 renderer.info(&crate::t!(
                     "install.no_exact_match",
                     name = name,
-                    closest = ranked[0].name
+                    closest = ranked[0].name.clone()
                 ));
             }
 

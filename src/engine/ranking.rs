@@ -33,14 +33,28 @@ pub fn rank(config: &Config, query: &str, mut candidates: Vec<PackageCandidate>)
 
 /// How closely a candidate's name matches what the user typed. Lower is better:
 /// 0 exact · 1 prefix · 2 substring · 3 unrelated (all case-insensitive).
+///
+/// A dotted id (a Flatpak app-id like `md.obsidian.Obsidian` or `org.mozilla.firefox`) also
+/// matches on its **last segment**, so `obsidian`/`firefox` count as an exact match against
+/// the app-id — otherwise the reverse-DNS name loses to an unrelated same-named crate/pypi
+/// package on a plain substring, and `jii firefox` reads "no exact match, closest …".
 fn name_match_tier(query: &str, name: &str) -> u8 {
     let q = query.to_ascii_lowercase();
     let n = name.to_ascii_lowercase();
+    let direct = tier_of(&q, &n);
+    match n.rsplit('.').next() {
+        Some(tail) if tail != n => direct.min(tier_of(&q, tail)),
+        _ => direct,
+    }
+}
+
+/// Match tier of `query` against a single candidate string (both already lowercased).
+fn tier_of(q: &str, n: &str) -> u8 {
     if n == q {
         0
-    } else if n.starts_with(&q) {
+    } else if n.starts_with(q) {
         1
-    } else if n.contains(&q) {
+    } else if n.contains(q) {
         2
     } else {
         3
@@ -166,6 +180,32 @@ mod tests {
         assert_eq!(name_match_tier("git", "gitk"), 1);
         assert_eq!(name_match_tier("git", "libgit2"), 2);
         assert_eq!(name_match_tier("git", "firefox"), 3);
+    }
+
+    #[test]
+    fn dotted_appid_matches_on_its_last_segment() {
+        // A Flatpak app-id is an exact match on its tail, so `firefox`/`obsidian` don't lose
+        // to a plain substring — fixes "no exact match, closest org.mozilla.firefox".
+        assert_eq!(name_match_tier("firefox", "org.mozilla.firefox"), 0);
+        assert_eq!(name_match_tier("obsidian", "md.obsidian.Obsidian"), 0);
+        // A plain (dot-free) name is unaffected.
+        assert_eq!(name_match_tier("git", "gitk"), 1);
+    }
+
+    #[test]
+    fn exact_appid_tail_outranks_an_unrelated_same_named_package() {
+        // `jii obsidian`: the Flatpak app-id (exact on its tail) must beat an unrelated pypi
+        // crate literally named "Obsidian", even though pipx ranks below flatpak by priority.
+        let cfg = Config::default();
+        let ranked = rank(
+            &cfg,
+            "obsidian",
+            vec![
+                named("pipx", "Obsidian"),              // unrelated same-name, lower priority
+                named("flatpak", "md.obsidian.Obsidian"), // the real one
+            ],
+        );
+        assert_eq!(ranked[0].name, "md.obsidian.Obsidian");
     }
 
     #[test]

@@ -410,6 +410,32 @@ pub(crate) async fn get_json_opt<T: DeserializeOwned>(
     Ok(Some(body))
 }
 
+/// POST a JSON `body` and deserialize the JSON response — same network/not-found/error
+/// policy as [`get_json_opt`], but for APIs that take a request body (Flathub's v2 search).
+pub(crate) async fn post_json_opt<B: serde::Serialize + ?Sized, T: DeserializeOwned>(
+    source_id: &str,
+    url: &str,
+    body: &B,
+) -> Result<Option<T>> {
+    let resp = http_client()?
+        .post(url)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: {e}")))?;
+    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    let resp = resp
+        .error_for_status()
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: {e}")))?;
+    let body = resp
+        .json::<T>()
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("{source_id}: malformed json: {e}")))?;
+    Ok(Some(body))
+}
+
 /// Build a plan of **one** command action. Shared by the single-step providers
 /// (dnf/cargo/npm/pipx/go…): each assembles its own `argv`, this centralises the
 /// `InstallPlan` shape so a model change is a one-line edit, not a per-provider one.

@@ -9,9 +9,13 @@
 //! by a friendly name like `gimp` may not resolve — see docs/TASKS.md Phase 3.)
 
 use async_trait::async_trait;
+use serde::Deserialize;
 use serde_json::json;
 
-use super::{Bootstrap, Ecosystem, Provider, nonempty_lines, parse_installed_records, run_capture, which};
+use super::{
+    Bootstrap, Ecosystem, Provider, nonempty_lines, parse_installed_records, post_json_opt,
+    run_capture, which,
+};
 use crate::error::Result;
 use crate::model::{
     Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -62,20 +66,33 @@ impl Provider for Flatpak {
         })
     }
 
-    async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
-        let out = run_capture(&[
-            BIN,
-            "search",
-            &query.raw,
-            "--columns=name,application,version,branch,remotes",
-        ])
-        .await?;
+    /// Flatpak can be searched over the network (Flathub's web API) without the CLI, so a
+    /// host without Flatpak can still be told an app exists there — the install path then
+    /// offers to bootstrap Flatpak first instead of falling to GitHub (ADR-0061, part B).
+    fn can_search(&self) -> bool {
+        true
+    }
 
-        let rows = parse_rows(&out);
-        Ok(best_match(&query.raw, &rows)
-            .map(|row| candidate_from(&row))
-            .into_iter()
-            .collect())
+    async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
+        // With the CLI present, use it — it respects the user's configured remotes and shows
+        // versions. Without it, fall back to Flathub's v2 search API so an uninstalled Flatpak
+        // still answers "I have this"; the candidate looks the same, so plan_install is identical.
+        if which(BIN).await {
+            let out = run_capture(&[
+                BIN,
+                "search",
+                &query.raw,
+                "--columns=name,application,version,branch,remotes",
+            ])
+            .await?;
+
+            let rows = parse_rows(&out);
+            return Ok(best_match(&query.raw, &rows)
+                .map(|row| candidate_from(&row))
+                .into_iter()
+                .collect());
+        }
+        flathub_search(&query.raw).await
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
@@ -177,6 +194,46 @@ fn candidate_from(row: &Row) -> PackageCandidate {
         summary: (!row.name.is_empty()).then(|| row.name.clone()),
         raw: json!({ "remote": remote, "branch": row.branch, "appid": row.appid }),
     }
+}
+
+/// One hit from Flathub's v2 search API (only the fields JII needs).
+#[derive(Deserialize)]
+struct FlathubHit {
+    name: String,
+    app_id: String,
+}
+
+/// The v2 search response shape: `{ "hits": [ … ] }`.
+#[derive(Deserialize)]
+struct FlathubSearch {
+    hits: Vec<FlathubHit>,
+}
+
+/// Search Flathub's web API — used only when the flatpak CLI isn't installed. Maps each hit
+/// to the same `Row` shape the CLI path produces, so ranking and `candidate_from` (and thus
+/// `plan_install`) are identical: installing then bootstraps Flatpak and runs `flatpak install`.
+async fn flathub_search(query: &str) -> Result<Vec<PackageCandidate>> {
+    let body = json!({ "query": query });
+    let Some(resp) =
+        post_json_opt::<_, FlathubSearch>(ID, "https://flathub.org/api/v2/search", &body).await?
+    else {
+        return Ok(Vec::new());
+    };
+    let rows: Vec<Row> = resp
+        .hits
+        .into_iter()
+        .map(|h| Row {
+            name: h.name,
+            appid: h.app_id,
+            version: String::new(),
+            branch: "stable".to_string(),
+            remotes: vec!["flathub".to_string()],
+        })
+        .collect();
+    Ok(best_match(query, &rows)
+        .map(|row| candidate_from(&row))
+        .into_iter()
+        .collect())
 }
 
 /// Parse `flatpak search` output. Columns: `name<TAB>appid<TAB>version<TAB>branch<TAB>remotes`.
