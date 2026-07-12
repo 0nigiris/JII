@@ -238,6 +238,7 @@ jii doctor           diagnose sources + host, then interactively set up what's m
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
 jii history          installation history
 jii lang [en|ru]     show or set the interface language (auto = follow the system)
+jii cache [clear]    show the search-cache path, or delete it
 jii setup            re-run the first-run wizard (output mode, optional doctor)
 jii uninstall        remove JII itself (same as jii remove jii)
 ```

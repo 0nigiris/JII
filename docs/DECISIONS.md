@@ -2336,8 +2336,10 @@ grows: bump the version + refresh checksums in each recipe (noted in `packaging/
 
 ## ADR-0061 — GitHub strictly last + bootstrap an uninstalled source before it (part B design)
 
-**Status:** Part A **Accepted & landed** (2026-07-12); Part B **Accepted** (2026-07-12, UX forks
-resolved below) — implementation is the next core pass, not yet started.
+**Status:** Part A **Accepted & landed** (2026-07-12). Part B **Accepted**; **stages 1-2 landed**
+(2026-07-12): `can_search` for cargo/npm/pipx/go + Flatpak (Flathub v2 API), uninstalled-source
+search, and the bootstrap-before-install prompt — verified `jii obsidian`→Flatpak end-to-end. Stage 3
+(Snap/brew network search) remains.
 
 **Context.** Owner directive from cross-system testing: "search GitHub *really* last." Concretely
 (owner's example): `jii obsidian` on a box where Flatpak isn't installed should **offer to install

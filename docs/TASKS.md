@@ -540,17 +540,20 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (6) **first-run `jii doctor`** now onboards (was skipped, left first-run unmarked).
                   (7) **GitHub ranked strictly last** — part A of pt.17 (ADR-0061); `github` moved to the
                   end of default `priority`, below cargo/npm/pipx/go/brew/nix.
-            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** Bugs: apt update should be
-                  `apt-get update && upgrade` and mention snap; openSUSE `jii firefox` shows "closest" not an
-                  exact match; Arch didn't offer fonts/vlc suggestions; portable install should offer the PATH
-                  hint everywhere (openSUSE missed it). Features: fuzzy "did you mean?" on **all** sources (not
-                  just github); a GitHub repo **link** when no package matches / to confirm the right app;
-                  `jii cache clear`; a short alias for `--source <native>`; `jii yay`/`jii paru` (bootstrap AUR
-                  helpers); flatpak sudo/password detection. **Architecture (need ADRs):** ~~GitHub ranked strictly
-                  last~~ (part A **done**, ADR-0061) + **bootstrap the source before falling to github**
-                  (pt.17 part B — ADR-0061 design done, awaiting owner UX sign-off: split `can_search` from
-                  `is_available`, `needs_bootstrap` candidates, prepend T6 bootstrap, Flathub/Snap/brew net
-                  search); merge `jii sources`+`jii providers` into one `jii sources` with
+            - [x] **Cross-system fixes — batch 2 (2026-07-12).** pt.17 **part A** (github strict-last) +
+                  **part B stages 1-2** (ADR-0061): `Provider::can_search` (cargo/npm/pipx/go network search +
+                  Flatpak→Flathub v2 API), uninstalled-source search + bootstrap-before-install prompt; verified
+                  `jii obsidian`→Flatpak, not github. Dotted app-ids match on their tail (`firefox`==
+                  `org.mozilla.firefox` — the openSUSE "closest" papercut). `apt` update runs `apt-get update`
+                  before upgrade. `jii cache [clear]`. `Provider::web_url` shown in the single-install preview
+                  ("have a look first"). `install.sh` always speaks to PATH after a portable install.
+            - [ ] **Cross-system fixes — remaining (owner-scoped 2026-07-12).** pt.17 part B **stage 3**
+                  (Snap/brew network search — same pattern as Flathub). `jii yay`/`jii paru` (an AUR-helper
+                  ecosystem — Arch-specific, needs an AUR provider). Arch didn't offer fonts/vlc suggestions
+                  (recommend-catalog distro filter for Arch). A short alias for `--source <native>`. flatpak
+                  sudo/password detection (or default `--user`). Richer fuzzy for mid-word typos (`pipix`→`pipx`;
+                  trailing typos already work). **Architecture (need ADRs):**
+                  merge `jii sources`+`jii providers` into one `jii sources` with
                   enable/disable + `remove --purge` (deinstall the manager from the OS, confirmed) + **hide
                   non-applicable native sources by default** (all via a flag); should first-run force `setup`,
                   and put the git-key setup hint in `doctor` too. Unify `-d`/`-n` semantics (users confuse them).

@@ -35,16 +35,33 @@ UX, and architecture). Landed this session, most-critical first:
 - **First-run `jii doctor` now onboards.** A first-ever run that is `jii doctor` used to skip
   onboarding entirely (no mode choice, first-run left unmarked → next command re-onboarded). It now
   runs the wizard with `offer_doctor=false`, then doctor once. Other `setup` callers pass `true`.
-- **GitHub ranked strictly last (part A of pt.17, ADR-0061).** `github` moved to the end of the
+- **GitHub ranked strictly last (pt.17 part A, ADR-0061).** `github` moved to the end of the
   default `priority` (below cargo/npm/pipx/go/brew/nix); every real package source is preferred.
+- **pt.17 part B — bootstrap an uninstalled source before GitHub (ADR-0061, stages 1-2 DONE).**
+  New `Provider::can_search()` (network search without the CLI): cargo/npm/pipx/go opt in (their
+  search is already a registry API call), and **Flatpak searches Flathub's v2 API** when its CLI is
+  absent. `Engine::search_one` now includes a `can_search` source even when uninstalled; on install,
+  a chosen candidate whose manager isn't present prompts "install <manager> and get it there?" and
+  bootstraps it first (reusing `bootstrap_ecosystem`). Verified end-to-end: `jii obsidian` on a box
+  without Flatpak → offers Flathub `md.obsidian.Obsidian`, not a GitHub binary. Stage 3 (Snap/brew
+  network search) is the only remainder. New `post_json_opt` helper.
+- **Ranking: dotted app-ids match on their last segment.** `firefox`==`org.mozilla.firefox`,
+  `obsidian`==`md.obsidian.Obsidian` are now *exact*, so the reverse-DNS name doesn't lose to an
+  unrelated same-named crate/pypi package — fixes the openSUSE `jii firefox` "closest …" papercut,
+  and the install "no exact match" note is suppressed on an app-id-tail hit. +2 ranking tests.
+- **`apt` whole-system update runs `apt-get update` before `upgrade`** (was upgrade-only against a
+  stale index). Two actions, one sudo (privilege layer batches them).
+- **`jii cache [clear]`** — show / delete the on-disk search cache.
+- **Install preview shows the candidate's web page** (`Provider::web_url`, cheap/sync): Flathub /
+  crates.io / npm / PyPI / pkg.go.dev / snapcraft / GitHub-repo — "have a look first" before installing.
+- **`install.sh` always speaks to PATH** after a portable install (confirm when already on PATH,
+  else the add-to-PATH hint + full-path fallback); dropped its `⚠` glyph.
 
-**Next core work — pt.17 part B (ADR-0061, design done, awaiting owner's UX sign-off):** bootstrap an
-**uninstalled** source before falling to github (owner's `jii obsidian`→Flatpak example). Key finding:
-cargo/npm/pipx/go already search over the network; only the CLI gates *install*. Plan: split
-`can_search` from `is_available`, tag `needs_bootstrap` candidates, prepend the T6 manager-bootstrap to
-their plan, and add Flathub/Snap/brew network search. Multi-file — its own focused pass. Also still
-open: merge `jii sources`+`jii providers` (enable/disable, `remove --purge`, hide non-applicable), and
-the smaller batch-2 items in TASKS.md.
+**Next open work (TASKS.md "remaining"):** pt.17 part B **stage 3** (Snap/brew network search);
+**`jii sources` redesign** (merge with `jii providers`, enable/disable, `remove --purge`, hide
+non-applicable — owner-approved, needs ADR); `jii yay`/`jii paru` (an AUR-helper ecosystem — bigger,
+Arch-specific); a short alias for `--source`; flatpak sudo/password detection; richer fuzzy match for
+mid-word typos (`pipix`→`pipx`; trailing typos already work); `-d`/`-n` semantics unification.
 
 <details><summary>Earlier the same day (2026-07-12) — "JII everywhere" packaging recipes (ADR-0060)</summary>
 
