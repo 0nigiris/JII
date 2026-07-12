@@ -44,8 +44,8 @@ pub struct GlobalArgs {
     #[arg(long, global = true)]
     pub auto: bool,
 
-    /// Force a specific source id (e.g. `--source flatpak`).
-    #[arg(long, value_name = "ID", global = true)]
+    /// Force a specific source id (e.g. `-s flatpak`). Even shorter per-package: `jii htop:dnf`.
+    #[arg(short = 's', long, value_name = "ID", global = true)]
     pub source: Option<String>,
 
     /// Ranking profile preset.
