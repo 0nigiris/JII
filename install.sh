@@ -224,12 +224,18 @@ portable_install() {
   info "Installed jii $TAG → $BIN_DIR/jii"
 
   # PATH hint (portable only — the native path lands in /usr/bin, already on PATH).
+  # Either way say something, so the user always knows whether `jii` is runnable now
+  # (some distros, e.g. openSUSE, already put ~/.local/bin on PATH — then just confirm it).
   case ":$PATH:" in
-    *":$BIN_DIR:"*) : ;;
+    *":$BIN_DIR:"*)
+      info ""
+      info "$BIN_DIR is on your PATH — just run:  jii"
+      ;;
     *)
       info ""
-      info "⚠ $BIN_DIR is not on your PATH. Add it, e.g.:"
+      info "Note: $BIN_DIR is not on your PATH yet. Add it, e.g.:"
       info "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+      info "Until then, run it with the full path:  $BIN_DIR/jii"
       ;;
   esac
 }
