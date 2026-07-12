@@ -248,11 +248,21 @@ impl Cli {
                 renderer.info(&crate::t!("setup.first_use"));
                 renderer.info(&crate::t!("setup.will_run_after", cmd = summary.clone()));
                 renderer.info("");
-                self.setup(config.clone(), &renderer, true).await?;
+                self.setup(config.clone(), &renderer, true, true).await?;
                 renderer.info("");
                 renderer.info(&crate::t!("setup.now_running", cmd = summary));
                 renderer.info("");
                 // Reload so the dispatched command sees the wizard's saved choices.
+                Config::load().unwrap_or(config)
+            } else if matches!(self.command, Some(Commands::Doctor { .. })) {
+                // First-ever run *is* `jii doctor`: previously this skipped onboarding entirely
+                // (no mode choice, no token hint, and first-run stayed unmarked so the *next*
+                // command re-onboarded). Give the wizard now — but with offer_doctor=false, so
+                // the real doctor below runs once instead of being offered here and again.
+                renderer.info(&crate::t!("setup.first_use"));
+                renderer.info("");
+                self.setup(config.clone(), &renderer, true, false).await?;
+                renderer.info("");
                 Config::load().unwrap_or(config)
             } else {
                 config
@@ -273,7 +283,7 @@ impl Cli {
                     // Very first bare `jii` on an interactive terminal → a warm welcome + the
                     // 30-second setup wizard (once). Otherwise the usual usage hint.
                     if config.is_first_run() && self.interactive(&renderer) {
-                        self.setup(config, &renderer, true).await
+                        self.setup(config, &renderer, true, true).await
                     } else {
                         renderer.info(&crate::t!("common.usage_hint"));
                         Ok(())
@@ -303,7 +313,7 @@ impl Cli {
                 }
             },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
-            Some(Commands::Setup) => self.setup(config, &renderer, false).await,
+            Some(Commands::Setup) => self.setup(config, &renderer, false, true).await,
             Some(Commands::Uninstall) => self.self_uninstall(config, &renderer).await,
             Some(Commands::Completions { shell }) => {
                 let mut cmd = <Cli as clap::CommandFactory>::command();
@@ -1859,11 +1869,15 @@ impl Cli {
     /// nags again. It only asks and only changes the config it saves — it never touches the
     /// system without consent (the optional `doctor` it offers is read-only today; the
     /// system-helping doctor lands in U6).
+    /// `offer_doctor` gates the "run a system check now?" step: it's `false` only when the
+    /// invocation that triggered onboarding *is* `jii doctor`, so the real doctor runs once
+    /// afterwards instead of being offered here and then again by the dispatched command.
     async fn setup(
         &self,
         mut config: Config,
         renderer: &Renderer,
         first_run: bool,
+        offer_doctor: bool,
     ) -> crate::error::Result<()> {
         let flags = self.prompt_flags(false);
 
@@ -1901,8 +1915,9 @@ impl Cli {
 
         // Step 2 — optional system check + setup. `doctor` is interactive: it diagnoses,
         // then offers to set up what's missing (each item a separate yes/no — the user stays
-        // in control, and can skip every one with Enter).
-        if prompt::confirm(renderer, &crate::t!("setup.run_doctor_q"), true, &flags) {
+        // in control, and can skip every one with Enter). Skipped when the triggering command
+        // is itself `jii doctor` — it will run right after, so we don't offer it twice.
+        if offer_doctor && prompt::confirm(renderer, &crate::t!("setup.run_doctor_q"), true, &flags) {
             renderer.info("");
             self.doctor(config.clone(), renderer).await?;
         }
