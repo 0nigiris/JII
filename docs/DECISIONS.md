@@ -2336,8 +2336,8 @@ grows: bump the version + refresh checksums in each recipe (noted in `packaging/
 
 ## ADR-0061 — GitHub strictly last + bootstrap an uninstalled source before it (part B design)
 
-**Status:** Part A **Accepted & landed** (2026-07-12); Part B **Proposed** (design below, awaiting
-owner sign-off on the UX forks before implementation).
+**Status:** Part A **Accepted & landed** (2026-07-12); Part B **Accepted** (2026-07-12, UX forks
+resolved below) — implementation is the next core pass, not yet started.
 
 **Context.** Owner directive from cross-system testing: "search GitHub *really* last." Concretely
 (owner's example): `jii obsidian` on a box where Flatpak isn't installed should **offer to install
@@ -2374,10 +2374,13 @@ doesn't cover the owner's example where the better source isn't installed at all
 re-run the normal search.* Simpler but wastes an install when the package isn't in that source; the
 `can_search`-first approach only bootstraps once we know it's worth it.
 
-**Open UX forks (owner to decide before coding):** (i) auto-offer the bootstrap, or gate it behind a
-flag / prompt only? (ii) which sources join `can_search` first — start with the already-network ones
-(cargo/npm/pipx/go) and add Flatpak/Snap/Homebrew APIs incrementally? (iii) trust: a `needs_bootstrap`
-Flatpak app is still `community` — the normal trust barrier (ADR-0006) applies unchanged.
+**UX forks — resolved (owner, 2026-07-12):** (i) **Prompt to confirm**, always: when the best match is
+a `needs_bootstrap` candidate, show "Found in Flatpak (not installed). Install Flatpak and get obsidian
+there? [Y/n]" — the user stays in control; `--auto`/`--yes` still auto-confirm within the trust barrier.
+(ii) **Incremental, implementer's call:** land the already-network sources first (cargo/npm/pipx/go —
+cheap, no new search code), then add Flatpak (Flathub API) so the owner's obsidian example works, then
+Snap/Homebrew. (iii) trust: a `needs_bootstrap` Flatpak app is still `community` — the normal trust
+barrier (ADR-0006) applies unchanged.
 
 **Consequences.** Delivers the owner's "github truly last, bootstrap the right source instead" vision
 generally, not just for Flatpak. Cost: a `Provider` API change (`can_search`), a `PackageCandidate`
