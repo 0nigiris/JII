@@ -630,47 +630,17 @@ impl Cli {
             chosen.push(best);
         }
 
-        // 1a-bis. Bootstrap a source that searched over the network but whose CLI isn't installed
-        //   here (ADR-0061 part B). A chosen candidate from such a source (cargo/npm/pipx/go/…)
-        //   can't be installed until its manager is present, so — since GitHub is now the strict
-        //   last resort — offer to install the manager first ("found in Flatpak, not installed;
-        //   install it and get it there?") instead of silently falling to a raw GitHub binary.
-        //   github itself has no ecosystem(), so it never routes here: it stays the plain binary.
-        if !chosen.is_empty() {
-            let catalog = engine.ecosystem_catalog().await;
-            let flags = self.prompt_flags(effective_auto).with_yes(assume_yes);
-            let mut i = 0;
-            while i < chosen.len() {
-                let src = chosen[i].source_id.clone();
-                let name = chosen[i].name.clone();
-                let Some(eco) = catalog.iter().find(|e| e.id == src.as_str() && !e.installed) else {
-                    i += 1;
-                    continue;
-                };
-                renderer.info(&crate::t!("bootstrap.needed", name = name.clone(), label = eco.label));
-                // dry-run previews the plan without changing anything, so don't prompt — just
-                // note the manager would be bootstrapped and keep the candidate in the preview.
-                let proceed = self.global.dry_run
-                    || prompt::confirm(
-                        renderer,
-                        &crate::t!("bootstrap.confirm", label = eco.label, name = name.clone()),
-                        true,
-                        &flags,
-                    );
-                if !proceed {
-                    renderer.info(&crate::t!("bootstrap.declined", label = eco.label, name = name));
-                    chosen.remove(i);
-                    continue;
-                }
-                if !self.global.dry_run {
-                    self.bootstrap_ecosystem(&engine, eco, config.clone(), renderer).await?;
-                }
-                i += 1;
-            }
-            // Everything was declined — nothing left to install.
-            if chosen.is_empty() {
-                return Ok(());
-            }
+        // 1a-bis. T6 (ADR-0065): a chosen candidate may come from an ecosystem manager that isn't
+        //   installed — a `can_search` source (Flatpak, Snap, cargo, npm, pipx, go, brew) answered
+        //   over the network, so an uninstalled-Flatpak `obsidian` outranks the last-resort GitHub
+        //   binary. Set the manager up first (then the app installs through it) instead of building
+        //   a command that would fail; a declined or script-only manager drops its apps with a note.
+        //   github has no `ecosystem()`, so it never routes here — it stays the plain binary.
+        chosen = self
+            .bootstrap_missing_managers(&engine, chosen, &config, renderer, assume_yes)
+            .await?;
+        if chosen.is_empty() {
+            return Ok(());
         }
 
         // 1b. Declarative-vs-imperative install choice (ADR-0054/0056 + the `prefer_declarative`
@@ -2186,6 +2156,150 @@ impl Cli {
                 Ok(())
             }
         }
+    }
+
+    /// T6 (ADR-0065): set up any *uninstalled* ecosystem manager a chosen candidate depends on,
+    /// then keep the candidate so it installs through the now-present manager. A `can_search`
+    /// source (Flatpak, Snap, cargo, npm, pipx, go, brew) can answer a search without its CLI, so
+    /// an uninstalled-Flatpak `obsidian` outranks the last-resort GitHub binary — but its install
+    /// command would fail. Rather than fall through to GitHub, we bootstrap the manager first.
+    ///
+    /// Per distinct manager (asked once, not once per app): a `Packages` manager (flatpak/snap/
+    /// cargo/…) is offered for setup (default yes) and installed via the normal path; a `Script`
+    /// manager (brew/nix) is **shown, never run** (ADR-0005/0006), so its apps are skipped with a
+    /// note. Candidates whose manager is already present, or isn't an ecosystem at all (github),
+    /// pass through untouched. Returns the survivors.
+    async fn bootstrap_missing_managers(
+        &self,
+        engine: &Engine,
+        chosen: Vec<PackageCandidate>,
+        config: &Config,
+        renderer: &Renderer,
+        assume_yes: bool,
+    ) -> crate::error::Result<Vec<PackageCandidate>> {
+        let eco = engine.ecosystem_catalog().await;
+        let status_of = |id: &str| eco.iter().find(|e| e.id == id);
+
+        // Fast path: nothing chosen needs an absent manager → leave the batch untouched.
+        if !chosen
+            .iter()
+            .any(|c| status_of(&c.source_id).is_some_and(|e| !e.installed))
+        {
+            return Ok(chosen);
+        }
+
+        let effective_auto = self.global.auto || config.install.auto;
+        let flags = self.prompt_flags(effective_auto).with_yes(assume_yes);
+        // Decide once per manager (a batch may want several apps from the same one).
+        let mut decided: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+        let mut survivors: Vec<PackageCandidate> = Vec::with_capacity(chosen.len());
+
+        for cand in chosen {
+            let Some(status) = status_of(&cand.source_id) else {
+                survivors.push(cand); // not an ecosystem manager (e.g. github) — unaffected
+                continue;
+            };
+            if status.installed {
+                survivors.push(cand);
+                continue;
+            }
+            if let Some(&ok) = decided.get(&cand.source_id) {
+                if ok {
+                    survivors.push(cand);
+                }
+                continue;
+            }
+
+            let manager = status.label;
+            renderer.info("");
+            renderer.info(&crate::t!(
+                "install.bootstrap_needed",
+                app = cand.name.clone(),
+                manager = manager
+            ));
+            let ok = match status.bootstrap {
+                // brew/nix: JII will not pipe an upstream installer into a shell. Show it; the
+                // user sets it up and re-runs. Skip the app this time.
+                Bootstrap::Script(cmd) => {
+                    renderer.info(&crate::t!("install.bootstrap_script_only", manager = manager));
+                    renderer.info(&format!("  {cmd}"));
+                    false
+                }
+                // flatpak/snap/cargo/…: install the manager's OS package, then wire up any default
+                // remote it needs. In dry-run we preview the setup and keep the app so its plan is
+                // shown too, without touching the system.
+                Bootstrap::Packages(names) => {
+                    let question =
+                        crate::t!("install.bootstrap_confirm", manager = manager, app = cand.name.clone());
+                    if !self.global.dry_run && !prompt::confirm(renderer, &question, true, &flags) {
+                        false
+                    } else {
+                        self.set_up_manager(engine, &cand.source_id, manager, names, config.clone(), renderer)
+                            .await?
+                    }
+                }
+            };
+            decided.insert(cand.source_id.clone(), ok);
+            if ok {
+                survivors.push(cand);
+            } else {
+                renderer.info(&crate::t!("install.bootstrap_skipped_app", app = cand.name.clone()));
+            }
+        }
+        Ok(survivors)
+    }
+
+    /// Install an ecosystem manager's OS package (the first of `names` that resolves on this host)
+    /// through the normal install path, then wire up any default remote it needs, and report
+    /// whether it is usable afterwards. Consent was already given by the T6 prompt, so the package
+    /// install runs with `assume_yes`. In dry-run it only previews and returns `true` (so the app's
+    /// own plan is previewed too). Returns `false` — dropping the dependent app — if no package
+    /// resolves or the manager still isn't present after install.
+    async fn set_up_manager(
+        &self,
+        engine: &Engine,
+        source_id: &str,
+        manager: &str,
+        names: &[&'static str],
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<bool> {
+        let Some(pkg) = engine.first_available_package(names).await else {
+            renderer.error(&crate::t!("install.bootstrap_no_pkg", manager = manager, app = manager));
+            return Ok(false);
+        };
+        renderer.info(&crate::t!("install.bootstrap_installing", manager = manager));
+        // route_managers=false: `pkg` (e.g. "flatpak") is itself a manager id; routing it would
+        // loop straight back into bootstrap. Box::pin breaks the async-recursion cycle.
+        Box::pin(self.install_inner(&[pkg], config.clone(), renderer, true, false)).await?;
+
+        // Dry-run never actually installed anything — assume success so the app plan is previewed.
+        if self.global.dry_run {
+            return Ok(true);
+        }
+        if !engine.source_available(source_id).await {
+            return Ok(false);
+        }
+        // Flatpak's install plan targets the `flathub` remote, which a freshly-installed Flatpak
+        // doesn't have yet — add it (idempotent, user-scope, no root) so the app install resolves.
+        // The one manager needing a post-install remote today; localized here like doctor's Flathub
+        // fix rather than pushed into the source-agnostic core.
+        if source_id == "flatpak" {
+            let argv: Vec<String> = [
+                "flatpak",
+                "remote-add",
+                "--user",
+                "--if-not-exists",
+                "flathub",
+                "https://flathub.org/repo/flathub.flatpakrepo",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            let _ = run_plain_command(&argv).await;
+        }
+        renderer.success(&crate::t!("install.bootstrap_ready", manager = manager));
+        Ok(true)
     }
 
     /// `jii lang [code]` — show or persist the interface language. With no argument it prints

@@ -594,13 +594,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   GitHub-token guidance, but only when actionable (GitHub in play + no configured token). **#14**
                   already resolved by design: the Flatpak provider is entirely `--user` (never `needs_root`), so
                   JII never triggers a flatpak polkit/sudo prompt — no password detection needed. 272 tests.
-            - [ ] **Owner audit #13 = the T6 bootstrap epic (not yet built).** Ranking is already correct — GitHub
-                  is last in the default `priority`, and `can_search` sources (flatpak/snap/cargo/npm/pipx/go/brew)
-                  search **even when their CLI is absent**, so an uninstalled-Flatpak `obsidian` hit surfaces and
-                  ranks above GitHub. **Missing:** the execution step — when the chosen candidate's manager isn't
-                  installed, prepend a bootstrap plan step (install Flatpak, then the app) instead of building a
-                  command that fails. `needs_bootstrap` exists only in comments today. This touches the core
-                  plan/preview/privilege flow (trust, `sources add` reuse) — a focused epic, not a tail-end patch.
+            - [x] **Owner audit #13 = T6 bootstrap (2026-07-13, ADR-0065).** `bootstrap_missing_managers` (`cli`)
+                  runs on the chosen set before planning: a chosen candidate from an **uninstalled** ecosystem
+                  manager (Flatpak/Snap/cargo/npm/pipx/go — they `can_search` without their CLI, so they outrank
+                  the last-resort GitHub binary) triggers "set up {manager} and install {app}?" (default yes,
+                  asked once per manager). `Packages` managers install via the normal path + `Engine::source_
+                  available` confirms it landed; Flatpak also gets its Flathub user remote added idempotently.
+                  `Script` managers (brew/nix) are shown-never-run and their apps skipped. `--dry-run` previews
+                  both phases. Replaces the incomplete ADR-0061-partB loop; removed the dead `[bootstrap]` locale
+                  section. 272 tests, clippy clean. **Verified (dry-run):** `httpie:pipx` → pipx-via-dnf then
+                  httpie-via-pipx; `wget:brew` → shows the Homebrew script + skips; `obsidian` (flatpak present) →
+                  plain flatpak, no bootstrap. **T7:** live on a manager-less host.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

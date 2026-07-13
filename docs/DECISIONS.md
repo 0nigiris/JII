@@ -2508,3 +2508,41 @@ metadata refresh fixes the timing without special-casing the install path.
 never surfaces apt/pacman/zypper/void/gentoo/aur (and symmetrically for other families). The codec
 setup succeeds on a fresh RPM Fusion enable. `refresh_repo_metadata` lives in the CLI doctor layer
 (already distro-aware via the per-distro catalog), not the source-agnostic core.
+
+## ADR-0065 — T6: bootstrap an uninstalled manager before its app instead of falling to GitHub
+
+**Status:** Accepted (2026-07-13).
+
+**Context.** Owner: "`jii obsidian` — if Obsidian is in Flatpak but Flatpak **isn't installed**, offer
+to set up Flatpak and install it there, instead of searching GitHub. And this should work for *any*
+source, not just Flatpak." Two halves already existed: GitHub is the strict last resort in the default
+`priority`, and `can_search` sources (Flatpak, Snap, cargo, npm, pipx, go, brew) search **without**
+their CLI, so an uninstalled-Flatpak hit already surfaces and outranks the GitHub binary. A first-cut
+bootstrap loop (ADR-0061 part B) also existed — but it (a) never added Flatpak's Flathub remote, so
+the app install still failed on a fresh Flatpak; (b) never checked the manager actually installed; and
+(c) kept the app even for a `Script` manager (brew/nix) that JII refuses to auto-install, so the app
+then failed anyway.
+
+**Decision.** Replace that loop with `bootstrap_missing_managers` (`cli`), run on the chosen set before
+planning. Per **distinct** manager (asked once, not once per app): a `Packages` manager (flatpak/snap/
+cargo/npm/pipx/go) is offered for setup (default yes), installed via the normal `install_inner` path
+(its own preview + privilege), then — for Flatpak — the Flathub user remote is added idempotently
+(`remote-add --user --if-not-exists`, the one manager needing a post-install remote, localized like
+doctor's Flathub fix); `Engine::source_available` confirms it landed before the app is kept. A `Script`
+manager (brew/nix) is **shown, never run** (ADR-0005/0006), so its apps are skipped with a note. In
+`--dry-run` both phases are previewed (set up the manager, then install the app) with nothing executed.
+Candidates whose manager is already present, or that aren't ecosystem managers at all (github), pass
+through untouched — no branch on a concrete source id except the single, well-marked Flatpak remote.
+
+**Alternatives rejected.** (a) *One combined plan* (prepend the manager-install actions to the app's
+`InstallPlan`) — a single confirm, but it splices two sources' plans (dnf-installs-flatpak + flatpak-
+installs-app) into the batch model and complicates preview/privilege; two reused phases are lower-risk
+and each keeps its correct elevation. (b) *A generic `post_bootstrap` provider hook for the remote* —
+over-built for the one Flatpak case; revisit if a second manager needs it. (c) *Keep falling to GitHub* —
+the explicit thing the owner rejected.
+
+**Consequences.** On a host without Flatpak, `jii obsidian` now offers "set up Flatpak and install
+Obsidian?" and does both, instead of installing a raw GitHub binary — and the same holds for Snap/cargo/
+npm/pipx/go. brew/nix stay show-only. The dead `[bootstrap]` locale section was removed (superseded by
+`install.bootstrap_*`). Verified via `--dry-run`: `httpie:pipx` previews pipx-via-dnf then httpie-via-
+pipx; `wget:brew` shows the Homebrew script and skips. Live end-to-end on a manager-less host is T7.

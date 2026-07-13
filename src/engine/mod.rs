@@ -881,6 +881,17 @@ impl Engine {
         out
     }
 
+    /// Whether a specific source's manager is usable right now (its CLI is present). Backs the
+    /// T6 bootstrap flow — after installing a manager's package, confirm it actually landed
+    /// before planning the app that needs it. Checked live (`which`), so it reflects a manager
+    /// installed earlier in the same run. Unknown/absent id → false.
+    pub async fn source_available(&self, id: &str) -> bool {
+        match self.provider(id) {
+            Ok(p) => p.is_available().await,
+            Err(_) => false,
+        }
+    }
+
     /// List the installable *ecosystem* managers (npm, cargo, brew, flatpak…) with their
     /// presence on this host (backs `jii providers`). Only providers that declare an
     /// [`ecosystem`](crate::provider::Provider::ecosystem) appear — base system repos

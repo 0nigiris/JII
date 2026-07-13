@@ -93,6 +93,14 @@ not_found_via = "Не найдено через источник «{source}»: {
 browse_hint = "В ваших источниках нет — можно поискать вручную и посмотреть, как установить:"
 browse_github = "GitHub:  {url}"
 browse_flathub = "Flathub: {url}"
+bootstrap_needed = "{app} доступен через {manager}, который ещё не установлен в системе."
+bootstrap_confirm = "Установить {manager} и поставить {app}?"
+bootstrap_script_only = "{manager} ставится собственным скриптом — JII его за вас не запускает (доверие). Установите его и повторите:"
+bootstrap_installing = "Сначала устанавливаю {manager}…"
+bootstrap_ready = "{manager} готов."
+bootstrap_no_pkg = "Не нашёл пакет для установки {manager} в этой системе — пропускаю {app}."
+bootstrap_failed = "{manager} не установился — пропускаю {app}."
+bootstrap_skipped_app = "Пропущен {app}."
 no_exact_match = "Точного совпадения для «{name}» нет. Ближайшее: {closest}."
 web_url = "Сначала можно посмотреть: {url}"
 already_installed = "{name} уже установлен через {source}{version}"
@@ -188,11 +196,6 @@ no_path = "Не удалось определить расположение к�
 cleared = "Кеш поиска очищен ({path})."
 already_empty = "Кеш поиска уже пуст."
 clear_failed = "Не удалось очистить кеш: {error}"
-
-[bootstrap]
-needed = "{name} доступен через {label}, который ещё не установлен."
-confirm = "Установить {label} и через него поставить {name}?"
-declined = "Пропущено — без {label} поставить {name} нельзя."
 
 [providers]
 installed = "Установленные экосистемы:"

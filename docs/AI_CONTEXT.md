@@ -33,11 +33,14 @@ _Last updated: 2026-07-13_
   configured; #14 closed by design — Flatpak is all `--user`, never `needs_root`, so no password
   detection is needed. **272 tests, clippy clean.** Brand: `assets/banner.png` + `assets/icon.png`
   added, banner shown in the README header.
-- **Still open — #13 = the T6 bootstrap epic.** Ranking already prefers an uninstalled Flatpak over
-  GitHub (GitHub last in `priority`; `can_search` sources search without their CLI). What's missing is
-  the **execution** step: when the chosen candidate's manager is absent, prepend a bootstrap plan step
-  (install Flatpak → then the app) instead of a command that fails. `needs_bootstrap` is comment-only.
-  This is a focused core change (plan/preview/privilege + `sources add` reuse) — awaiting the go-ahead.
+- **#13 / T6 bootstrap landed (2026-07-13, ADR-0065).** `bootstrap_missing_managers` (`cli`) runs on the
+  chosen set before planning: a candidate from an **uninstalled** ecosystem manager (Flatpak/Snap/cargo/
+  npm/pipx/go — `can_search` without their CLI, so they outrank the last-resort GitHub binary) prompts
+  "set up {manager} and install {app}?" (default yes, once per manager), installs the manager via the
+  normal path, adds Flatpak's Flathub remote, confirms it landed (`Engine::source_available`), then the
+  app installs through it. `Script` managers (brew/nix) stay show-only and skip the app. `--dry-run`
+  previews both phases. 272 tests, clippy clean. Removed the dead `[bootstrap]` locale section.
+  **T7:** live end-to-end on a manager-less host (this dev box has flatpak/cargo/npm/go installed).
 
 ---
 
