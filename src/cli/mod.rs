@@ -2488,6 +2488,18 @@ impl Cli {
             ));
         }
 
+        // GitHub with no token is throttled to 60 req/h — the single biggest reliability
+        // papercut for the last-resort GitHub source. Give the same token guidance `setup`
+        // does (owner wanted it in `doctor` too), but only when it's actionable: GitHub is
+        // actually in play here and no token is set (otherwise the source line already shows
+        // the 5000-req budget, and repeating it would just be noise).
+        let gh_present = diagnostics.iter().any(|d| d.id == "github");
+        let has_token = std::env::var(&token_env).is_ok_and(|v| !v.is_empty());
+        if gh_present && !has_token {
+            renderer.info("");
+            self.github_token_help(&config_for_fix, renderer);
+        }
+
         // System checks: probe the host environment (network, common tools, PATH, Flathub).
         let facts = gather_system_facts(&token_env).await;
         let checks = system_checks(&facts);
