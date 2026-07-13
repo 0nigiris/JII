@@ -875,7 +875,7 @@ impl Engine {
                 id: provider.id(),
                 trust: provider.trust(),
                 available,
-                relevant: available || provider.can_search() || provider.ecosystem().is_some(),
+                relevant: source_relevant(available, provider),
             });
         }
         out
@@ -955,6 +955,14 @@ impl Engine {
         let timeout = Duration::from_secs(self.config.network.timeout_secs);
         let mut out = Vec::new();
         for provider in self.providers.iter() {
+            // Only diagnose sources relevant to this host — skip a foreign distro's native
+            // manager (pacman on Fedora) that can neither run here nor be bootstrapped. Same
+            // predicate as `source_catalog`/`jii sources`, so `doctor` and `sources` never
+            // disagree on what the user can actually use (ADR-0064): a Fedora user is never
+            // shown apt/pacman/zypper/void/gentoo/aur. Capability, not a source-id branch.
+            if !source_relevant(provider.is_available().await, provider) {
+                continue;
+            }
             let start = Instant::now();
             let probe = match tokio::time::timeout(timeout, provider.probe()).await {
                 Ok(probe) => probe,
@@ -1009,6 +1017,17 @@ impl Engine {
             .get(source_id)
             .ok_or_else(|| JiiError::UnknownSource(source_id.to_string()))
     }
+}
+
+/// Whether a source is worth surfacing on this host (ADR-0064): usable now (`available`),
+/// or bootstrappable — network-searchable (`can_search`) or a declarable ecosystem manager
+/// (`ecosystem`). A foreign distro's native manager (pacman on Fedora, dnf on Arch) is none
+/// of these. Shared by `source_catalog` (backs `jii sources`) and `diagnose` (backs
+/// `jii doctor`) so the two never disagree about what the user can actually use. Pure
+/// capability — no branch on a concrete source id. `available` is the caller's cached
+/// `is_available()`, passed in so we don't probe twice.
+fn source_relevant(available: bool, provider: &dyn crate::provider::Provider) -> bool {
+    available || provider.can_search() || provider.ecosystem().is_some()
 }
 
 /// A source slower than this (but still reachable) is reported as [`Health::Slow`].

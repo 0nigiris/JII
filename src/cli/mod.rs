@@ -2632,6 +2632,15 @@ impl Cli {
                 }
                 self.apply_suggestion(prereq, config.clone(), renderer).await?;
                 enabled_repos.insert(prereq.id.clone());
+                // A just-enabled repo (RPM Fusion) has no local metadata yet, so the dependent's
+                // install below would query a stale cache and wrongly report its packages "not
+                // found" (the codecs bug: gstreamer1-plugins-ugly lives in rpmfusion-free). Refresh
+                // the package metadata once, right after the repo is added, so the install that
+                // follows actually sees them. Best-effort, non-root, and a no-op off Fedora
+                // (guarded on dnf5); skipped in dry-run since nothing was really enabled.
+                if !self.global.dry_run {
+                    refresh_repo_metadata(renderer).await;
+                }
             }
             self.apply_suggestion(r, config.clone(), renderer).await?;
             // Remember a repo the user enabled directly, so a later dependent doesn't re-run it.
@@ -3429,6 +3438,19 @@ async fn run_plain_command(argv: &[String]) -> crate::error::Result<()> {
             argv.join(" ")
         )))
     }
+}
+
+/// Refresh the package manager's metadata after a repo was just enabled in the `doctor`
+/// questionnaire, so the dependent install that follows sees the new repo's packages instead
+/// of a stale-cache "not found" (the RPM Fusion → codecs case). Best-effort and non-root:
+/// a no-op where dnf5 is absent (the only distro with a repo prerequisite today is Fedora),
+/// and a failure is swallowed — the transaction below may still refresh on its own.
+async fn refresh_repo_metadata(renderer: &Renderer) {
+    if !crate::provider::which("dnf5").await {
+        return;
+    }
+    renderer.info(&format!("    {}", crate::t!("doctor.refreshing_meta")));
+    let _ = run_plain_command(&["dnf5".to_string(), "makecache".to_string()]).await;
 }
 
 /// Run a documented catalog `manual` command through `sh -c` — it may use shell syntax

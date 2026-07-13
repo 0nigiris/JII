@@ -8,11 +8,35 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-12_
+_Last updated: 2026-07-13_
 
 ---
 
-## Most recent work (2026-07-12, batch 5) — read this first
+## Most recent work (2026-07-13, batch 6) — read this first
+
+**Two owner-reported Fedora bugs fixed (ADR-0064).**
+- **`jii doctor` no longer lists foreign distros' native managers.** `Engine::diagnose` now applies
+  the same relevance predicate `jii sources` already uses — factored into a shared
+  `source_relevant(available, provider)` (`available || can_search() || ecosystem().is_some()`) in
+  `engine/mod.rs`. A source that can neither run here nor be bootstrapped is **skipped**, so on Fedora
+  `doctor` shows dnf/copr/flatpak/github + the cross-distro ecosystem managers — **never**
+  apt/pacman/aur/zypper/void/gentoo (symmetric on other families). Pure capability, no source-id branch.
+  `doctor` and `sources` now agree.
+- **Codec setup no longer reports "not found" after enabling RPM Fusion.** Root cause: the just-added
+  repo had no local metadata, so the dependent install queried a stale `dnf5 repoquery` cache. Fix:
+  `doctor_offer` calls the new `refresh_repo_metadata` (best-effort non-root `dnf5 makecache`, guarded
+  on dnf5, skipped in dry-run) right after enabling a prerequisite repo, before installing the
+  dependent. New locale key `doctor.refreshing_meta` (en+ru).
+- **271 tests pass, clippy clean.** Verified on Fedora: `doctor` source list no longer shows
+  apt/pacman/zypper/void/gentoo/aur.
+- **Still open from the owner's big audit prompt** (see the reply): #2 "browse-repo link on a total
+  miss", #5 config path in `--help` (currently only in `doctor`), #7 GitHub-token hint in a normal
+  `doctor` run (only in setup/first-run today), #13 verify "prefer an uninstalled Flatpak over GitHub"
+  end-to-end, #14 detect when a system-wide Flatpak needs a password (JII always uses `--user`).
+
+---
+
+## Previous work (2026-07-12, batch 5)
 
 **AUR provider + `jii sources` redesign (ADR-0062).**
 - **AUR provider** (`provider/aur.rs`, id `aur`, Community) — **Arch-family only.** New

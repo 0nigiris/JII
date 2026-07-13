@@ -2471,3 +2471,40 @@ noise; the self-update check no longer waits on the system update. Trade-off: no
 long single source (e.g. a big dnf download) — acceptable given the goal is less noise, and the result
 line lands as soon as that source finishes. `run_captured` requires priming first (done by `prime_for`),
 so `sudo` never prompts with stdin captured.
+
+## ADR-0064 — `jii doctor` shows only host-relevant sources + refresh metadata after enabling a repo
+
+**Status:** Accepted (2026-07-13).
+
+**Context.** Two owner-reported bugs on Fedora. (1) `jii doctor` listed **every** source, including
+other distros' native package managers — `apt`, `pacman`, `aur`, `zypper`, `void`, `gentoo` — all
+`offline`. A Fedora user must not have to reason about pacman (and an Arch user not about dnf); this
+is the same principle `jii sources` already honours, where the `SourceEntry.relevant` predicate hides
+a foreign native manager unless `--all`. But `Engine::diagnose` (which backs `doctor`) probed and
+printed **all** enabled providers, ignoring relevance — so `doctor` and `sources` disagreed. (2) The
+`doctor` codec setup enabled RPM Fusion and then immediately reported its packages
+(`gstreamer1-plugins-ugly`, …) **"not found"**: the just-added repo had no local metadata yet, so the
+dependent install queried a stale `dnf5 repoquery` cache and missed them.
+
+**Decision.** (1) Factor the relevance rule out of `source_catalog` into a shared
+`source_relevant(available, provider)` = `available || can_search() || ecosystem().is_some()`, and
+apply it in `diagnose` too: a source that can neither run here nor be bootstrapped is **skipped**, so
+`doctor` shows exactly what `jii sources` shows. Still no branch on a concrete source id — pure
+capability (a foreign native manager is `available=false`, `can_search=false`, `ecosystem=None`; its
+own distro flips `available`/`ecosystem`). (2) After the questionnaire enables a prerequisite **repo**
+(RPM Fusion), call `refresh_repo_metadata` once before installing the dependent — a best-effort,
+non-root `dnf5 makecache` guarded on dnf5 (a no-op off Fedora, the only distro with a repo
+prerequisite today), skipped in dry-run. The following install then sees the new repo's packages.
+
+**Alternatives rejected.** (a) *Gate provider registration by platform* (don't even construct apt on
+Fedora) — larger blast radius (`from_config`/`Engine::new` would go async or hardcode binary names)
+and it would also hide a source a user explicitly `--source`-pins; filtering at the *view* layer keeps
+registration uniform and `--all`/pins working. (b) *Add `--refresh` to every dnf search* — slows the
+hot path for one rare post-repo-enable case. (c) *Install curated catalog packages via a direct
+`dnf install`* (bypassing JII's search) — reintroduces source branching in the doctor flow; a targeted
+metadata refresh fixes the timing without special-casing the install path.
+
+**Consequences.** `doctor` and `sources` now present one consistent host-relevant set; a Fedora box
+never surfaces apt/pacman/zypper/void/gentoo/aur (and symmetrically for other families). The codec
+setup succeeds on a fresh RPM Fusion enable. `refresh_repo_metadata` lives in the CLI doctor layer
+(already distro-aware via the per-distro catalog), not the source-agnostic core.

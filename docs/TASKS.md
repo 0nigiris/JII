@@ -577,6 +577,20 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   picker) as exact searches, so `jii pipix` → `pipx` (deletions cover a doubled key). **`-d`/`-n`
                   disambiguated:** sharpened all three flag help texts + added `--preview` alias for `--dry-run`
                   (behaviour unchanged). 271 tests.
+            - [x] **Owner-reported Fedora bugs — batch 7 (2026-07-13, ADR-0064).** (1) **`jii doctor` hid
+                  foreign native managers:** `Engine::diagnose` now applies the shared
+                  `source_relevant(available, provider)` predicate (extracted from `source_catalog`), so
+                  `doctor` shows the same host-relevant set as `jii sources` — a Fedora box no longer lists
+                  apt/pacman/aur/zypper/void/gentoo. (2) **Codec "not found" after enabling RPM Fusion:**
+                  `doctor_offer` now runs `refresh_repo_metadata` (best-effort non-root `dnf5 makecache`,
+                  dnf5-guarded, skipped in dry-run) right after enabling a prerequisite repo, so the dependent
+                  install sees the new repo's packages. New locale key `doctor.refreshing_meta` (en+ru). 271
+                  tests, clippy clean. **T7:** verify the codec flow end-to-end on a fresh RPM-Fusion enable.
+            - [ ] **Still open from the owner's big audit prompt (2026-07-13).** #2 offer a browse-repo link on a
+                  total miss (web_url exists only for found candidates); #5 put the config path in `--help` (today
+                  only in `doctor`); #7 show the GitHub-token hint in a normal `doctor` run (today only setup/
+                  first-run); #13 verify "prefer an uninstalled Flatpak over GitHub" end-to-end; #14 detect when a
+                  system-wide Flatpak needs a password (JII always uses `--user`). Owner to steer priority.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
