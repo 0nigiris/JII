@@ -574,11 +574,7 @@ Bug reports and real-world feedback from non-Fedora distros are the most valuabl
 <div align="center">
 
 <a href="https://star-history.com/#0nigiris/JII&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=0nigiris/JII&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=0nigiris/JII&type=Date" />
-    <img alt="Star history chart for 0nigiris/JII" src="https://api.star-history.com/svg?repos=0nigiris/JII&type=Date" width="640" />
-  </picture>
+  <img alt="Star history chart for 0nigiris/JII" src="assets/star-history.svg" width="640" />
 </a>
 
 <sub>⭐ Like it? A star grows the graph. Total downloads live in the badge up top — GitHub keeps no per-day download history, so a time chart there isn't possible.</sub>

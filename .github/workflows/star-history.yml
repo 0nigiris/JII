@@ -1,0 +1,40 @@
+# Regenerate the self-hosted star-history chart (assets/star-history.svg) and commit it when
+# it changes. Self-hosting avoids the flaky third-party widgets (star-history.com / starchart.cc
+# routinely answer "rate limited"); this renders from our own stargazer data and always loads.
+name: Star history
+
+on:
+  schedule:
+    - cron: "17 4 * * *" # daily, off-peak
+  workflow_dispatch: {} # manual "update now"
+
+# Least privilege: read stars, write the committed chart back.
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate the chart
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/gen_star_history.py "${{ github.repository }}" assets/star-history.svg
+
+      - name: Commit if it changed
+        run: |
+          if git diff --quiet -- assets/star-history.svg; then
+            echo "No change in the star-history chart."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/star-history.svg
+          git commit -m "chore(brand): refresh star-history chart"
+          git push
