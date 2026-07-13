@@ -11,6 +11,8 @@ machine — picks the best option, and explains *why*.
 
 [![Release](https://img.shields.io/github/v/release/0nigiris/JII?include_prereleases&sort=semver&label=release&color=blue)](https://github.com/0nigiris/JII/releases)
 [![Build](https://img.shields.io/github/actions/workflow/status/0nigiris/JII/release.yml?label=release%20build)](https://github.com/0nigiris/JII/actions)
+[![Stars](https://img.shields.io/github/stars/0nigiris/JII?logo=github&label=stars&color=gold)](https://github.com/0nigiris/JII/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/0nigiris/JII/total?logo=github&label=downloads&color=brightgreen)](https://github.com/0nigiris/JII/releases)
 [![License: GPL v3](https://img.shields.io/github/license/0nigiris/JII?color=green)](LICENSE)
 [![Made with Rust](https://img.shields.io/badge/Rust-edition%202024-orange?logo=rust)](https://www.rust-lang.org/)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20(x86__64%20%7C%20aarch64)-lightgrey?logo=linux)](#install)
