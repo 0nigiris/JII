@@ -41,6 +41,10 @@ _Last updated: 2026-07-13_
   app installs through it. `Script` managers (brew/nix) stay show-only and skip the app. `--dry-run`
   previews both phases. 272 tests, clippy clean. Removed the dead `[bootstrap]` locale section.
   **T7:** live end-to-end on a manager-less host (this dev box has flatpak/cargo/npm/go installed).
+- **Release cut: `v0.1.7-beta`.** Version bumped in `Cargo.toml`, `Cargo.lock`, `packaging/jii.spec`
+  (`%_tag` + `Version` + changelog). Pushing the tag triggers `release.yml`. **Post-release debt (same
+  as prior tags):** refresh `packaging/aur/PKGBUILD` `pkgver` + `sha256sums` from the published v0.1.7
+  tarballs once CI uploads them.
 
 ---
 

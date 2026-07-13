@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.6-beta
+%global _tag v0.1.7-beta
 
 Name:           jii
-Version:        0.1.6~beta
+Version:        0.1.7~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,12 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Mon Jul 13 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.7~beta-1
+- Rebuild against the v0.1.7-beta release: `jii doctor` shows only host-relevant
+  sources (no foreign distro managers) + refreshes metadata after enabling a repo
+  (fixes the codec "not found"); browse links on a total miss; config path in
+  `--help`; GitHub-token hint in `doctor`; and T6 — bootstrap an uninstalled
+  manager (Flatpak/Snap/cargo/…) before its app instead of falling to GitHub.
 * Sun Jul 12 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.6~beta-1
 - Rebuild against the v0.1.6-beta release: AUR provider + yay/paru (Arch-family
   only), `jii sources` merges providers with add/remove of ecosystem managers,
