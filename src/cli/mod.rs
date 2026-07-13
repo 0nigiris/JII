@@ -769,6 +769,26 @@ impl Cli {
                     renderer.info(&format!("  → {msg}"));
                 }
             }
+            // Even after broadening and (interactively) the repo picker, nothing resolved. Don't
+            // dead-end: hand the user links to *browse* for it themselves and read the project's
+            // own install docs (owner ask) — GitHub search finds the repo, Flathub a desktop app.
+            // Skipped in JSON (machine output) and when a `--source` was pinned (the miss is about
+            // that one source, not "where do I find this at all").
+            if !renderer.is_json() && self.global.source.is_none() {
+                let palette = renderer.palette();
+                renderer.info(&crate::t!("install.browse_hint"));
+                for name in &not_found {
+                    let q = url_query_encode(name);
+                    renderer.info(&palette.dim(&crate::t!(
+                        "install.browse_github",
+                        url = format!("https://github.com/search?q={q}&type=repositories")
+                    )));
+                    renderer.info(&palette.dim(&crate::t!(
+                        "install.browse_flathub",
+                        url = format!("https://flathub.org/apps/search?q={q}")
+                    )));
+                }
+            }
         }
         if chosen.is_empty() {
             return Ok(());
@@ -3452,6 +3472,23 @@ async fn run_plain_command(argv: &[String]) -> crate::error::Result<()> {
     }
 }
 
+/// Percent-encode a search term for a URL query component. Keeps the RFC 3986 unreserved set
+/// (`A-Z a-z 0-9 - _ . ~`) and encodes everything else as `%XX`, so a term with a slash, an `@`,
+/// or spaces (`@angular/cli`) still forms a valid browse link. Small and dependency-free — we
+/// only ever encode short package names for the "browse for it" hint.
+fn url_query_encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 /// Refresh the package manager's metadata after a repo was just enabled in the `doctor`
 /// questionnaire, so the dependent install that follows sees the new repo's packages instead
 /// of a stale-cache "not found" (the RPM Fusion → codecs case). Best-effort and non-root:
@@ -3686,6 +3723,15 @@ impl SysManager {
 mod tests {
     use super::*;
     use crate::model::{PkgVersion, TrustLevel};
+
+    #[test]
+    fn url_query_encode_keeps_unreserved_and_escapes_the_rest() {
+        assert_eq!(url_query_encode("firefox"), "firefox");
+        assert_eq!(url_query_encode("gh-cli_2.0.tar~"), "gh-cli_2.0.tar~");
+        // slash, @ and space must be percent-encoded so the browse link stays valid.
+        assert_eq!(url_query_encode("@angular/cli"), "%40angular%2Fcli");
+        assert_eq!(url_query_encode("a b"), "a%20b");
+    }
 
     #[test]
     fn sys_manager_remove_argv_is_per_manager_and_root() {
