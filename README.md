@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🚀 JII — Just Install It
+<img src="assets/banner.png" alt="JII — Just Install It" width="820">
+
+# JII — Just Install It
 
 **A smart, universal package _installer_ for Linux.**
 
