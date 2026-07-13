@@ -27,12 +27,17 @@ _Last updated: 2026-07-13_
   `doctor_offer` calls the new `refresh_repo_metadata` (best-effort non-root `dnf5 makecache`, guarded
   on dnf5, skipped in dry-run) right after enabling a prerequisite repo, before installing the
   dependent. New locale key `doctor.refreshing_meta` (en+ru).
-- **271 tests pass, clippy clean.** Verified on Fedora: `doctor` source list no longer shows
-  apt/pacman/zypper/void/gentoo/aur.
-- **Still open from the owner's big audit prompt** (see the reply): #2 "browse-repo link on a total
-  miss", #5 config path in `--help` (currently only in `doctor`), #7 GitHub-token hint in a normal
-  `doctor` run (only in setup/first-run today), #13 verify "prefer an uninstalled Flatpak over GitHub"
-  end-to-end, #14 detect when a system-wide Flatpak needs a password (JII always uses `--user`).
+- **Then landed #2/#5/#7 + closed #14 (2026-07-13).** #2 browse links (GitHub + Flathub search) on a
+  total miss (`url_query_encode`, unit-tested); #5 real config path appended to `jii --help`
+  (`main::parse_cli` dynamic `after_help`); #7 GitHub-token guidance in `jii doctor` when no token is
+  configured; #14 closed by design — Flatpak is all `--user`, never `needs_root`, so no password
+  detection is needed. **272 tests, clippy clean.** Brand: `assets/banner.png` + `assets/icon.png`
+  added, banner shown in the README header.
+- **Still open — #13 = the T6 bootstrap epic.** Ranking already prefers an uninstalled Flatpak over
+  GitHub (GitHub last in `priority`; `can_search` sources search without their CLI). What's missing is
+  the **execution** step: when the chosen candidate's manager is absent, prepend a bootstrap plan step
+  (install Flatpak → then the app) instead of a command that fails. `needs_bootstrap` is comment-only.
+  This is a focused core change (plan/preview/privilege + `sources add` reuse) — awaiting the go-ahead.
 
 ---
 

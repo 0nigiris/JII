@@ -586,11 +586,21 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   dnf5-guarded, skipped in dry-run) right after enabling a prerequisite repo, so the dependent
                   install sees the new repo's packages. New locale key `doctor.refreshing_meta` (en+ru). 271
                   tests, clippy clean. **T7:** verify the codec flow end-to-end on a fresh RPM-Fusion enable.
-            - [ ] **Still open from the owner's big audit prompt (2026-07-13).** #2 offer a browse-repo link on a
-                  total miss (web_url exists only for found candidates); #5 put the config path in `--help` (today
-                  only in `doctor`); #7 show the GitHub-token hint in a normal `doctor` run (today only setup/
-                  first-run); #13 verify "prefer an uninstalled Flatpak over GitHub" end-to-end; #14 detect when a
-                  system-wide Flatpak needs a password (JII always uses `--user`). Owner to steer priority.
+            - [x] **Owner audit prompt — items #2/#5/#7/#14 (2026-07-13).** **#2** on a total miss (after
+                  broadening + the repo picker) `install` now prints browse links — GitHub repo search + Flathub
+                  search, per missed name — via a dependency-free unit-tested `url_query_encode`; skipped in JSON /
+                  when `--source` pinned. **#5** `jii --help` now ends with the real XDG-resolved config path
+                  (`main::parse_cli` injects `after_help` dynamically). **#7** `jii doctor` shows the `setup`
+                  GitHub-token guidance, but only when actionable (GitHub in play + no configured token). **#14**
+                  already resolved by design: the Flatpak provider is entirely `--user` (never `needs_root`), so
+                  JII never triggers a flatpak polkit/sudo prompt — no password detection needed. 272 tests.
+            - [ ] **Owner audit #13 = the T6 bootstrap epic (not yet built).** Ranking is already correct — GitHub
+                  is last in the default `priority`, and `can_search` sources (flatpak/snap/cargo/npm/pipx/go/brew)
+                  search **even when their CLI is absent**, so an uninstalled-Flatpak `obsidian` hit surfaces and
+                  ranks above GitHub. **Missing:** the execution step — when the chosen candidate's manager isn't
+                  installed, prepend a bootstrap plan step (install Flatpak, then the app) instead of building a
+                  command that fails. `needs_bootstrap` exists only in comments today. This touches the core
+                  plan/preview/privilege flow (trust, `sources add` reuse) — a focused epic, not a tail-end patch.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
