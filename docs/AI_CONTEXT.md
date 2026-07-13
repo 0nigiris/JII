@@ -34,9 +34,15 @@ _Last updated: 2026-07-12_
   elevated command first**, confirms **default-no**, runs via `privilege.rs`. **System package
   managers are refused** (would break the OS); script-installed brew/nix → manual note; yay/paru →
   `pacman -Rs`. Removed the now-dead `Ecosystem.binary` field + `Palette::mark_bullet`.
-- **268 tests, clippy clean.** Verified on Fedora: merged `jii sources` view; `remove dnf` refused;
+- **271 tests, clippy clean.** Verified on Fedora: merged `jii sources` view; `remove dnf` refused;
   `-d` dry-run of `remove flatpak`→`dnf5 remove -y flatpak` and `remove go`→`golang`; `add yay`
   refused off-Arch. **T7:** live helper install/AUR search + real manager removal need an Arch host.
+
+**Release cut: `v0.1.6-beta`** (2026-07-12). Version bumped in `Cargo.toml`/`Cargo.lock` and
+`packaging/jii.spec` (`_tag`/`Version`/changelog); tag `v0.1.6-beta` pushed → `release.yml` builds and
+publishes the x86_64/aarch64 musl binaries + `.tar.gz`/`.deb`/`.rpm` assets. **Post-release debt:**
+refresh `packaging/aur/PKGBUILD` `pkgver` + sha256sums from the published tarballs (needs the release
+assets to exist first — same two-phase flow as v0.1.5-beta's `dc3b73a`).
 
 **`jii update` output polish (ADR-0063) — DONE.** Owner ran `jii update` and npm/flatpak flooded the
 terminal. Now the whole-system update **captures** each bulk manager's output (`Privilege::run_captured`,
