@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Generate a self-hosted star + download history SVG for the README.
+"""Generate self-hosted growth charts for the README — two simple SVGs.
 
 Third-party live widgets (star-history.com, starchart.cc) share GitHub API tokens and
-routinely answer 503/"rate limited" — so the README chart randomly breaks. Instead we
-render our own SVG from the repo's stargazer timestamps and release download counts and
-commit it: it is served from the repo, always renders, and a scheduled workflow keeps it
-current (see `.github/workflows/star-history.yml`).
+routinely answer 503/"rate limited" — so a README chart randomly breaks. Instead we
+render our own SVGs from the repo's data and commit them: they are served from the repo,
+always render, and a scheduled workflow keeps them current (see the workflow in
+`.github/workflows/`).
 
-Two series on one chart: cumulative **stars** (left axis, purple) over time, and
-cumulative **downloads** (right axis, cyan) over release dates.
+Two independent charts, each a single clean line on its own axis:
+  * assets/stars.svg     — cumulative stars over time (purple)
+  * assets/downloads.svg — cumulative release downloads over time (cyan)
 
 Pure standard library. Auth via `GITHUB_TOKEN` (the Actions token) or `JII_GITHUB_TOKEN`
 locally; unauthenticated also works for small repos but is rate-limited.
 
-Usage:  python3 scripts/gen_star_history.py [owner/repo] [out.svg]
+Usage:  python3 scripts/gen_charts.py [owner/repo] [out_dir]
 """
 
 from __future__ import annotations
@@ -25,19 +26,18 @@ import urllib.request
 from datetime import datetime, timezone
 
 REPO = sys.argv[1] if len(sys.argv) > 1 else "0nigiris/JII"
-OUT = sys.argv[2] if len(sys.argv) > 2 else "assets/star-history.svg"
+OUT_DIR = sys.argv[2] if len(sys.argv) > 2 else "assets"
 
-# Brand palette (sampled from assets/banner.png). CYAN is the second-series accent —
-# distinct from the brand purple and legible on the black background.
-PURPLE = "#6A31F2"
-CYAN = "#22D3EE"
+# Brand palette (sampled from assets/banner.png).
+PURPLE = "#6A31F2"  # stars
+CYAN = "#22D3EE"  # downloads
 INK = "#F5F4F5"
 DIM = "#8A8394"
 BG = "#000000"
 GRID = "#FFFFFF14"  # ~8% white
 
-W, H = 800, 420
-ML, MR, MT, MB = 60, 54, 58, 46  # plot margins (MR widened for the right download axis)
+W, H = 720, 400
+ML, MR, MT, MB = 58, 26, 58, 46  # plot margins
 PX0, PX1 = ML, W - MR
 PY0, PY1 = MT, H - MB
 
@@ -46,7 +46,7 @@ def gh_get(url: str, accept: str = "application/vnd.github+json") -> list:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("JII_GITHUB_TOKEN")
     req = urllib.request.Request(url)
     req.add_header("Accept", accept)
-    req.add_header("User-Agent", "jii-star-history")
+    req.add_header("User-Agent", "jii-charts")
     if token:
         req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=30) as r:
@@ -125,52 +125,38 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_svg(
+def build_chart(
     repo: str,
-    stamps: list[datetime],
-    downloads: list[tuple[datetime, int]],
+    title: str,
+    accent: str,
+    symbol: str,
+    pts: list[tuple[datetime, int]],
 ) -> str:
+    """One clean line chart: single Y axis, gridlines, date labels, a total badge."""
     now = datetime.now(timezone.utc)
-    n = len(stamps)
-    dl_total = downloads[-1][1] if downloads else 0
-    have_dl = dl_total > 0
+    total = pts[-1][1] if pts else 0
 
-    # Star cumulative points (t_i, i); extend the last value to "now".
-    if n == 0:
-        star_pts = [(now, 0)]
+    # Extend the last value to "now" so the line reaches today; guarantee ≥1 point.
+    data = list(pts)
+    if data:
+        if data[-1][0] < now:
+            data.append((now, data[-1][1]))
     else:
-        star_pts = [(t, i + 1) for i, t in enumerate(stamps)]
-        star_pts.append((now, n))
+        data = [(now, 0)]
 
-    # Download cumulative points; extend the last value to "now" so the line reaches today.
-    dl_pts = list(downloads)
-    if dl_pts:
-        dl_pts.append((now, dl_pts[-1][1]))
-
-    # Time axis spans the earliest event of either series to now.
-    candidates = [p[0] for p in star_pts] + [p[0] for p in dl_pts]
-    t_min = min(candidates) if candidates else now
+    t_min = min(p[0] for p in data)
     t_max = now
     span = max((t_max - t_min).total_seconds(), 1.0)
 
-    # Left (stars) axis.
-    y_hi = max(1, n)
+    y_hi = max(1, total)
     step = nice_step(y_hi)
-    star_top = ((y_hi + step - 1) // step) * step
-
-    # Right (downloads) axis.
-    dl_hi = max(1, dl_total)
-    dl_step = nice_step(dl_hi)
-    dl_top = ((dl_hi + dl_step - 1) // dl_step) * dl_step
+    y_top = ((y_hi + step - 1) // step) * step
 
     def sx(t: datetime) -> float:
         return PX0 + (t - t_min).total_seconds() / span * (PX1 - PX0)
 
-    def sy_star(v: float) -> float:
-        return PY1 - (v / star_top) * (PY1 - PY0)
-
-    def sy_dl(v: float) -> float:
-        return PY1 - (v / dl_top) * (PY1 - PY0)
+    def sy(v: float) -> float:
+        return PY1 - (v / y_top) * (PY1 - PY0)
 
     parts: list[str] = []
     parts.append(
@@ -179,52 +165,34 @@ def build_svg(
     )
     parts.append(f'<rect width="{W}" height="{H}" rx="12" fill="{BG}"/>')
 
-    # Title.
+    # Title (left) and total badge (right).
     parts.append(
         f'<text x="{ML}" y="34" fill="{INK}" font-size="20" font-weight="700">'
-        f"Stars &amp; downloads</text>"
+        f"{esc(title)}</text>"
     )
-    # Totals (double as the legend): stars purple, downloads cyan.
-    if have_dl:
-        parts.append(
-            f'<text x="{PX1}" y="26" fill="{PURPLE}" font-size="18" font-weight="700" '
-            f'text-anchor="end">★ {n}</text>'
-        )
-        parts.append(
-            f'<text x="{PX1}" y="47" fill="{CYAN}" font-size="18" font-weight="700" '
-            f'text-anchor="end">↓ {dl_total}</text>'
-        )
-    else:
-        parts.append(
-            f'<text x="{PX1}" y="34" fill="{PURPLE}" font-size="20" font-weight="700" '
-            f'text-anchor="end">★ {n}</text>'
-        )
+    parts.append(
+        f'<text x="{PX1}" y="34" fill="{accent}" font-size="20" font-weight="700" '
+        f'text-anchor="end">{symbol} {total}</text>'
+    )
     parts.append(
         f'<text x="{ML}" y="{H-14}" fill="{DIM}" font-size="12">{esc(repo)}</text>'
     )
 
-    # Horizontal grid, aligned to the star axis; label stars on the left, downloads on
-    # the right (each series scaled so its own max sits at the top gridline).
+    # Horizontal gridlines with left labels.
     v = 0
-    while v <= star_top:
-        y = sy_star(v)
+    while v <= y_top:
+        y = sy(v)
         parts.append(
             f'<line x1="{PX0}" y1="{y:.1f}" x2="{PX1}" y2="{y:.1f}" '
             f'stroke="{GRID}" stroke-width="1"/>'
         )
         parts.append(
-            f'<text x="{PX0-8}" y="{y+4:.1f}" fill="{PURPLE}" font-size="11" '
+            f'<text x="{PX0-8}" y="{y+4:.1f}" fill="{DIM}" font-size="11" '
             f'text-anchor="end">{v}</text>'
         )
-        if have_dl:
-            frac = v / star_top if star_top else 0
-            parts.append(
-                f'<text x="{PX1+8}" y="{y+4:.1f}" fill="{CYAN}" font-size="11" '
-                f'text-anchor="start">{round(frac * dl_top)}</text>'
-            )
         v += step
 
-    # X date labels (start … now), a few evenly spaced.
+    # X date labels (start … now).
     label_ticks = 1 if span < 86400 else 4
     for k in range(label_ticks + 1):
         frac = k / label_ticks
@@ -236,33 +204,34 @@ def build_svg(
             f'text-anchor="{anchor}">{t.strftime("%b %-d, %Y")}</text>'
         )
 
-    # Downloads line (right axis) — drawn first so stars sit on top.
-    if have_dl and len(dl_pts) >= 1:
-        dl_line = " ".join(f"{sx(t):.1f},{sy_dl(v):.1f}" for t, v in dl_pts)
-        parts.append(
-            f'<polyline points="{dl_line}" fill="none" stroke="{CYAN}" '
-            f'stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'
-        )
-        for t, vv in dl_pts[:-1]:
-            parts.append(
-                f'<circle cx="{sx(t):.1f}" cy="{sy_dl(vv):.1f}" r="3.5" '
-                f'fill="{BG}" stroke="{CYAN}" stroke-width="2"/>'
-            )
-
-    # Stars line (left axis), no area fill.
-    star_line = " ".join(f"{sx(t):.1f},{sy_star(v):.1f}" for t, v in star_pts)
+    # Soft area under the line for a bit of body, then the line and dots on top.
+    line = " ".join(f"{sx(t):.1f},{sy(v):.1f}" for t, v in data)
+    area = (
+        f"{PX0:.1f},{PY1:.1f} "
+        + line
+        + f" {sx(data[-1][0]):.1f},{PY1:.1f}"
+    )
+    parts.append(f'<polygon points="{area}" fill="{accent}" fill-opacity="0.08"/>')
     parts.append(
-        f'<polyline points="{star_line}" fill="none" stroke="{PURPLE}" '
+        f'<polyline points="{line}" fill="none" stroke="{accent}" '
         f'stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'
     )
-    for t, vv in star_pts[:-1] if n else []:
+    # Dots on real data points only (skip the synthetic "now" tail).
+    real = data[:-1] if (len(data) > 1 and data[-1][0] == now and total) else data
+    for t, vv in real:
         parts.append(
-            f'<circle cx="{sx(t):.1f}" cy="{sy_star(vv):.1f}" r="3.5" '
-            f'fill="{BG}" stroke="{PURPLE}" stroke-width="2"/>'
+            f'<circle cx="{sx(t):.1f}" cy="{sy(vv):.1f}" r="3.5" '
+            f'fill="{BG}" stroke="{accent}" stroke-width="2"/>'
         )
 
     parts.append("</svg>")
     return "\n".join(parts)
+
+
+def write(path: str, svg: str) -> None:
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(svg + "\n")
 
 
 def main() -> int:
@@ -276,12 +245,19 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001 — downloads are optional; warn and carry on
         print(f"warning: failed to fetch downloads for {REPO}: {e}", file=sys.stderr)
         downloads = []
-    svg = build_svg(REPO, stamps, downloads)
-    os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
-    with open(OUT, "w", encoding="utf-8") as f:
-        f.write(svg + "\n")
+
+    star_pts = [(t, i + 1) for i, t in enumerate(stamps)]
+    stars_svg = build_chart(REPO, "Stars", PURPLE, "★", star_pts)
+    downloads_svg = build_chart(REPO, "Downloads", CYAN, "↓", downloads)
+
+    write(os.path.join(OUT_DIR, "stars.svg"), stars_svg)
+    write(os.path.join(OUT_DIR, "downloads.svg"), downloads_svg)
+
     dl_total = downloads[-1][1] if downloads else 0
-    print(f"wrote {OUT} ({len(stamps)} stars, {dl_total} downloads)")
+    print(
+        f"wrote {OUT_DIR}/stars.svg ({len(stamps)} stars) and "
+        f"{OUT_DIR}/downloads.svg ({dl_total} downloads)"
+    )
     return 0
 
 

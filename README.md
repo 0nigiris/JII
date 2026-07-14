@@ -569,15 +569,14 @@ Bug reports and real-world feedback from non-Fedora distros are the most valuabl
 
 ---
 
-## 📈 Star history
+## 📈 Growth
 
 <div align="center">
 
-<a href="https://star-history.com/#0nigiris/JII&Date">
-  <img alt="Star history chart for 0nigiris/JII" src="assets/star-history.svg" width="640" />
-</a>
+<a href="https://github.com/0nigiris/JII/stargazers"><img alt="Stars over time for 0nigiris/JII" src="assets/stars.svg" width="49%" /></a>
+<a href="https://github.com/0nigiris/JII/releases"><img alt="Downloads over time for 0nigiris/JII" src="assets/downloads.svg" width="49%" /></a>
 
-<sub>⭐ Like it? A star grows the graph. Total downloads live in the badge up top — GitHub keeps no per-day download history, so a time chart there isn't possible.</sub>
+<sub>⭐ Like it? A star grows the left chart. Downloads are attributed to each release's date — GitHub keeps no per-day history, so this is the best a time chart can do.</sub>
 
 </div>
 
