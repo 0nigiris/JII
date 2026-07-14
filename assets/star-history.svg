@@ -1,22 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="420" viewBox="0 0 800 420" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif">
-<defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6A31F2" stop-opacity="0.35"/><stop offset="1" stop-color="#6A31F2" stop-opacity="0"/></linearGradient></defs>
 <rect width="800" height="420" rx="12" fill="#000000"/>
-<text x="60" y="34" fill="#F5F4F5" font-size="20" font-weight="700">Star history</text>
-<text x="774" y="34" fill="#6A31F2" font-size="20" font-weight="700" text-anchor="end">★ 2</text>
+<text x="60" y="34" fill="#F5F4F5" font-size="20" font-weight="700">Stars &amp; downloads</text>
+<text x="746" y="26" fill="#6A31F2" font-size="18" font-weight="700" text-anchor="end">★ 2</text>
+<text x="746" y="47" fill="#22D3EE" font-size="18" font-weight="700" text-anchor="end">↓ 48</text>
 <text x="60" y="406" fill="#8A8394" font-size="12">0nigiris/JII</text>
-<line x1="60" y1="374.0" x2="774" y2="374.0" stroke="#FFFFFF14" stroke-width="1"/>
-<text x="52" y="378.0" fill="#8A8394" font-size="11" text-anchor="end">0</text>
-<line x1="60" y1="216.0" x2="774" y2="216.0" stroke="#FFFFFF14" stroke-width="1"/>
-<text x="52" y="220.0" fill="#8A8394" font-size="11" text-anchor="end">1</text>
-<line x1="60" y1="58.0" x2="774" y2="58.0" stroke="#FFFFFF14" stroke-width="1"/>
-<text x="52" y="62.0" fill="#8A8394" font-size="11" text-anchor="end">2</text>
+<line x1="60" y1="374.0" x2="746" y2="374.0" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="52" y="378.0" fill="#6A31F2" font-size="11" text-anchor="end">0</text>
+<text x="754" y="378.0" fill="#22D3EE" font-size="11" text-anchor="start">0</text>
+<line x1="60" y1="216.0" x2="746" y2="216.0" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="52" y="220.0" fill="#6A31F2" font-size="11" text-anchor="end">1</text>
+<text x="754" y="220.0" fill="#22D3EE" font-size="11" text-anchor="start">30</text>
+<line x1="60" y1="58.0" x2="746" y2="58.0" stroke="#FFFFFF14" stroke-width="1"/>
+<text x="52" y="62.0" fill="#6A31F2" font-size="11" text-anchor="end">2</text>
+<text x="754" y="62.0" fill="#22D3EE" font-size="11" text-anchor="start">60</text>
 <text x="60.0" y="394.0" fill="#8A8394" font-size="11" text-anchor="start">Jul 5, 2026</text>
-<text x="238.5" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 7, 2026</text>
-<text x="417.0" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 9, 2026</text>
-<text x="595.5" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 11, 2026</text>
-<text x="774.0" y="394.0" fill="#8A8394" font-size="11" text-anchor="end">Jul 13, 2026</text>
-<polygon points="60.0,374.0 60.0,216.0 60.4,58.0 774.0,58.0 774.0,374.0" fill="url(#fill)"/>
-<polyline points="60.0,216.0 60.4,58.0 774.0,58.0" fill="none" stroke="#6A31F2" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="231.5" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 7, 2026</text>
+<text x="403.0" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 10, 2026</text>
+<text x="574.5" y="394.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 12, 2026</text>
+<text x="746.0" y="394.0" fill="#8A8394" font-size="11" text-anchor="end">Jul 14, 2026</text>
+<polyline points="352.6,368.7 362.5,358.2 366.6,358.2 367.3,331.9 414.7,310.8 438.0,142.3 641.8,121.2 682.7,121.2 746.0,121.2" fill="none" stroke="#22D3EE" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="352.6" cy="368.7" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="362.5" cy="358.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="366.6" cy="358.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="367.3" cy="331.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="414.7" cy="310.8" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="438.0" cy="142.3" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="641.8" cy="121.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="682.7" cy="121.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<polyline points="60.0,216.0 60.3,58.0 746.0,58.0" fill="none" stroke="#6A31F2" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="60.0" cy="216.0" r="3.5" fill="#000000" stroke="#6A31F2" stroke-width="2"/>
-<circle cx="60.4" cy="58.0" r="3.5" fill="#000000" stroke="#6A31F2" stroke-width="2"/>
+<circle cx="60.3" cy="58.0" r="3.5" fill="#000000" stroke="#6A31F2" stroke-width="2"/>
 </svg>
