@@ -2546,3 +2546,76 @@ Obsidian?" and does both, instead of installing a raw GitHub binary — and the 
 npm/pipx/go. brew/nix stay show-only. The dead `[bootstrap]` locale section was removed (superseded by
 `install.bootstrap_*`). Verified via `--dry-run`: `httpie:pipx` previews pipx-via-dnf then httpie-via-
 pipx; `wget:brew` shows the Homebrew script and skips. Live end-to-end on a manager-less host is T7.
+
+---
+
+## ADR-0066 — Owner testing round: bootstrap via a usable source, consent to a manager's own script, and progress you can see
+
+**Status:** Accepted (2026-07-15).
+
+**Context.** The owner tested v0.1.7-beta on Fedora and an apt host and reported ten things. Five were
+design-affecting; the rest were bugs or polish fixed within the existing design.
+
+**Decision.**
+
+1. **A manager is bootstrapped only through a source that works right now.** ADR-0065 handed the
+   manager's package to the normal install path with **no source pinned**, so on a pipx-less box
+   `jii htop:pipx` opened a chooser headed *"install pipx via pipx"* (and npm via npm) — a
+   `can_search` source answers over the network without its CLI, so an absent manager cheerfully
+   offered to install itself. You cannot set a manager up with a manager that isn't there.
+   `Engine::first_available_package` becomes `first_bootstrap_package`, resolving the package **and**
+   its source, considering only candidates whose source is `is_available()`, and pins it (`pipx:dnf`)
+   via the ADR-0031 spec grammar. No chooser (the user picked the *app*, not its plumbing), no
+   self-bootstrap, no core source-branch.
+
+2. **brew/nix: their own upstream script is offered, not refused.** ADR-0005/0006 made it
+   shown-never-run; the owner's reply while testing was "why won't you run it?" — and he is right that
+   refusing dead-ends the user, because for a manager with no distro package **the script is the only
+   install path there is**. It is now shown in full and run on an explicit answer, defaulting to
+   **yes** (owner's call: he asked for the manager). The trust rule that survives, per CLAUDE.md's
+   "auto mode never installs untrusted automatically": `--auto`/`--yes` do **not** consent for it, and
+   a non-interactive session only ever prints it. Run via `bash -c` (the upstream one-liners are
+   bash-isms) and never elevated — these installers ask for sudo themselves, exactly as they would if
+   the line were pasted. `privilege.rs` still owns JII's *own* escalation; this isn't JII's command.
+
+3. **Progress is visible: a spinner over captured output.** Friendly mode hides a manager's chatter
+   (U5), which left a silent terminal for the minutes `dnf upgrade` takes — reported as "it looks like
+   it froze". `ui::Spinner` animates one line on **stderr** (stdout stays clean for pipes/`--json`),
+   erases itself when the step ends, and shows elapsed seconds past three. It is inert without a TTY,
+   in `--json`, and in Advanced — where actions are streamed anyway. `exec::run_actions_quiet` gives
+   install/remove/update the same captured-with-spinner treatment the whole-system update already had,
+   and remove's preview drops to one line per package like install's. Failures are never swallowed:
+   the failing command plus a tail of its real output print, and `--dry-run`/Advanced keep every
+   command.
+
+4. **`--run` asks the source how to launch, via `Provider::launch_command`.** Default: the package's
+   own name (right for anything that drops a program on `PATH`); Flatpak overrides with
+   `flatpak run <app-id>`. The core assembles no command (ADR-0004). The caller **verifies the program
+   exists** before running, so a package that installs none (a font, a library) says so rather than
+   running something that isn't what was meant, and `exec`s on success so an interactive program owns
+   the terminal and its exit code becomes JII's. `jii htop --run` on an already-installed htop just
+   starts it — "install and run" with the install already done is "run".
+
+5. **`jii providers` is gone.** ADR-0062 merged it into `jii sources` and left it as a hidden alias;
+   the owner found it and asked why two commands do the same thing. One concept, one command.
+
+**Alternatives rejected.** (a) *Bootstrap from the detected system manager* (reuse `sources remove`'s
+`SysManager`) — needs a distro branch to name the manager, where "any source that is usable" is both
+more general and already in the model. (b) *Keep brew show-only* — the owner overruled it; the
+compromise that survives is that consent can't be delegated to `--yes`. (c) *Download the script and
+show it in a pager first* — offered and declined as too many steps for the value; the URL is shown and
+is the same one the project's own docs tell you to paste. (d) *A `--quiet` flag* rather than tying the
+narration to Friendly/Advanced — a second axis for a distinction U5 already draws.
+
+**Consequences.** `first_available_package` is gone (one caller shape, both migrated). The
+`install.bootstrap_script_only` / `providers.script_only` / `providers.script_wont_run` locale keys are
+replaced by `install.script_*`; `providers.{installed,available,add_hint}` were already dead and were
+removed with the command. New `[exec]` locale section for the spinner labels. `jii sources` now lists
+sources you disabled (they're absent from the provider registry, so the view could never show them)
+with the command to restore each, plus a footer naming disable/enable — the answer to "how do I turn a
+repository off?", which existed but nothing pointed at. `jii man` formats through `man(1)` at a
+terminal and still emits raw roff when redirected (`jii man > jii.1`, how the packages build it).
+`exec::changed_count` counts per line: it searched the whole blob for the first "upgraded", which lands
+on apt's "The following packages will be upgraded:" prose rather than its tally, so every apt update
+reported a bare "updated" — dnf5's transaction summary is counted too, and apt's "N not upgraded"
+(held back) is not counted as changed.

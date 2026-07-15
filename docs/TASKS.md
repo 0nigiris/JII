@@ -605,6 +605,26 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   section. 272 tests, clippy clean. **Verified (dry-run):** `httpie:pipx` → pipx-via-dnf then
                   httpie-via-pipx; `wget:brew` → shows the Homebrew script + skips; `obsidian` (flatpak present) →
                   plain flatpak, no bootstrap. **T7:** live on a manager-less host.
+            - [x] **Owner testing round #1 (2026-07-15, ADR-0066).** Ten reports from live testing of
+                  v0.1.7-beta on Fedora + an apt host, all landed. **(1)** Bootstrap resolves the manager's
+                  package *and* its source, restricted to sources usable right now, and pins it
+                  (`first_available_package` → `first_bootstrap_package`) — kills the "install pipx via pipx" /
+                  "npm via npm" chooser ADR-0065 left behind. **(2)** brew/nix: their upstream script is shown
+                  in full and **run on an explicit answer, default yes** (was shown-never-run, a dead end);
+                  `--auto`/`--yes` never consent for it, non-TTY only prints it. **(3)** `ui::Spinner` +
+                  `exec::run_actions_quiet`: install/remove/update show live progress over captured output
+                  (`jii update` read as a hang), remove's preview is one line per package, "Searching…" is a
+                  spinner. **(4)** New `--run` + `Provider::launch_command` (default = package name; Flatpak →
+                  `flatpak run <id>`), verified to exist before running, `exec`s. **(5)** `changed_count`
+                  counts per line — apt's "will be upgraded:" prose ate every count, so apt always reported a
+                  bare "updated"; dnf5's summary counted too. **(6)** `jii sources` lists sources you disabled
+                  (they're absent from the registry) + a disable/enable footer. **(7)** `jii man` formats via
+                  `man(1)` on a TTY, raw roff when redirected. **(8)** `jii providers` removed (duplicated
+                  `jii sources`). 276 tests, clippy clean. **Verified live on Fedora:** sources view, the two
+                  bootstrap dry-runs, npm install/remove/`--run`, `--run` on a font + a batch, `man -l`.
+                  **Open (owner asked, answered not coded):** registry name-squats — `htop` on PyPI is an
+                  unrelated project, so an explicit `htop:pipx` installs junk and pip fails. Only bites on an
+                  explicit pin (ranking puts dnf/apt first); a relevance heuristic is unscoped.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

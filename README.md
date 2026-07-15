@@ -237,6 +237,7 @@ jii how <name>       explain how JII would install (or did install) it   (alias:
 jii sources          list installation sources + ecosystem managers usable here
 jii sources add      bootstrap a missing manager (e.g. jii sources add npm; yay/paru on Arch)
 jii sources remove   uninstall an ecosystem manager (system managers are refused)
+jii sources disable  turn a source off, so JII stops considering it (enable turns it back on)
 jii doctor           diagnose sources + host, then interactively set up what's missing
                      (git/curl, PATH, Flathub, RPM Fusion, codecs, fonts…) — one y/n per item
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
@@ -252,6 +253,7 @@ jii uninstall        remove JII itself (same as jii remove jii)
 | Flag | Meaning |
 |---|---|
 | `--auto` | Install the recommended option without confirmation (still within trust limits) |
+| `--run` | Start it once it's installed (`jii htop --run`); one package at a time |
 | `--source <id>` | Force a specific source (e.g. `--source flatpak`) |
 | `--profile <p>` | Ranking preset: `stable` · `latest` · `sandbox` · `minimal` |
 | `-d`, `--dry-run` | Show the full plan, change nothing |

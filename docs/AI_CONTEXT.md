@@ -8,11 +8,53 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-13_
+_Last updated: 2026-07-15_
 
 ---
 
-## Most recent work (2026-07-13, batch 6) — read this first
+## Most recent work (2026-07-15, batch 7) — read this first
+
+**Owner testing round on v0.1.7-beta (Fedora + an apt host) — ten reports, all landed (ADR-0066).**
+The owner is actively testing across Fedora/Ubuntu/Arch/openSUSE/Nix/Gentoo/Void and reporting; expect
+more. Fixed this batch:
+
+- **Bootstrap only via a source that works.** `jii htop:pipx` on a pipx-less box offered a chooser
+  headed *"install pipx via pipx"* (same for npm). `Engine::first_available_package` →
+  **`first_bootstrap_package`**, which resolves the package *and* its source, considers only sources
+  that are `is_available()` right now, and pins it (`pipx:dnf`) via the ADR-0031 spec grammar. No
+  chooser, no self-bootstrap.
+- **brew/nix run their own script, with consent.** Was shown-never-run (a dead end: no distro package
+  exists, so the script *is* the install path). Now shown in full + confirmed, **default yes**;
+  `--auto`/`--yes` do **not** consent for it and a non-TTY only prints it (CLAUDE.md's untrusted-auto
+  rule). `bash -c`, never elevated. Shared helper `Cli::offer_script_bootstrap`.
+- **Progress you can see.** New **`ui::Spinner`** (stderr, erases itself, elapsed seconds past 3s;
+  inert without a TTY / in `--json` / in Advanced). `exec::run_actions_quiet` gives install/remove/
+  update captured-output-behind-a-spinner (what update-all already had); remove's preview is now one
+  line per package like install's; Friendly's "Searching…" is a spinner. Failures still print the
+  failing command + a tail of real output; `--dry-run`/Advanced unchanged.
+- **`--run`** (global flag): start it after install, and on an already-installed package just start
+  it. New **`Provider::launch_command`** — default is the package's own name, Flatpak overrides with
+  `flatpak run <app-id>`; the core assembles nothing. Verified to exist before running (a font says
+  "can't tell what to run" instead of guessing), then `exec`s.
+- **`exec::changed_count` counted per line.** It searched the whole blob for the first "upgraded",
+  landing on apt's *"The following packages will be upgraded:"* prose, so **every** apt update
+  reported a bare "updated". dnf5's transaction summary counts too; apt's "N not upgraded" doesn't.
+- **`jii sources` lists sources you disabled** (they're dropped from the provider registry, so the
+  view could never show them) with each one's enable command + a footer naming disable/enable.
+- **`jii man`** formats through `man(1)` at a terminal; still raw roff when redirected (packaging).
+- **`jii providers` removed** — the deprecated hidden alias that duplicated `jii sources`.
+
+**276 tests, clippy clean.** Verified live on Fedora: `sources` disable/enable view, `htop:pipx` and
+`htop:brew` dry-runs, npm install/remove/`--run`, `--run` on a font and on a batch, `man -l` render.
+
+**Known, not fixed (owner asked "why?", answered not coded):** registry sources return exact-name
+junk — `htop` on PyPI is an unrelated "1st training project", so `jii htop:pipx` installs it and pip
+fails. Ranking already puts dnf/apt first, so it only bites on an explicit `:pipx`/`:cargo` pin. A
+relevance heuristic for registry name-squats is unscoped.
+
+---
+
+## Previous work (2026-07-13, batch 6)
 
 **Two owner-reported Fedora bugs fixed (ADR-0064).**
 - **`jii doctor` no longer lists foreign distros' native managers.** `Engine::diagnose` now applies
