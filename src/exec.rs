@@ -83,24 +83,43 @@ pub fn summarize_update(output: &str) -> UpdateSummary {
     UpdateSummary { headline, notes }
 }
 
-/// Pull a "changed/upgraded N packages" count out of update output, if one is stated.
-/// Recognises npm's `changed N packages` and apt's `N upgraded` — both plain, universal shapes.
+/// Pull a "how many packages changed" count out of update output, if one is stated.
+///
+/// Scanned **line by line**, because these phrases occur in prose too: apt announces "The
+/// following packages will be upgraded:" long before its "5 upgraded, 0 newly installed" tally,
+/// so searching the whole blob for the first `upgraded` finds the headline, not the number (the
+/// bug behind a bare "apt ✓ updated"). Recognises three plain, universal shapes — a number right
+/// before `upgraded` (apt), an `upgrading: N packages` summary row (dnf5), and `changed N
+/// packages` (npm) — never a source id, so a manager JII hasn't met can still be counted.
 fn changed_count(lower: &str) -> Option<usize> {
-    // npm: "changed 984 packages in 42s"
-    if let Some(idx) = lower.find("changed ") {
-        let rest = &lower[idx + "changed ".len()..];
-        if let Some(n) = rest.split_whitespace().next().and_then(|w| w.parse::<usize>().ok())
-            && rest.contains("package")
-            && n > 0
+    lower.lines().find_map(count_in_line).filter(|n| *n > 0)
+}
+
+/// The three counted shapes, tried against one line. `None` when the line states no count.
+fn count_in_line(line: &str) -> Option<usize> {
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let number = |w: &str| w.trim_matches(|c: char| !c.is_ascii_digit()).parse::<usize>().ok();
+
+    for (i, word) in words.iter().enumerate() {
+        let bare = word.trim_end_matches([',', '.', ':', ';']);
+        // apt: "5 upgraded, 0 newly installed, 0 to remove and 3 not upgraded."
+        // The count is the number *immediately* before the word — which also skips the
+        // trailing "3 not upgraded" (held back, not changed): its predecessor is "not".
+        if bare == "upgraded"
+            && let Some(n) = i.checked_sub(1).and_then(|p| number(words[p]))
         {
             return Some(n);
         }
-    }
-    // apt: "5 upgraded, 0 newly installed" — take the number before "upgraded" when > 0.
-    if let Some(idx) = lower.find(" upgraded") {
-        let head = &lower[..idx];
-        if let Some(n) = head.split_whitespace().last().and_then(|w| w.parse::<usize>().ok())
-            && n > 0
+        // dnf5's transaction summary row: "Upgrading:  41 packages".
+        if bare == "upgrading"
+            && let Some(n) = words.get(i + 1).and_then(|w| number(w))
+        {
+            return Some(n);
+        }
+        // npm: "changed 984 packages in 42s".
+        if bare == "changed"
+            && line.contains("package")
+            && let Some(n) = words.get(i + 1).and_then(|w| number(w))
         {
             return Some(n);
         }
@@ -368,6 +387,36 @@ mod tests {
     #[test]
     fn summarize_counts_apt_upgrades_and_flatpak_eol() {
         assert_eq!(summarize_update("5 upgraded, 0 newly installed\n").headline, "5 packages updated");
+        let s = summarize_update("Info: runtime org.kde.Platform is end-of-life\nNothing to update.\n");
+        // A real update stream: "nothing to update" headline, but the EOL note still surfaces.
+        assert_eq!(s.headline, "nothing to update");
+        assert!(s.notes.iter().any(|n| n.contains("end-of-life")));
+    }
+
+    #[test]
+    fn summarize_counts_a_real_apt_stream_not_its_prose() {
+        // apt says "will be upgraded:" *before* the tally — a whole-blob search for the first
+        // "upgraded" lands on the prose and finds no number, so the count was lost and the
+        // summary read a bare "updated". The count must come from the tally line.
+        let out = "Reading package lists...\nThe following packages will be upgraded:\n  curl libcurl4 vim\n3 upgraded, 0 newly installed, 0 to remove and 1 not upgraded.\n";
+        assert_eq!(summarize_update(out).headline, "3 packages updated");
+    }
+
+    #[test]
+    fn summarize_ignores_apt_packages_held_back() {
+        // "N not upgraded" is what apt *kept*, not what changed: nothing changed here.
+        let out = "0 upgraded, 0 newly installed, 0 to remove and 7 not upgraded.\n";
+        assert_eq!(summarize_update(out).headline, "nothing to update");
+    }
+
+    #[test]
+    fn summarize_counts_dnf5_transaction_summary() {
+        let out = "Updating and loading repositories:\nTransaction Summary:\n Installing:         2 packages\n Upgrading:         41 packages\n";
+        assert_eq!(summarize_update(out).headline, "41 packages updated");
+    }
+
+    #[test]
+    fn summarize_flatpak_eol_note_survives() {
         let s = summarize_update("Info: runtime org.kde.Platform is end-of-life\nNothing to update.\n");
         // A real update stream: "nothing to update" headline, but the EOL note still surfaces.
         assert_eq!(s.headline, "nothing to update");

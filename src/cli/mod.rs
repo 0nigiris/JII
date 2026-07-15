@@ -155,12 +155,6 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<SourcesAction>,
     },
-    /// Deprecated alias for `jii sources` (the ecosystem managers are now shown there).
-    #[command(hide = true)]
-    Providers {
-        #[command(subcommand)]
-        action: Option<ProvidersAction>,
-    },
     /// Show or set the interface language, saved to the config so it sticks. `auto` follows
     /// the system locale. Example: `jii lang ru`. (Per-run override: the global `--lang`.)
     Lang {
@@ -186,16 +180,6 @@ pub enum Commands {
     /// Print the roff man page to stdout (bundled as `jii.1` in the packages).
     #[command(hide = true)]
     Man,
-}
-
-/// Actions under `jii providers` (bare `jii providers` lists them).
-#[derive(Debug, Subcommand)]
-pub enum ProvidersAction {
-    /// Bootstrap a missing ecosystem manager, e.g. `jii providers add npm`.
-    Add {
-        /// The ecosystem id (npm, cargo, go, pipx, flatpak, snap, brew, nix).
-        name: String,
-    },
 }
 
 /// Actions under `jii cache` (bare `jii cache` shows the path).
@@ -286,7 +270,6 @@ impl Cli {
             }
             Some(Commands::History) => Some("jii history".to_string()),
             Some(Commands::Sources { .. }) => None,
-            Some(Commands::Providers { .. }) => Some("jii providers".to_string()),
             None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
         }
     }
@@ -375,13 +358,6 @@ impl Cli {
                     self.sources_remove(id, config, &renderer).await
                 }
             },
-            // `jii providers` is the old name for `jii sources` (kept as a hidden alias).
-            Some(Commands::Providers { action }) => match action {
-                None => self.sources(false, config, &renderer).await,
-                Some(ProvidersAction::Add { name }) => {
-                    self.sources_add(name, config, &renderer).await
-                }
-            },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
             Some(Commands::Cache { action }) => self.cache(action.as_ref(), &renderer),
             Some(Commands::Setup) => self.setup(config, &renderer, false, true).await,
@@ -391,13 +367,43 @@ impl Cli {
                 clap_complete::generate(*shell, &mut cmd, "jii", &mut std::io::stdout());
                 Ok(())
             }
-            Some(Commands::Man) => {
-                let cmd = <Cli as clap::CommandFactory>::command();
-                clap_mangen::Man::new(cmd)
-                    .render(&mut std::io::stdout())
-                    .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("man: {e}")))
+            Some(Commands::Man) => self.man().await,
+        }
+    }
+
+    /// `jii man` — the manual page.
+    ///
+    /// Redirected or piped (`jii man > jii.1` — how the .rpm/.deb build theirs) it emits the raw
+    /// roff source, unchanged. On a terminal that source is unreadable line noise, so it is handed
+    /// to `man` to format and page it like any other manual. If `man` isn't installed or can't run
+    /// it, the raw roff is printed rather than nothing.
+    async fn man(&self) -> crate::error::Result<()> {
+        use std::io::Write;
+
+        let cmd = <Cli as clap::CommandFactory>::command();
+        let mut roff: Vec<u8> = Vec::new();
+        clap_mangen::Man::new(cmd)
+            .render(&mut roff)
+            .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("man: {e}")))?;
+
+        if crate::platform::Platform::detect().is_tty && crate::provider::which("man").await {
+            // `man` reads a file, not a stream: hand it one in the temp dir and clean up after.
+            let dir = std::env::temp_dir().join(format!("jii-man-{}", std::process::id()));
+            let page = dir.join("jii.1");
+            let shown = std::fs::create_dir_all(&dir).is_ok()
+                && std::fs::write(&page, &roff).is_ok()
+                && matches!(
+                    tokio::process::Command::new("man").arg("-l").arg(&page).status().await,
+                    Ok(status) if status.success()
+                );
+            let _ = std::fs::remove_dir_all(&dir);
+            if shown {
+                return Ok(());
             }
         }
+        std::io::stdout()
+            .write_all(&roff)
+            .map_err(|e| crate::error::JiiError::Other(anyhow::anyhow!("man: {e}")))
     }
 
     /// Install path (one or many packages): for each package search → rank → pick best,
@@ -1785,6 +1791,10 @@ impl Cli {
     ) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let full = engine.source_catalog().await;
+        // A disabled source is dropped when the provider registry is built, so it is absent from
+        // the catalog entirely — read the ids from config, or a source you turned off would be
+        // invisible here and there'd be nothing to tell you how to turn it back on.
+        let disabled = engine.config().sources.disabled.clone();
         // Which sources are ecosystem *managers* (bootstrappable/removable), by id → is it a
         // pure script install (brew/nix/AUR helper)? System repos aren't here, so they get no
         // add/remove hint — you don't uninstall the package manager your OS is built on.
@@ -1799,16 +1809,20 @@ impl Cli {
             full.iter().filter(|e| all || e.relevant).collect();
 
         if renderer.is_json() {
-            let rows: Vec<_> = shown
+            let mut rows: Vec<_> = shown
                 .iter()
                 .map(|e| {
                     serde_json::json!({
                         "id": e.id, "trust": e.trust.label(),
                         "available": e.available, "relevant": e.relevant,
+                        "enabled": true,
                         "manager": managers.contains_key(e.id),
                     })
                 })
                 .collect();
+            rows.extend(disabled.iter().map(|id| {
+                serde_json::json!({ "id": id, "enabled": false, "available": false })
+            }));
             renderer.json_value(&serde_json::json!(rows));
             return Ok(());
         }
@@ -1848,11 +1862,27 @@ impl Cli {
                 ));
             }
         }
+        // Sources you turned off yourself. Listed from config (they're absent from the catalog),
+        // each with the exact command that brings it back.
+        if !disabled.is_empty() {
+            renderer.heading(&crate::t!("sources.disabled_header"));
+            for id in &disabled {
+                renderer.info(&format!(
+                    "  {}  {}",
+                    palette.dim(&format!("{} {id:8}", palette.mark_bad())),
+                    palette.dim(&crate::t!("sources.enable_hint", id = id.clone())),
+                ));
+            }
+        }
         // Nudge that some sources were hidden, so `--all` is discoverable.
         if !all && hidden > 0 {
             renderer.info("");
             renderer.info(&palette.dim(&crate::t!("sources.hidden", count = hidden)));
         }
+        // Turning a source off is the one thing this view could never tell you about (the ask:
+        // "how do I disable a repository?" — the answer existed, nothing pointed at it).
+        renderer.info("");
+        renderer.info(&palette.dim(&crate::t!("sources.toggle_hint")));
         Ok(())
     }
 
@@ -2135,12 +2165,14 @@ impl Cli {
         match eco.bootstrap {
             Bootstrap::Packages(names) => {
                 renderer.info(&crate::t!("providers.looking", label = label));
-                match engine.first_available_package(names).await {
-                    // route_managers=false: the bootstrap package's name (e.g. `pipx`) may
-                    // itself be a manager id — routing it would loop. Box::pin breaks the
-                    // async recursion cycle.
-                    Some(pkg) => {
-                        Box::pin(self.install_inner(&[pkg], config, renderer, false, false)).await
+                match engine.first_bootstrap_package(names).await {
+                    // The source is pinned (`pipx:apt`) because only a *usable* source can set a
+                    // manager up — never the absent manager itself (ADR-0066). route_managers=
+                    // false: the bootstrap package's name (e.g. `pipx`) may itself be a manager
+                    // id — routing it would loop. Box::pin breaks the async recursion cycle.
+                    Some((pkg, source)) => {
+                        let spec = format!("{pkg}:{source}");
+                        Box::pin(self.install_inner(&[spec], config, renderer, false, false)).await
                     }
                     None => {
                         renderer.error(&crate::t!("providers.not_found", label = label));
@@ -2149,10 +2181,10 @@ impl Cli {
                     }
                 }
             }
+            // No distro package exists for this one — its own upstream script is the install
+            // path. Shown in full, run only on an explicit answer (ADR-0066).
             Bootstrap::Script(cmd) => {
-                renderer.info(&crate::t!("providers.script_only", label = label));
-                renderer.info(&crate::t!("providers.script_wont_run"));
-                renderer.info(&format!("  {cmd}"));
+                self.offer_script_bootstrap(engine, eco.id, label, cmd, renderer).await;
                 Ok(())
             }
         }
@@ -2218,12 +2250,11 @@ impl Cli {
                 manager = manager
             ));
             let ok = match status.bootstrap {
-                // brew/nix: JII will not pipe an upstream installer into a shell. Show it; the
-                // user sets it up and re-runs. Skip the app this time.
+                // brew/nix: no distro package exists, so their own upstream script *is* the
+                // install path. Shown in full and run only on an explicit answer (ADR-0066).
                 Bootstrap::Script(cmd) => {
-                    renderer.info(&crate::t!("install.bootstrap_script_only", manager = manager));
-                    renderer.info(&format!("  {cmd}"));
-                    false
+                    self.offer_script_bootstrap(engine, &cand.source_id, manager, cmd, renderer)
+                        .await
                 }
                 // flatpak/snap/cargo/…: install the manager's OS package, then wire up any default
                 // remote it needs. In dry-run we preview the setup and keep the app so its plan is
@@ -2249,6 +2280,63 @@ impl Cli {
         Ok(survivors)
     }
 
+    /// Offer to run an ecosystem manager's own upstream installer script (Homebrew, Nix).
+    ///
+    /// These managers ship no distro package, so the script **is** the only install path — refusing
+    /// outright just dead-ends the user (ADR-0066). But it is remote code JII can neither preview
+    /// nor verify, so it never runs on anything but an explicit human answer: the exact command is
+    /// shown first, `--auto`/`--yes` deliberately do **not** stand in for consent (CLAUDE.md's
+    /// "auto mode never installs untrusted automatically"), and a non-interactive session only ever
+    /// prints it. The prompt itself defaults to yes — the user did ask for this manager.
+    ///
+    /// Returns whether the manager is usable afterwards (a fresh Homebrew often isn't on this
+    /// shell's PATH yet, which is reported rather than silently failing the dependent install).
+    async fn offer_script_bootstrap(
+        &self,
+        engine: &Engine,
+        source_id: &str,
+        manager: &str,
+        cmd: &str,
+        renderer: &Renderer,
+    ) -> bool {
+        renderer.info(&crate::t!("install.script_intro", manager = manager));
+        renderer.info(&format!("  {cmd}"));
+        if self.global.dry_run {
+            renderer.info(&crate::t!("common.dry_run_unchanged"));
+            return false;
+        }
+        // Remote code: an explicit human answer or nothing at all.
+        if self.global.no || !self.interactive(renderer) {
+            renderer.info(&crate::t!("install.script_manual", manager = manager));
+            return false;
+        }
+        let flags = prompt::PromptFlags { auto: false, yes: false, no: false };
+        let question = crate::t!("install.script_confirm", manager = manager);
+        if !prompt::confirm(renderer, &question, true, &flags) {
+            renderer.info(&crate::t!("install.script_manual", manager = manager));
+            return false;
+        }
+        // `bash -c` (not `sh`): the upstream one-liners use bash-isms — Nix's `<(curl …)` process
+        // substitution, Homebrew's own `/bin/bash -c "$(…)"`. Never elevated: these installers ask
+        // for sudo themselves, exactly as they would if the user pasted the line (privilege.rs owns
+        // JII's own escalation, and this isn't JII's command).
+        let argv = vec!["bash".to_string(), "-c".to_string(), cmd.to_string()];
+        if let Err(e) = run_plain_command(&argv).await {
+            renderer.error(&crate::t!(
+                "install.script_failed",
+                manager = manager,
+                error = e.to_string()
+            ));
+            return false;
+        }
+        if !engine.source_available(source_id).await {
+            renderer.warn(&crate::t!("install.script_no_path", manager = manager));
+            return false;
+        }
+        renderer.success(&crate::t!("install.bootstrap_ready", manager = manager));
+        true
+    }
+
     /// Install an ecosystem manager's OS package (the first of `names` that resolves on this host)
     /// through the normal install path, then wire up any default remote it needs, and report
     /// whether it is usable afterwards. Consent was already given by the T6 prompt, so the package
@@ -2264,14 +2352,22 @@ impl Cli {
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<bool> {
-        let Some(pkg) = engine.first_available_package(names).await else {
+        let Some((pkg, from)) = engine.first_bootstrap_package(names).await else {
             renderer.error(&crate::t!("install.bootstrap_no_pkg", manager = manager, app = manager));
             return Ok(false);
         };
-        renderer.info(&crate::t!("install.bootstrap_installing", manager = manager));
-        // route_managers=false: `pkg` (e.g. "flatpak") is itself a manager id; routing it would
-        // loop straight back into bootstrap. Box::pin breaks the async-recursion cycle.
-        Box::pin(self.install_inner(&[pkg], config.clone(), renderer, true, false)).await?;
+        renderer.info(&crate::t!(
+            "install.bootstrap_installing",
+            manager = manager,
+            source = from.clone()
+        ));
+        // The source is pinned (`pipx:apt`) so the manager is set up by a source that actually
+        // works here — never by the absent manager itself, and never via a chooser the user
+        // didn't ask for (ADR-0066). route_managers=false: `pkg` (e.g. "flatpak") is itself a
+        // manager id; routing it would loop straight back into bootstrap. Box::pin breaks the
+        // async-recursion cycle.
+        let spec = format!("{pkg}:{from}");
+        Box::pin(self.install_inner(&[spec], config.clone(), renderer, true, false)).await?;
 
         // Dry-run never actually installed anything — assume success so the app plan is previewed.
         if self.global.dry_run {

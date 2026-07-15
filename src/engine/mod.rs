@@ -923,17 +923,23 @@ impl Engine {
         out
     }
 
-    /// Return the first of `names` that resolves to ≥1 candidate on this host, searched in
-    /// order — the cross-distro bootstrap resolver for a missing ecosystem manager (npm is
-    /// `nodejs-npm` on Fedora, `npm` on Debian/Arch). `None` if none resolve, so the caller
-    /// can fall back to an honest "couldn't find it" instead of guessing. JII's own search
-    /// does the per-distro work; no distro branch here (ADR-0004/0029).
-    pub async fn first_available_package(&self, names: &[&str]) -> Option<String> {
+    /// Resolve the first of `names` that a **usable** source can install, returning the package
+    /// name and that source's id — the cross-distro bootstrap resolver for a missing ecosystem
+    /// manager (npm is `nodejs-npm` on Fedora, `npm` on Debian/Arch). `None` if none resolve, so
+    /// the caller can fall back to an honest "couldn't find it" instead of guessing. JII's own
+    /// search does the per-distro work; no distro branch here (ADR-0004/0029).
+    ///
+    /// The **source is resolved here, not left to the caller's chooser**: you cannot set up a
+    /// manager with a manager that isn't there, so a candidate is only eligible if its source is
+    /// usable *right now* (ADR-0066). `can_search` sources answer over the network without their
+    /// CLI, so an absent pipx/npm/brew would otherwise offer to install *itself* through itself.
+    pub async fn first_bootstrap_package(&self, names: &[&str]) -> Option<(String, String)> {
         for name in names {
             let query = crate::model::Query::name(*name);
-            let ranked = self.rank(name, self.search(&query).await.candidates);
-            if !ranked.is_empty() {
-                return Some((*name).to_string());
+            for candidate in self.rank(name, self.search(&query).await.candidates) {
+                if self.source_available(&candidate.source_id).await {
+                    return Some(((*name).to_string(), candidate.source_id));
+                }
             }
         }
         None
