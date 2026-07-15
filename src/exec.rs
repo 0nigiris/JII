@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use crate::error::{JiiError, Result};
 use crate::model::{Action, InstallPlan, Verification};
 use crate::privilege::Privilege;
-use crate::ui::{Renderer, describe_action};
+use crate::ui::{Renderer, Spinner, describe_action};
 
 /// Prime privilege escalation once if **any** of `plans` needs root, so a whole batch
 /// of plans prompts for a password at most once (`sudo -v` up front).
@@ -36,6 +36,60 @@ pub async fn run_actions(plan: &InstallPlan, privilege: &Privilege, renderer: &R
         run_action(action, privilege).await?;
     }
     Ok(())
+}
+
+/// Run one plan's actions the way Friendly mode wants them (UX #6): the manager's own chatter is
+/// **captured** instead of flooding the terminal, and a [`Spinner`] shows `label` while it works,
+/// so a quiet terminal never reads as a hang. The plan was previewed and confirmed already — this
+/// only changes how the *doing* is narrated, never what runs.
+///
+/// A failure is never swallowed: the spinner stops, the failing command and a tail of its real
+/// output are printed, and the error propagates. Errors are the one thing worth the screen space.
+/// Streaming (Advanced/`--json`) stays on [`run_actions`]; the caller picks by mode.
+pub async fn run_actions_quiet(
+    plan: &InstallPlan,
+    privilege: &Privilege,
+    renderer: &Renderer,
+    label: &str,
+) -> Result<()> {
+    let spinner = Spinner::start(renderer, label);
+    for action in &plan.actions {
+        // Only a command floods the terminal; download/place/extract are silent anyway and keep
+        // their normal handlers (their progress is the spinner).
+        let Action::RunCommand { argv, needs_root } = action else {
+            if let Err(e) = run_action(action, privilege).await {
+                spinner.stop().await;
+                return Err(e);
+            }
+            continue;
+        };
+        match privilege.run_captured(argv, *needs_root).await {
+            Ok((true, _)) => {}
+            Ok((false, out)) => {
+                spinner.stop().await;
+                renderer.error(&crate::t!("exec.step_failed", command = argv.join(" ")));
+                for line in tail(&out, 12) {
+                    renderer.info(&renderer.palette().dim(&format!("  {line}")));
+                }
+                return Err(JiiError::Other(anyhow::anyhow!(
+                    "`{}` failed",
+                    argv.join(" ")
+                )));
+            }
+            Err(e) => {
+                spinner.stop().await;
+                return Err(e);
+            }
+        }
+    }
+    spinner.stop().await;
+    Ok(())
+}
+
+/// The last `n` non-empty lines of a captured stream — where a tool puts its actual error.
+fn tail(output: &str, n: usize) -> Vec<&str> {
+    let lines: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines[lines.len().saturating_sub(n)..].to_vec()
 }
 
 /// A one-line, source-agnostic digest of a manager's update output (for the whole-system

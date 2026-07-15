@@ -456,7 +456,9 @@ impl Engine {
 
         let mut outcome = Ok(());
         for bp in batch {
-            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+            let names: Vec<String> = bp.candidates.iter().map(|c| c.name.clone()).collect();
+            let label = work_label("exec.installing", &names, &bp.plan.source_id);
+            if let Err(e) = self.run_plan_narrated(&bp.plan, renderer, &label).await {
                 outcome = Err(e);
                 break; // stop at the first failure; already-run plans stay recorded
             }
@@ -540,7 +542,9 @@ impl Engine {
 
         let mut outcome = Ok(());
         for bp in batch {
-            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+            let names: Vec<String> = bp.records.iter().map(|r| r.name.clone()).collect();
+            let label = work_label("exec.removing", &names, &bp.plan.source_id);
+            if let Err(e) = self.run_plan_narrated(&bp.plan, renderer, &label).await {
                 outcome = Err(e);
                 break;
             }
@@ -567,7 +571,9 @@ impl Engine {
 
         let mut outcome = Ok(());
         for bp in batch {
-            if let Err(e) = crate::exec::run_actions(&bp.plan, &self.privilege, renderer).await {
+            let names: Vec<String> = bp.records.iter().map(|r| r.name.clone()).collect();
+            let label = work_label("exec.updating", &names, &bp.plan.source_id);
+            if let Err(e) = self.run_plan_narrated(&bp.plan, renderer, &label).await {
                 outcome = Err(e);
                 break;
             }
@@ -585,6 +591,23 @@ impl Engine {
         }
         self.registry.save()?;
         outcome
+    }
+
+    /// Run one plan, narrated by the active mode: Friendly gets a live spinner over captured
+    /// output (UX #6 — quiet, but visibly alive), Advanced/`--json` keep the streamed
+    /// action-by-action log. Only the *narration* differs; the plan itself is identical, and a
+    /// failure surfaces the real output either way.
+    async fn run_plan_narrated(
+        &self,
+        plan: &InstallPlan,
+        renderer: &Renderer,
+        label: &str,
+    ) -> Result<()> {
+        if renderer.is_friendly() {
+            crate::exec::run_actions_quiet(plan, &self.privilege, renderer, label).await
+        } else {
+            crate::exec::run_actions(plan, &self.privilege, renderer).await
+        }
     }
 
     /// Gather every available provider's "update everything I own" plan (D10). Each willing
@@ -627,7 +650,15 @@ impl Engine {
         // output and reduce it to a one-line, source-agnostic summary instead of streaming it.
         let palette = renderer.palette();
         for plan in system_plans {
-            let (ok, out) = self.run_plan_captured(plan).await?;
+            // A big `dnf upgrade` can take minutes with its output captured — without this the
+            // terminal just sits there and reads as a hang (the owner's report).
+            let spinner = crate::ui::Spinner::start(
+                renderer,
+                &crate::t!("exec.updating_all", source = plan.source_id.clone()),
+            );
+            let captured = self.run_plan_captured(plan).await;
+            spinner.stop().await;
+            let (ok, out) = captured?;
             let summary = crate::exec::summarize_update(&out);
             let mark = if ok {
                 palette.good(palette.mark_ok())
@@ -963,6 +994,16 @@ impl Engine {
         None
     }
 
+    /// How to launch what `candidate` installs (`--run`), as asked of its owning source. `None`
+    /// when the source has no notion of launching one. The core never shapes the command itself
+    /// (ADR-0004) — it only asks, then the caller checks the program is really there.
+    pub fn launch_command(&self, candidate: &PackageCandidate) -> Option<Vec<String>> {
+        self.provider(&candidate.source_id)
+            .ok()
+            .and_then(|p| p.launch_command(candidate))
+            .filter(|argv| !argv.is_empty())
+    }
+
     /// Probe each source's live health (backs `jii doctor`). Each provider reports
     /// raw facts (`reachable`, `rate_limited`, a human `detail`); the engine maps
     /// them — together with the measured latency — to a [`Health`] category. Network
@@ -1064,6 +1105,19 @@ fn health_from(reachable: bool, rate_limited: bool, latency: Duration) -> Health
     } else {
         Health::Healthy
     }
+}
+
+/// A spinner label for one plan: "installing htop, mc via dnf". A long batch is elided after
+/// three names ("a, b, c +7") — the label has to stay on one terminal line, and the full list was
+/// already in the preview the user just confirmed.
+fn work_label(key: &str, names: &[String], source: &str) -> String {
+    const SHOWN: usize = 3;
+    let listed = if names.len() > SHOWN {
+        format!("{} +{}", names[..SHOWN].join(", "), names.len() - SHOWN)
+    } else {
+        names.join(", ")
+    };
+    crate::t!(key, names = listed, source = source.to_string())
 }
 
 /// The verification label to record for an install, taken from the plan's download

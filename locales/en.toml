@@ -21,6 +21,8 @@ usage_hint = "Usage: jii <package…>  (try `jii --help`)"
 unknown = "unknown"
 note = "note: {note}"
 
+via = "via"
+
 [list]
 empty = "Nothing installed via jii yet."
 col_name = "NAME"
@@ -87,6 +89,13 @@ sum_changed = "{count} packages updated"
 sum_deprecated = "{count} deprecation warning(s)"
 sum_eol = "{count} end-of-life runtime(s) — run `flatpak uninstall --unused` to clean up"
 
+[exec]
+installing = "installing {names} via {source}"
+removing = "removing {names} via {source}"
+updating = "updating {names} via {source}"
+updating_all = "{source}: updating"
+step_failed = "This command failed: {command}"
+
 [install]
 searching = "Searching…"
 searching_for = "Searching for '{name}'..."
@@ -107,6 +116,10 @@ bootstrap_ready = "{manager} is ready."
 bootstrap_no_pkg = "Couldn't find a package to set up {manager} on this system — skipping {app}."
 bootstrap_failed = "{manager} didn't install — skipping {app}."
 bootstrap_skipped_app = "Skipped {app}."
+run_starting = "starting {cmd}…"
+run_unknown = "{name} is installed, but JII can't tell what to run for it — it may not install a program of that name."
+run_single_only = "--run starts a single package; nothing was started for a batch."
+run_failed = "Couldn't start `{cmd}`: {error}"
 no_exact_match = "No exact match for '{name}'. Closest: {closest}."
 web_url = "Have a look first: {url}"
 already_installed = "{name} already installed via {source}{version}"

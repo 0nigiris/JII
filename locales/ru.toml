@@ -19,6 +19,8 @@ usage_hint = "Использование: jii <пакет…>  (см. `jii --hel
 unknown = "неизвестно"
 note = "примечание: {note}"
 
+via = "через"
+
 [list]
 empty = "Через jii пока ничего не установлено."
 col_name = "НАЗВАНИЕ"
@@ -85,6 +87,13 @@ sum_changed = "обновлено пакетов: {count}"
 sum_deprecated = "предупреждений об устаревании: {count}"
 sum_eol = "снятых с поддержки рантаймов: {count} — очистите: `flatpak uninstall --unused`"
 
+[exec]
+installing = "устанавливаю {names} через {source}"
+removing = "удаляю {names} через {source}"
+updating = "обновляю {names} через {source}"
+updating_all = "{source}: обновляю"
+step_failed = "Команда завершилась с ошибкой: {command}"
+
 [install]
 searching = "Поиск…"
 searching_for = "Ищу «{name}»..."
@@ -105,6 +114,10 @@ bootstrap_ready = "{manager} готов."
 bootstrap_no_pkg = "Не нашёл пакет для установки {manager} в этой системе — пропускаю {app}."
 bootstrap_failed = "{manager} не установился — пропускаю {app}."
 bootstrap_skipped_app = "Пропущен {app}."
+run_starting = "запускаю {cmd}…"
+run_unknown = "{name} установлен, но JII не понял, что именно запускать — возможно, пакет не ставит программу с таким именем."
+run_single_only = "--run запускает только один пакет; для нескольких ничего не запущено."
+run_failed = "Не удалось запустить «{cmd}»: {error}"
 no_exact_match = "Точного совпадения для «{name}» нет. Ближайшее: {closest}."
 web_url = "Сначала можно посмотреть: {url}"
 already_installed = "{name} уже установлен через {source}{version}"

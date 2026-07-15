@@ -60,6 +60,11 @@ pub struct GlobalArgs {
     #[arg(short = 'd', long, visible_alias = "preview", global = true)]
     pub dry_run: bool,
 
+    /// Launch it once it's installed: `jii htop --run`. Only for a single package, and only
+    /// when the install actually happened (never under `--dry-run`).
+    #[arg(long, global = true)]
+    pub run: bool,
+
     /// Increase verbosity (repeatable).
     #[arg(short = 'v', long, global = true, action = clap::ArgAction::Count)]
     pub verbose: u8,
@@ -471,10 +476,6 @@ impl Cli {
         let mut chosen: Vec<PackageCandidate> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         let mut chose_interactively = false;
-        // A single lively "Searching…" in Friendly; Advanced narrates each package below.
-        if renderer.is_friendly() {
-            renderer.info(&crate::t!("install.searching"));
-        }
         for spec in &specs {
             // A per-package `:source` (ADR-0031) pins the provider and, like `--source`,
             // suppresses the chooser; it takes precedence over the whole-command `--source`.
@@ -484,7 +485,12 @@ impl Cli {
             if !renderer.is_friendly() {
                 renderer.info(&crate::t!("install.searching_for", name = query.raw));
             }
+            // Friendly's "Searching…" is a spinner, not a printed line: every source is queried
+            // over the network, which on a slow one is seconds of otherwise-silent terminal.
+            // Stopped before anything else prints (the chooser needs the line back).
+            let spinner = crate::ui::Spinner::start(renderer, &crate::t!("install.searching"));
             let result = engine.search(&query).await;
+            spinner.stop().await;
             self.report_source_failures(&result.failed, renderer);
             let mut ranked = engine.rank(name, result.candidates);
             // No exact match? Broaden the search (ADR-0042): `ayugram` → `ayugram-desktop`,
@@ -557,6 +563,17 @@ impl Cli {
                         source = record.source_id,
                         version = v
                     ));
+                    // `jii htop --run` on an already-installed htop should still start it —
+                    // "install and run" with the install already done is just "run" (this
+                    // execs, so it doesn't come back).
+                    if self.global.run
+                        && single
+                        && !self.global.dry_run
+                        && let Some(candidate) =
+                            ranked.iter().find(|c| c.source_id == record.source_id)
+                    {
+                        self.launch(&engine, candidate, renderer).await;
+                    }
                     continue;
                 }
                 // Same source, a newer version is available → offer an in-place update
@@ -840,7 +857,45 @@ impl Cli {
         // 6. One escalation, one run; records are written as each plan succeeds.
         engine.install_batch(&batch, renderer).await?;
         renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
+
+        // 7. `--run`: start it. Last of all, because it replaces this process.
+        if self.global.run
+            && let [b] = batch.as_slice()
+            && let [candidate] = b.candidates.as_slice()
+        {
+            self.launch(&engine, candidate, renderer).await;
+        } else if self.global.run {
+            renderer.warn(&crate::t!("install.run_single_only"));
+        }
         Ok(())
+    }
+
+    /// `--run`: launch what was just installed, asking its source how (`flatpak run <id>` for a
+    /// Flatpak, the program's own name everywhere else).
+    ///
+    /// The command is **verified to exist** before running: plenty of packages install no program
+    /// at all (a font, a library, a plugin), and the honest answer there is to say so rather than
+    /// to run something that isn't what the user meant. On success this `exec`s — JII is replaced
+    /// by the app, so an interactive program (htop) owns the terminal outright and its exit code
+    /// becomes JII's, exactly as if it had been typed. Nothing runs after, hence last.
+    async fn launch(&self, engine: &Engine, candidate: &PackageCandidate, renderer: &Renderer) {
+        let Some(argv) = engine.launch_command(candidate) else {
+            renderer.warn(&crate::t!("install.run_unknown", name = candidate.name.clone()));
+            return;
+        };
+        if !crate::provider::which(&argv[0]).await {
+            renderer.warn(&crate::t!("install.run_unknown", name = candidate.name.clone()));
+            return;
+        }
+        renderer.info(&renderer.palette().dim(&crate::t!("install.run_starting", cmd = argv.join(" "))));
+        // exec(2) returns only on failure.
+        use std::os::unix::process::CommandExt;
+        let error = std::process::Command::new(&argv[0]).args(&argv[1..]).exec();
+        renderer.error(&crate::t!(
+            "install.run_failed",
+            cmd = argv.join(" "),
+            error = error.to_string()
+        ));
     }
 
     /// Batch preview: a grouped "what will be installed, by source" summary, then each
@@ -1237,11 +1292,40 @@ impl Cli {
         Ok(())
     }
 
-    /// Batch preview for remove/update: each plan's action preview (the merged commands
-    /// are visible before confirming). In JSON mode, the plans as JSON.
+    /// Batch preview for remove/update.
+    ///
+    /// Friendly mode gets one short line per package — `<name> (<version>) via <source>
+    /// [needs sudo]` — mirroring the install preview (UX #6): the full Plan block for a plain
+    /// `jii remove htop` was three times the size of the thing it described. `--dry-run` and
+    /// Advanced still print every merged command, because inspecting them is the whole point
+    /// there; JSON prints the plans as JSON.
     fn preview_record_batch(&self, batch: &[crate::engine::RecordBatchPlan], renderer: &Renderer) {
+        if !renderer.is_friendly() || self.global.dry_run {
+            for bp in batch {
+                renderer.plan(&bp.plan);
+            }
+            return;
+        }
+        let palette = renderer.palette();
         for bp in batch {
-            renderer.plan(&bp.plan);
+            let sudo = if bp.plan.needs_root() {
+                palette.dim(&crate::t!("common.needs_sudo"))
+            } else {
+                String::new()
+            };
+            for record in &bp.records {
+                let version = record
+                    .version
+                    .as_ref()
+                    .map(|v| format!(" {}", palette.version(&format!("({v})"))))
+                    .unwrap_or_default();
+                renderer.info(&format!(
+                    "  {}{version} {} {}{sudo}",
+                    record.name,
+                    palette.dim(&crate::t!("common.via")),
+                    palette.source(&record.source_id),
+                ));
+            }
         }
     }
 

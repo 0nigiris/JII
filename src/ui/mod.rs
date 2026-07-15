@@ -96,6 +96,82 @@ impl Palette {
     }
 }
 
+/// A live "still working" indicator for a step whose own output is captured.
+///
+/// Friendly mode hides a manager's chatter (UX #6), which left a silent terminal for however long
+/// `dnf upgrade` takes — indistinguishable from a hang (the owner's report: "it looks like it
+/// froze"). This animates one line on **stderr** (stdout stays clean for `--json` and pipes) and
+/// erases it when the step ends, so the caller's own result line is all that remains.
+///
+/// Inert — no task, no output — unless there's a terminal to animate: JSON, a pipe, and Advanced
+/// mode (where every action is streamed anyway) all get a no-op.
+pub struct Spinner {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Spinner {
+    /// Start animating `label`. Stop it with [`Spinner::stop`] before printing anything else,
+    /// or the animation will fight the output for the line.
+    pub fn start(renderer: &Renderer, label: &str) -> Self {
+        let live = renderer.is_friendly() && crate::platform::Platform::detect().is_tty;
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if !live {
+            return Spinner { stop, handle: None };
+        }
+        let flag = stop.clone();
+        let label = label.to_string();
+        let unicode = renderer.unicode;
+        let handle = tokio::spawn(async move {
+            use std::io::Write;
+            let frames: &[&str] = if unicode {
+                &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+            } else {
+                &["|", "/", "-", "\\"]
+            };
+            let started = std::time::Instant::now();
+            let mut tick = 0usize;
+            while !flag.load(std::sync::atomic::Ordering::Relaxed) {
+                // Past a few seconds show the elapsed time too: on a long step (a cargo build,
+                // a big upgrade) "it's alive" isn't enough — "how long has this been going" is
+                // the actual question.
+                let secs = started.elapsed().as_secs();
+                let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
+                eprint!("\r\x1b[2K  {} {label}{elapsed}", frames[tick % frames.len()]);
+                let _ = std::io::stderr().flush();
+                tick += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(90)).await;
+            }
+            eprint!("\r\x1b[2K"); // erase the line; the caller prints the outcome
+            let _ = std::io::stderr().flush();
+        });
+        Spinner { stop, handle: Some(handle) }
+    }
+
+    /// Stop the animation and wait for the line to be erased, so nothing printed next collides
+    /// with it. Safe to call on an inert spinner.
+    pub async fn stop(mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.await;
+        }
+    }
+}
+
+impl Drop for Spinner {
+    /// A spinner dropped without `stop()` (an early `?`) must not leave a task drawing over
+    /// whatever is printed next.
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+            eprint!("\r\x1b[2K");
+            use std::io::Write;
+            let _ = std::io::stderr().flush();
+        }
+    }
+}
+
 /// Renders output as either human-friendly text or machine-readable JSON.
 pub struct Renderer {
     color: bool,

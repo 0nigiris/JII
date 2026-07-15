@@ -197,6 +197,18 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// How to launch what this candidate installs (`jii <pkg> --run`).
+    ///
+    /// The default is the package's own name, which is what a source that drops a program on
+    /// `PATH` gives you (dnf, apt, cargo, npm, pipx, go, brew, a GitHub binary) — the caller
+    /// confirms the command actually exists before running it, so a package that installs no
+    /// program (a font, a library) simply reports that instead of guessing wrong. A source whose
+    /// programs *aren't* plain `PATH` entries overrides this (Flatpak: `flatpak run <app-id>`).
+    /// The core never assembles a launch command itself (ADR-0004).
+    fn launch_command(&self, candidate: &PackageCandidate) -> Option<Vec<String>> {
+        Some(vec![candidate.name.clone()])
+    }
+
     /// Alternative install **strategies** to offer interactively for `candidate`, beyond the
     /// default imperative `plan_install`. Default: empty → the engine just plans and installs
     /// as usual. Nix overrides it (ADR-0054): when it detects a declarative setup (NixOS

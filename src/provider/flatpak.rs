@@ -78,6 +78,11 @@ impl Provider for Flatpak {
         Some(format!("https://flathub.org/apps/{}", candidate.name))
     }
 
+    fn launch_command(&self, candidate: &PackageCandidate) -> Option<Vec<String>> {
+        // A Flatpak app isn't a program on PATH — it runs through flatpak, by app-id.
+        Some(vec!["flatpak".into(), "run".into(), candidate.name.clone()])
+    }
+
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {
         // With the CLI present, use it — it respects the user's configured remotes and shows
         // versions. Without it, fall back to Flathub's v2 search API so an uninstalled Flatpak
