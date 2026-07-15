@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.7-beta
+%global _tag v0.1.8-beta
 
 Name:           jii
-Version:        0.1.7~beta
+Version:        0.1.8~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,14 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Wed Jul 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.8~beta-1
+- Rebuild against the v0.1.8-beta release: a missing manager is now set up only
+  through a source that works here (no more "install pipx via pipx"); Homebrew/Nix
+  offer to run their own installer script instead of refusing; live progress while
+  installing/removing/updating, with the number of packages actually updated; new
+  --run to start a package once installed; `jii sources` lists sources you disabled
+  and how to re-enable them; `jii man` formats through man(1); `jii providers`
+  removed (use `jii sources`).
 * Mon Jul 13 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.7~beta-1
 - Rebuild against the v0.1.7-beta release: `jii doctor` shows only host-relevant
   sources (no foreign distro managers) + refreshes metadata after enabling a repo
