@@ -185,6 +185,11 @@ pub enum Commands {
     /// Print the roff man page to stdout (bundled as `jii.1` in the packages).
     #[command(hide = true)]
     Man,
+    /// The tester checklist (testers only — see docs/TESTING.md): real installs, an
+    /// interactive "looks right?" verdict per step, a full scrubbed .log, one-keypress
+    /// upload, and a pre-filled GitHub issue link. Hidden from --help and the README.
+    #[command(name = "yes-I-am-dev-and-want-to-test", hide = true)]
+    DevTest,
 }
 
 /// Actions under `jii cache` (bare `jii cache` shows the path).
@@ -256,7 +261,8 @@ impl Cli {
             | Some(Commands::Doctor { .. })
             | Some(Commands::Uninstall)
             | Some(Commands::Completions { .. })
-            | Some(Commands::Man) => None,
+            | Some(Commands::Man)
+            | Some(Commands::DevTest) => None,
             Some(Commands::Install { packages }) => Some(format!("jii {}", packages.join(" "))),
             Some(Commands::Remove { packages }) => {
                 Some(format!("jii remove {}", packages.join(" ")))
@@ -373,6 +379,7 @@ impl Cli {
                 Ok(())
             }
             Some(Commands::Man) => self.man().await,
+            Some(Commands::DevTest) => crate::devtest::run().await,
         }
     }
 

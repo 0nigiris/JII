@@ -6,6 +6,7 @@
 mod cache;
 mod cli;
 mod config;
+mod devtest;
 mod engine;
 mod error;
 mod exec;
