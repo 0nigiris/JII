@@ -64,6 +64,9 @@ rate_limited = "rate-limited"
 
 [remove]
 continue_rest = "Continue removing the rest?"
+multi_header = "'{name}' is installed via several sources:"
+all_owners = "all of them"
+forge_update_unsupported = "updating a {label} release install is not supported yet — reinstall with `jii <owner>/<repo>`"
 cannot_plan = "✗ {name}: cannot plan removal ({reason})"
 nothing = "Nothing to remove."
 removed = "Removed {names}."

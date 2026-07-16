@@ -245,9 +245,10 @@ impl Provider for ForgeProvider {
     }
 
     async fn plan_update(&self, _record: &InstalledRecord) -> Result<InstallPlan> {
-        Err(JiiError::Other(anyhow::anyhow!(
-            "updating forge installs is not supported yet — reinstall with `jii <owner>/<repo>`"
-        )))
+        Err(JiiError::Other(anyhow::anyhow!(crate::t!(
+            "remove.forge_update_unsupported",
+            label = self.forge.label()
+        ))))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {

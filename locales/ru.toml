@@ -62,6 +62,9 @@ rate_limited = "лимит запросов"
 
 [remove]
 continue_rest = "Продолжить удаление остального?"
+multi_header = "'{name}' установлен из нескольких источников:"
+all_owners = "все сразу"
+forge_update_unsupported = "обновление установок из релизов {label} пока не поддерживается — переустановите: `jii <owner>/<repo>`"
 cannot_plan = "✗ {name}: не удалось спланировать удаление ({reason})"
 nothing = "Удалять нечего."
 removed = "Удалено: {names}."

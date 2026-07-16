@@ -121,7 +121,27 @@ impl Provider for Flatpak {
             reasons.push(crate::t!("reason.version", v = v.clone()));
         }
 
-        Ok(user_plan(appid, &["install", "--user", "-y", remote, appid], reasons))
+        let mut plan = user_plan(appid, &["install", "--user", "-y", remote, appid], reasons);
+        // The install targets the **user** installation, but on a typical desktop Flathub is
+        // configured system-wide only — then `--user … flathub` fails with "remote not found".
+        // Register the user-scope remote first (idempotent, no root); a candidate from another
+        // remote (a distro's own flatpak repo) is left alone, we don't know its URL.
+        if remote == "flathub" {
+            plan.actions.insert(
+                0,
+                Action::RunCommand {
+                    argv: [
+                        BIN, "remote-add", "--user", "--if-not-exists", "flathub",
+                        "https://flathub.org/repo/flathub.flatpakrepo",
+                    ]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                    needs_root: false,
+                },
+            );
+        }
+        Ok(plan)
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
@@ -361,6 +381,29 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert_eq!(c.source_id, "flatpak");
         assert_eq!(c.trust, TrustLevel::Community);
         assert_eq!(c.raw.get("remote").unwrap().as_str(), Some("flathub"));
+    }
+
+    #[tokio::test]
+    async fn install_plan_registers_the_user_flathub_remote_first() {
+        // Flathub configured system-wide only would fail a `--user` install; the plan
+        // registers the user-scope remote first (idempotent, unprivileged).
+        let rows = parse_rows(SAMPLE);
+        let c = candidate_from(&best_match("gimp", &rows).unwrap());
+        let plan = Flatpak::new().plan_install(&c).await.unwrap();
+        assert!(!plan.needs_root());
+        assert_eq!(plan.actions.len(), 2);
+        match &plan.actions[0] {
+            Action::RunCommand { argv, .. } => {
+                assert_eq!(argv[..5], ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
+        match &plan.actions[1] {
+            Action::RunCommand { argv, .. } => {
+                assert_eq!(argv, &["flatpak", "install", "--user", "-y", "flathub", "org.gimp.GIMP"]);
+            }
+            other => panic!("expected run, got {other:?}"),
+        }
     }
 
     #[tokio::test]

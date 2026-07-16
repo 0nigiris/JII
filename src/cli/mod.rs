@@ -1228,8 +1228,8 @@ impl Cli {
                         .iter()
                         .map(|r| format!("{} ({})", r.source_id, version_or_unknown(r.version.as_ref())))
                         .collect();
-                    labels.push("all of them".to_string());
-                    let header = format!("'{name}' is installed via several sources:");
+                    labels.push(crate::t!("remove.all_owners"));
+                    let header = crate::t!("remove.multi_header", name = name);
                     match prompt::choose(renderer, &header, &labels, 0) {
                         // The extra last option ("all") sits at index owners.len().
                         Some(index) if index == owners.len() => records.extend(owners),
@@ -1907,8 +1907,15 @@ impl Cli {
                     })
                 })
                 .collect();
+            // Disabled sources carry the same key set as enabled ones (a stable schema for
+            // tooling); what a dropped provider can't report is an explicit null.
             rows.extend(disabled.iter().map(|id| {
-                serde_json::json!({ "id": id, "enabled": false, "available": false })
+                serde_json::json!({
+                    "id": id, "trust": serde_json::Value::Null,
+                    "available": false, "relevant": serde_json::Value::Null,
+                    "enabled": false,
+                    "manager": serde_json::Value::Null,
+                })
             }));
             renderer.json_value(&serde_json::json!(rows));
             return Ok(());
@@ -2206,9 +2213,15 @@ impl Cli {
         // `yay`/`paru` are AUR helpers (Arch-only) — bare-name manager requests like any other.
         let arch_like = crate::platform::Platform::detect().arch_like;
         let is_helper = move |name: &str| arch_like && matches!(name, "yay" | "paru");
+        // A version pin (`npm@1.2` — any `@` past a leading npm-scope one) opts out of the
+        // manager route: swallowing the `@ref` here would silently install "latest" when the
+        // user asked for a version. Left alone, the token reaches parse_specs, which rejects
+        // pins with a clear "not supported yet" instead.
+        let has_pin = |p: &str| p.chars().skip(1).any(|c| c == '@');
         let is_manager_name = |p: &str| {
             !pinned_globally
                 && !p.contains(':')
+                && !has_pin(p)
                 && (ids.iter().any(|id| *id == bare_name(p)) || is_helper(&bare_name(p)))
         };
 
