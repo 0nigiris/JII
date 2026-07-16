@@ -223,6 +223,8 @@ fn candidate_from(row: &Row) -> PackageCandidate {
         arch_ok: true,
         signed: true,
         summary: (!row.name.is_empty()).then(|| row.name.clone()),
+        popularity: None,
+        suspicious: false,
         raw: json!({ "remote": remote, "branch": row.branch, "appid": row.appid }),
     }
 }

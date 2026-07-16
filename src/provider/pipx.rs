@@ -121,10 +121,13 @@ impl Provider for Pipx {
     }
 }
 
-/// PyPI `/<pkg>/json` response (only the `info` block we use).
+/// PyPI `/<pkg>/json` response (only the `info` block + release files we use).
 #[derive(Debug, Deserialize)]
 struct PypiResponse {
     info: PypiInfo,
+    /// The latest release's files — their upload times date the release.
+    #[serde(default)]
+    urls: Vec<PypiFile>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +137,31 @@ struct PypiInfo {
     version: Option<String>,
     #[serde(default)]
     summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PypiFile {
+    #[serde(default)]
+    upload_time_iso_8601: Option<String>,
+}
+
+/// How old the newest release may be before the package reads as abandoned/squatting.
+/// PyPI download counts are mirror-inflated (even junk gets ~1k/month) and the stats API
+/// is rate-limited, so **staleness** is PyPI's honest junk marker: the `htop` squatter's
+/// one release dates from 2016; real tools ship far more often than every 5 years.
+const STALE_AFTER_YEARS: i64 = 5;
+
+/// Whether the response's newest file upload is older than [`STALE_AFTER_YEARS`].
+/// No parseable upload time → `false` (never guess someone into a warning).
+fn is_stale(resp: &PypiResponse) -> bool {
+    resp.urls
+        .iter()
+        .filter_map(|f| f.upload_time_iso_8601.as_deref())
+        .filter_map(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+        .max()
+        .is_some_and(|newest| {
+            chrono::Utc::now().signed_duration_since(newest) > chrono::Duration::days(365 * STALE_AFTER_YEARS)
+        })
 }
 
 /// `pipx list --json` document (only the fields we use).
@@ -181,6 +209,10 @@ fn candidate(resp: &PypiResponse) -> PackageCandidate {
         arch_ok: true,
         signed: true,
         summary: resp.info.summary.clone().filter(|s| !s.is_empty()),
+        popularity: None,
+        // A registry-specific junk marker (a years-stale sole release); the engine's
+        // ranking heuristics turn this into the untrusted downgrade + loud warning.
+        suspicious: is_stale(resp),
         raw: json!({}),
     }
 }
@@ -266,6 +298,28 @@ mod tests {
             }
             other => panic!("expected run, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn stale_sole_release_is_premarked_suspicious() {
+        // The `htop` squatter class: one release uploaded many years ago.
+        let stale = response(
+            r#"{"info":{"name":"htop","version":"1.0","summary":"A training project"},
+                "urls":[{"upload_time_iso_8601":"2016-03-30T14:57:57Z"}]}"#,
+        );
+        assert!(is_stale(&stale));
+        assert!(candidate(&stale).suspicious);
+
+        // A recent release is fine; so is a response with no parseable dates.
+        let fresh_time = chrono::Utc::now().to_rfc3339();
+        let fresh = response(&format!(
+            r#"{{"info":{{"name":"black","version":"26.5.1"}},
+                "urls":[{{"upload_time_iso_8601":"{fresh_time}"}}]}}"#,
+        ));
+        assert!(!is_stale(&fresh));
+        let dateless =
+            response(r#"{"info":{"name":"x","version":"1.0"},"urls":[{}]}"#);
+        assert!(!is_stale(&dateless));
     }
 
     #[test]

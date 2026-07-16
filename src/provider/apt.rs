@@ -193,6 +193,8 @@ fn parse_show(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<PackageCa
         arch_ok: true,
         signed: true,
         summary,
+        popularity: None,
+        suspicious: false,
         raw: json!({}),
     }]
 }
@@ -266,6 +268,8 @@ Description: an older version
             arch_ok: true,
             signed: true,
             summary: None,
+            popularity: None,
+            suspicious: false,
             raw: json!({}),
         }
     }

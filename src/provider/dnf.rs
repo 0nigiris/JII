@@ -207,6 +207,8 @@ fn parse_candidates(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
                 arch_ok: true,
                 signed: true,
                 summary: (!summary.is_empty()).then(|| summary.to_string()),
+                popularity: None,
+                suspicious: false,
                 raw: json!({ "repoid": repoid }),
             })
         })

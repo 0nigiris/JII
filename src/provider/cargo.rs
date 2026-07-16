@@ -170,6 +170,10 @@ struct CrateInfo {
     max_version: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    /// Downloads in the last 90 days — already in the lookup response, so the junk
+    /// heuristic gets its popularity signal for free.
+    #[serde(default)]
+    recent_downloads: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -205,6 +209,8 @@ fn candidate(resp: &CrateResponse) -> Option<PackageCandidate> {
         arch_ok: true,
         signed: true,
         summary: resp.krate.description.clone().filter(|d| !d.is_empty()),
+        popularity: resp.krate.recent_downloads,
+        suspicious: false,
         raw: json!({}),
     })
 }

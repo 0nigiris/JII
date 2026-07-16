@@ -125,6 +125,7 @@ run_unknown = "{name} is installed, but JII can't tell what to run for it — it
 run_single_only = "--run starts a single package; nothing was started for a batch."
 run_failed = "Couldn't start `{cmd}`: {error}"
 no_exact_match = "No exact match for '{name}'. Closest: {closest}."
+suspicious = "'{name}' via {source} looks like an obscure registry package that may only share its name with a well-known tool — double-check it (e.g. `jii info {name}:{source}`) before installing."
 web_url = "Have a look first: {url}"
 already_installed = "{name} already installed via {source}{version}"
 already_installed_outdated = "{name} is already installed via {source} ({current}). Available: {available}."

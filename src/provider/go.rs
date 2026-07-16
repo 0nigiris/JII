@@ -177,6 +177,8 @@ fn candidate(module: &str, latest: &GoLatest) -> PackageCandidate {
         arch_ok: true, // built from source for the host
         signed: true,  // go verifies module checksums (go.sum / sum.golang.org)
         summary: None, // the proxy `@latest` carries no description
+        popularity: None,
+        suspicious: false,
         raw: json!({}),
     }
 }

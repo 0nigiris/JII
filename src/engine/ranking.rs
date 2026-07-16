@@ -8,8 +8,10 @@
 //! data we do not collect yet (comparable versions / dependency size) and currently
 //! behave like `stable` — see docs/ROADMAP.md.
 
+use std::collections::HashSet;
+
 use crate::config::{Config, Profile};
-use crate::model::PackageCandidate;
+use crate::model::{PackageCandidate, TrustLevel};
 
 /// Filter and order candidates, best first. `query` is the name the user typed: an
 /// **exact** name match sorts above a **prefix** match above a mere substring (ADR-0042),
@@ -29,6 +31,50 @@ pub fn rank(config: &Config, query: &str, mut candidates: Vec<PackageCandidate>)
             .then(a.name.len().cmp(&b.name.len()))
     });
     candidates
+}
+
+/// Recent downloads below which a language-registry package reads as obscure. Deliberately
+/// low: the point is to catch name-squatters (tens of downloads), not to punish small tools.
+const POPULARITY_FLOOR: u64 = 1_000;
+
+/// Flag junk candidates — an obscure language-registry package whose name shadows a
+/// well-known tool (the `htop`-on-PyPI / npm-squatter class the owner keeps tripping over).
+///
+/// `network_registry` holds the ids of sources that answer searches purely over the network
+/// ([`Provider::can_search`](crate::provider::Provider::can_search)) — the tier where
+/// name-squatting lives; the engine derives the set from provider *traits*, so the core
+/// still never branches on a concrete source id (ADR-0004). A flagged candidate is
+/// **downgraded to `untrusted`** (auto mode never installs it — ADR-0006) and marked
+/// `suspicious` so the CLI warns loudly. Never a hard filter: an explicit user pick still works.
+///
+/// A candidate is obscure when:
+///   • its recent downloads (where the registry reports them) are under [`POPULARITY_FLOOR`]; or
+///   • no popularity signal exists (PyPI…) **and** the metadata carries junk markers —
+///     no description at all, or a `0.0.x` version.
+/// Path-style names (`owner/repo`, `github.com/x/y`) were typed knowingly and are skipped.
+pub fn mark_suspicious(network_registry: &HashSet<&str>, candidates: &mut [PackageCandidate]) {
+    for c in candidates.iter_mut() {
+        if c.trust != TrustLevel::Community
+            || !network_registry.contains(c.source_id.as_str())
+            || c.name.contains('/')
+        {
+            continue;
+        }
+        // A provider may pre-mark registry-specific junk (PyPI: a years-stale sole
+        // release); the generic signals below add the popularity/metadata checks.
+        let obscure = c.suspicious
+            || match c.popularity {
+                Some(downloads) => downloads < POPULARITY_FLOOR,
+                None => {
+                    c.summary.is_none()
+                        || c.version.as_ref().is_some_and(|v| v.0.starts_with("0.0."))
+                }
+            };
+        if obscure {
+            c.suspicious = true;
+            c.trust = TrustLevel::Untrusted;
+        }
+    }
 }
 
 /// How closely a candidate's name matches what the user typed. Lower is better:
@@ -92,6 +138,8 @@ mod tests {
             arch_ok,
             signed: true,
             summary: None,
+            popularity: None,
+            suspicious: false,
             raw: json!({}),
         }
     }
@@ -206,6 +254,71 @@ mod tests {
             ],
         );
         assert_eq!(ranked[0].name, "md.obsidian.Obsidian");
+    }
+
+    fn netsrc() -> HashSet<&'static str> {
+        ["pipx", "npm", "cargo", "flatpak"].into_iter().collect()
+    }
+
+    /// A community candidate from a network registry, with tunable junk signals.
+    fn registry_candidate(
+        source: &str,
+        popularity: Option<u64>,
+        summary: Option<&str>,
+        version: Option<&str>,
+    ) -> PackageCandidate {
+        let mut c = candidate(source, TrustLevel::Community, true);
+        c.name = "htop".into();
+        c.popularity = popularity;
+        c.summary = summary.map(str::to_string);
+        c.version = version.map(PkgVersion::new);
+        c
+    }
+
+    #[test]
+    fn low_or_missing_popularity_with_junk_markers_is_suspicious() {
+        let mut cands = vec![
+            registry_candidate("npm", Some(12), Some("legit summary"), Some("3.1")), // low downloads
+            registry_candidate("pipx", None, None, Some("3.1")),                     // no summary
+            registry_candidate("pipx", None, Some("desc"), Some("0.0.3")),           // 0.0.x squat
+        ];
+        mark_suspicious(&netsrc(), &mut cands);
+        for c in &cands {
+            assert!(c.suspicious, "{}: expected suspicious", c.source_id);
+            assert_eq!(c.trust, TrustLevel::Untrusted);
+        }
+    }
+
+    #[test]
+    fn healthy_registry_candidates_are_left_alone() {
+        let mut cands = vec![
+            registry_candidate("npm", Some(2_000_000), Some("prettier"), Some("3.9")), // popular
+            registry_candidate("pipx", None, Some("real app"), Some("24.1.0")),        // rich metadata
+        ];
+        mark_suspicious(&netsrc(), &mut cands);
+        for c in &cands {
+            assert!(!c.suspicious);
+            assert_eq!(c.trust, TrustLevel::Community);
+        }
+    }
+
+    #[test]
+    fn official_local_and_pathstyle_candidates_are_never_flagged() {
+        // An official source is out of scope; a non-network source too; a path-style name
+        // (go module / owner/repo) was typed knowingly.
+        let mut official = vec![candidate("dnf", TrustLevel::Official, true)];
+        mark_suspicious(&netsrc(), &mut official);
+        assert!(!official[0].suspicious);
+
+        let mut local = vec![registry_candidate("nix", None, None, Some("0.0.1"))];
+        mark_suspicious(&netsrc(), &mut local); // "nix" not in the network set
+        assert!(!local[0].suspicious);
+
+        let mut path = registry_candidate("npm", Some(5), None, Some("0.0.1"));
+        path.name = "github.com/x/y".into();
+        let mut v = vec![path];
+        mark_suspicious(&netsrc(), &mut v);
+        assert!(!v[0].suspicious);
     }
 
     #[test]

@@ -189,6 +189,8 @@ fn candidate(pkg: RpcPackage) -> PackageCandidate {
         // AUR packages are built from source PKGBUILDs — no upstream signature JII verifies.
         signed: false,
         summary: pkg.description.filter(|d| !d.is_empty()),
+        popularity: None,
+        suspicious: false,
         raw: serde_json::json!({}),
     }
 }

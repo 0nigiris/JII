@@ -354,8 +354,17 @@ impl Engine {
     }
 
     /// Rank candidates, best first, for the name the user typed (`query`) — exact name
-    /// matches sort above prefix/substring matches (ADR-0042).
-    pub fn rank(&self, query: &str, candidates: Vec<PackageCandidate>) -> Vec<PackageCandidate> {
+    /// matches sort above prefix/substring matches (ADR-0042). Junk heuristics run first:
+    /// an obscure network-registry package shadowing the typed name is downgraded to
+    /// `untrusted` + marked suspicious (so the downgraded trust also breaks ranking ties).
+    pub fn rank(&self, query: &str, mut candidates: Vec<PackageCandidate>) -> Vec<PackageCandidate> {
+        let network_registry: std::collections::HashSet<&str> = self
+            .providers
+            .iter()
+            .filter(|p| p.can_search())
+            .map(|p| p.id())
+            .collect();
+        ranking::mark_suspicious(&network_registry, &mut candidates);
         ranking::rank(&self.config, query, candidates)
     }
 

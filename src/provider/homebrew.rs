@@ -177,6 +177,8 @@ fn candidate(formula: &Formula) -> PackageCandidate {
         arch_ok: true,
         signed: true,
         summary: formula.desc.clone().filter(|d| !d.is_empty()),
+        popularity: None,
+        suspicious: false,
         raw: json!({}),
     }
 }
@@ -298,6 +300,8 @@ mod tests {
             arch_ok: true,
             signed: true,
             summary: None,
+            popularity: None,
+            suspicious: false,
             raw: json!({}),
         };
         let (a, b) = (mk("ripgrep"), mk("bat"));

@@ -477,6 +477,8 @@ fn parse_search(stdout: &str, name: &str, trust: TrustLevel) -> Vec<PackageCandi
                 arch_ok: true,
                 signed: true,
                 summary: e.description.filter(|s| !s.is_empty()),
+                popularity: None,
+                suspicious: false,
                 raw: json!({}),
             }]
         })

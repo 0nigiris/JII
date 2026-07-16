@@ -234,6 +234,8 @@ fn candidate(info: &SnapInfo) -> PackageCandidate {
         arch_ok: true,
         signed: true,
         summary,
+        popularity: None,
+        suspicious: false,
         raw: json!({ "classic": classic }),
     }
 }

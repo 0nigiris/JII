@@ -190,6 +190,8 @@ fn parse_search_xml(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<Pac
         arch_ok: true,
         signed: true,
         summary: None,
+        popularity: None,
+        suspicious: false,
         raw: json!({ "repo": repo }),
     }]
 }

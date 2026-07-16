@@ -806,6 +806,17 @@ impl Cli {
             self.preview_batch(&batch, renderer);
         }
 
+        // Loud red warning for every suspicious pick (the junk heuristic downgraded it):
+        // the name may only *look like* the well-known tool. Shown right under the preview
+        // so it can't be missed; the untrusted confirm barrier below still applies.
+        for c in batch.iter().flat_map(|b| b.candidates.iter()).filter(|c| c.suspicious) {
+            renderer.error(&crate::t!(
+                "install.suspicious",
+                name = c.name.clone(),
+                source = c.source_id.clone()
+            ));
+        }
+
         // For a single install, offer the candidate's web page — the user can open it to
         // confirm "yes, this is the one I meant" before answering (their ask: a link to eyeball
         // the app/repo, especially for a last-resort GitHub binary). A batch would be a wall of
@@ -4202,6 +4213,8 @@ mod tests {
             arch_ok: true,
             signed,
             summary: None,
+            popularity: None,
+            suspicious: false,
             raw: serde_json::Value::Null,
         }
     }

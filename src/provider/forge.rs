@@ -346,6 +346,8 @@ fn candidate(
         arch_ok: true,
         signed: sha256.is_some(),
         summary: Some(format!("{label} release {owner}/{repo}")),
+        popularity: None,
+        suspicious: false,
         raw: json!({
             "slug": format!("{owner}/{repo}"),
             "url": asset.url,

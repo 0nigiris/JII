@@ -221,6 +221,8 @@ fn candidate(project: &Project) -> PackageCandidate {
             .as_ref()
             .filter(|d| !d.is_empty())
             .cloned(),
+        popularity: None,
+        suspicious: false,
         raw: json!({ "project": project.full_name }),
     }
 }

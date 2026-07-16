@@ -123,6 +123,7 @@ run_unknown = "{name} установлен, но JII не понял, что и�
 run_single_only = "--run запускает только один пакет; для нескольких ничего не запущено."
 run_failed = "Не удалось запустить «{cmd}»: {error}"
 no_exact_match = "Точного совпадения для «{name}» нет. Ближайшее: {closest}."
+suspicious = "«{name}» через {source} похож на малоизвестный пакет реестра, который может лишь совпадать по имени с известной программой — проверьте его (например, `jii info {name}:{source}`) перед установкой."
 web_url = "Сначала можно посмотреть: {url}"
 already_installed = "{name} уже установлен через {source}{version}"
 already_installed_outdated = "{name} уже установлен через {source} ({current}). Доступно: {available}."

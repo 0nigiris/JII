@@ -172,6 +172,8 @@ fn parse_si(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<PackageCand
         arch_ok: true,
         signed: true,
         summary,
+        popularity: None,
+        suspicious: false,
         raw: json!({ "repo": repo.unwrap_or_default() }),
     }]
 }

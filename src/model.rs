@@ -322,6 +322,17 @@ pub struct PackageCandidate {
     /// Whether the artifact carries a signature/checksum we can verify.
     pub signed: bool,
     pub summary: Option<String>,
+    /// Recent downloads, when the source can cheaply report them (crates.io: last 90 days;
+    /// npm: last month). `None` where the registry exposes no such signal (PyPI, Flathub…).
+    /// Feeds the junk-package heuristic in ranking — never a hard filter.
+    #[serde(default)]
+    pub popularity: Option<u64>,
+    /// The junk-package flag: a provider may pre-set it from registry-specific markers
+    /// (PyPI: a years-stale sole release), and the engine's ranking heuristics set it from
+    /// generic ones (low downloads, thin metadata). A suspicious candidate is downgraded to
+    /// `untrusted` (so auto mode never installs it) and the CLI shows a loud warning.
+    #[serde(default)]
+    pub suspicious: bool,
     /// Source-specific payload, opaque to the core, consumed by `plan_install`.
     pub raw: serde_json::Value,
 }

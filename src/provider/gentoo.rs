@@ -212,6 +212,8 @@ fn parse_search(stdout: &str, name: &str, source_id: &str, trust: TrustLevel) ->
             arch_ok: true,
             signed: true,
             summary: b.description,
+            popularity: None,
+            suspicious: false,
             raw: json!({ "atom": b.atom }),
         })
         .collect()

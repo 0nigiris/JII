@@ -79,7 +79,13 @@ impl Provider for Npm {
         let Some(manifest) = get_json_opt::<Manifest>(ID, &url).await? else {
             return Ok(Vec::new()); // no such package
         };
-        Ok(candidate(&manifest).into_iter().collect())
+        let Some(mut cand) = candidate(&manifest) else {
+            return Ok(Vec::new());
+        };
+        // One extra tiny call per hit: last-month downloads feed the junk heuristic
+        // (an obscure package squatting a well-known name). Best-effort — `None` on failure.
+        cand.popularity = fetch_downloads(&cand.name).await;
+        Ok(vec![cand])
     }
 
     async fn explain_miss(&self, query: &Query) -> Option<String> {
@@ -232,6 +238,20 @@ impl Manifest {
     }
 }
 
+/// npm's downloads-count API response (`/downloads/point/last-month/<pkg>`).
+#[derive(Debug, Deserialize)]
+struct Downloads {
+    #[serde(default)]
+    downloads: Option<u64>,
+}
+
+/// Last-month download count for a package, or `None` when the API is unreachable /
+/// answers anything unexpected — the heuristic degrades, the search never fails on this.
+async fn fetch_downloads(name: &str) -> Option<u64> {
+    let url = format!("https://api.npmjs.org/downloads/point/last-month/{name}");
+    get_json_opt::<Downloads>(ID, &url).await.ok()??.downloads
+}
+
 /// The shared "this is a library, not a program" explanation (#5): used by both the
 /// install-path `explain_miss` and the `info`-path `reference` note, so the wording stays
 /// consistent and actionable.
@@ -271,6 +291,8 @@ fn candidate(manifest: &Manifest) -> Option<PackageCandidate> {
         arch_ok: true,
         signed: true,
         summary: manifest.description.clone().filter(|d| !d.is_empty()),
+        popularity: None,
+        suspicious: false,
         raw: json!({}),
     })
 }

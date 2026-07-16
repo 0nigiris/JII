@@ -2619,3 +2619,42 @@ terminal and still emits raw roff when redirected (`jii man > jii.1`, how the pa
 on apt's "The following packages will be upgraded:" prose rather than its tally, so every apt update
 reported a bare "updated" — dnf5's transaction summary is counted too, and apt's "N not upgraded"
 (held back) is not counted as changed.
+
+## ADR-0067 — Junk-package heuristics: downgrade to untrusted + loud warning, never a hard block
+
+**Status.** Accepted (2026-07-16).
+
+**Context.** Language registries (PyPI, npm, crates.io) accept any name, so an obscure package can
+shadow a well-known tool: the owner hit a PyPI `htop` ("A lhk 1st training project", one release from
+2016) offered as if it were the process viewer, and a crates.io `htop` that is an HTML-to-PDF
+converter. Ranking had **no relevance/popularity signal at all**, and pipx/go/brew deliberately offer
+any existing package (no program-vs-library signal in their APIs — ADR-0023), so the semantic mismatch
+is invisible exactly where users can't see it. The owner chose: filter heuristics that **downgrade,
+with a red warning** — not a hard block (interview decision, 2026-07).
+
+**Decision.** Two layers, no core source-branching (ADR-0004 holds):
+1. `PackageCandidate` gains `popularity: Option<u64>` (recent downloads where a registry reports them
+   cheaply: crates.io `recent_downloads` from the response already fetched; npm via one small
+   `api.npmjs.org/downloads/point/last-month` call per hit) and `suspicious: bool`.
+2. A **provider** may pre-mark registry-specific junk from facts only it understands — pipx flags a
+   package whose newest release upload is older than 5 years (PyPI's honest junk marker; its download
+   counts are mirror-inflated and its stats API rate-limited, so staleness beats popularity there).
+3. The **engine** (`ranking::mark_suspicious`, run inside `Engine::rank` before sorting) applies the
+   generic policy to candidates from network-registry sources (`Provider::can_search`, a trait — not
+   an id check) at community trust with a non-path name: popularity < 1000 recent downloads, or no
+   popularity signal plus thin metadata (no summary, or a `0.0.x` version), or a provider pre-mark →
+   `suspicious = true` **and trust downgraded to untrusted**.
+Effect: auto mode never installs it (ADR-0006 barrier), listings show red `untrusted`, and the install
+preview prints a red warning naming the package, its source, and how to verify
+(`jii info name:source`). The user can still pick it explicitly — a warning, not a wall.
+
+**Alternatives.** (a) Hard-blocking junk — rejected by the owner: false positives would hide small
+legitimate tools with no recourse. (b) pypistats.org for PyPI popularity — tried, reverted: 429s after
+the first call and mirror bots give even junk ~1k downloads/month. (c) An ML/scoring model — against
+the project's "deterministic and explainable" ranking principle.
+
+**Consequences.** Cached candidates from before this change deserialize with `popularity: None`,
+`suspicious: false` (serde defaults) and are re-marked on the next rank. Niche-but-legitimate registry
+packages under the floor get a warning + explicit confirm; that is the accepted trade. The engine may
+consult provider *traits* in ranking (can_search) — a precedent consistent with ADR-0004's "no concrete
+source id" rule.
