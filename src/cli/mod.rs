@@ -1519,6 +1519,10 @@ impl Cli {
             current = selfupdate::current_version(),
             latest = selfupdate::normalize_tag(&latest.tag)
         ));
+        // A pulled/rolled-back release reads as "different tag" too — say it's a downgrade.
+        if selfupdate::looks_like_downgrade(&latest.tag) {
+            renderer.warn(&crate::t!("selfupdate.maybe_downgrade"));
+        }
         self.preview_self_plan(&plan, renderer);
         if self.global.dry_run {
             renderer.info(&crate::t!("common.dry_run_unchanged"));
@@ -2682,32 +2686,33 @@ impl Cli {
         ranked
     }
 
-    /// Explain how a package was (or would be) installed (from the registry).
+    /// Explain how a package was (or would be) installed (from the registry). A package
+    /// installed via several sources shows **every** record, not a silent first pick.
     fn how(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
-        match engine.registry().get(package) {
-            None => {
-                renderer.warn(&crate::t!("how.no_record", package = package));
-            }
-            Some(record) => {
-                let trust = engine
-                    .source_trust(&record.source_id)
-                    .map(|t| t.display())
-                    .unwrap_or_else(|| crate::t!("common.unknown"));
-                let version = record
-                    .version
-                    .as_ref()
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| crate::t!("common.unknown"));
-                renderer.info(&crate::t!(
-                    "how.installed_on",
-                    source = record.source_id.clone(),
-                    date = record.installed_at.format("%Y-%m-%d %H:%M").to_string()
-                ));
-                let ok = renderer.palette().mark_ok();
-                renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
-                renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
-            }
+        let records = engine.registry().get_all(package);
+        if records.is_empty() {
+            renderer.warn(&crate::t!("how.no_record", package = package));
+            return Ok(());
+        }
+        for record in records {
+            let trust = engine
+                .source_trust(&record.source_id)
+                .map(|t| t.display())
+                .unwrap_or_else(|| crate::t!("common.unknown"));
+            let version = record
+                .version
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| crate::t!("common.unknown"));
+            renderer.info(&crate::t!(
+                "how.installed_on",
+                source = record.source_id.clone(),
+                date = record.installed_at.format("%Y-%m-%d %H:%M").to_string()
+            ));
+            let ok = renderer.palette().mark_ok();
+            renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
+            renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
         }
         Ok(())
     }
@@ -3859,9 +3864,7 @@ async fn flathub_configured() -> bool {
 /// [`write_nix_config_root`]). The backup is written first, so a failed write always leaves a
 /// recoverable copy.
 fn write_nix_config(path: &std::path::Path, content: &str) -> std::io::Result<std::path::PathBuf> {
-    let mut backup = path.as_os_str().to_owned();
-    backup.push(".jii-bak");
-    let backup = std::path::PathBuf::from(backup);
+    let backup = jii_backup_path(path);
     std::fs::copy(path, &backup)?;
     std::fs::write(path, content)?;
     Ok(backup)

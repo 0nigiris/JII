@@ -148,7 +148,13 @@ impl Cache {
         *self.dirty.lock().unwrap() = true;
     }
 
-    /// Persist to disk if anything changed. Best-effort: cache write errors are
+    /// How long a stale entry is kept as an offline fallback before it is dropped on save.
+    /// Generous (a month) so "no network" still degrades gracefully, but the file stops
+    /// growing without bound.
+    const RETENTION: Duration = Duration::from_secs(30 * 24 * 3600);
+
+    /// Persist to disk if anything changed, dropping entries older than [`Self::RETENTION`]
+    /// and failure marks whose cooldown has lapsed. Best-effort: cache write errors are
     /// non-fatal and swallowed.
     pub fn save(&self) {
         if !*self.dirty.lock().unwrap() {
@@ -162,9 +168,30 @@ impl Cache {
         {
             return;
         }
+        let now = Utc::now();
+        let fresh_enough = |at: &DateTime<Utc>, window: Duration| {
+            now.signed_duration_since(*at)
+                .to_std()
+                .map(|age| age < window)
+                .unwrap_or(true) // a future timestamp (clock skew) is kept, not dropped
+        };
         let persisted = Persisted {
-            entries: self.entries.lock().unwrap().clone(),
-            failures: self.failures.lock().unwrap().clone(),
+            entries: self
+                .entries
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, e)| fresh_enough(&e.fetched_at, Self::RETENTION))
+                .map(|(k, e)| (k.clone(), e.clone()))
+                .collect(),
+            failures: self
+                .failures
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(_, at)| fresh_enough(at, self.failure_cooldown))
+                .map(|(k, at)| (k.clone(), *at))
+                .collect(),
         };
         if let Ok(text) = serde_json::to_string(&persisted) {
             let _ = std::fs::write(path, text);

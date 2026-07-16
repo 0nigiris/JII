@@ -63,6 +63,25 @@ pub fn update_available(latest_tag: &str) -> bool {
     normalize_tag(latest_tag) != current_version()
 }
 
+/// Best-effort "is `latest_tag` *older* than the running version?" — so a pulled/rolled-back
+/// release is offered with an explicit downgrade warning, never silently. Versions stay
+/// opaque (ADR-0009): this compares only when both sides parse as a dotted-number core
+/// (`0.1.8` from `0.1.8-beta`); anything else reports `false` (no warning, no guess).
+pub fn looks_like_downgrade(latest_tag: &str) -> bool {
+    fn nums(v: &str) -> Option<Vec<u64>> {
+        let core = v.split(['-', '+']).next()?;
+        let parts = core
+            .split('.')
+            .map(|p| p.parse::<u64>().ok())
+            .collect::<Option<Vec<u64>>>()?;
+        (!parts.is_empty()).then_some(parts)
+    }
+    match (nums(normalize_tag(latest_tag)), nums(current_version())) {
+        (Some(latest), Some(current)) => latest < current,
+        _ => false,
+    }
+}
+
 /// Detect how this jii was installed. A binary inside `$HOME` is always user-space; anything
 /// else is checked against `rpm`/`dpkg` ownership, falling back to user-space.
 pub async fn detect_install() -> Result<Install> {

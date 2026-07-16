@@ -38,8 +38,9 @@ window.
   untrusted automatically**.
 - **The core never branches on the source** (no `if source == "dnf"`). It operates
   only on the `Provider` trait and the `PackageCandidate` / `InstallPlan` model.
-- Add a new source by implementing `Provider`; simple sources are declarative TOML in
-  `data/sources/` (use the `/new-provider` skill).
+- Add a new source by implementing `Provider` (use the `/new-provider` skill). The
+  declarative-TOML layer (`data/sources/` + `provider/declarative.rs`) is **planned, not
+  built yet** — today every source is a native Rust provider.
 
 ## Working style
 

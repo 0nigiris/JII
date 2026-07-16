@@ -171,52 +171,82 @@ fn run_menu(
         let n = options.len();
         let mut sel = default.min(n - 1);
 
-        // Reserve `n` lines (scrolling the viewport if we're near the bottom), then move
+        // A list taller than the terminal can't be drawn row-per-item — reserve a window of
+        // at most (height − 3) rows and scroll the selection within it (the repo picker's
+        // "show more" grows the list without bound). A list that fits behaves as before.
+        let term_rows = terminal::size().map(|(_, h)| h).unwrap_or(24) as usize;
+        let visible = n.min(term_rows.saturating_sub(3).max(3));
+        let mut offset = sel.saturating_sub(visible - 1);
+
+        // Reserve `visible` lines (scrolling the viewport if we're near the bottom), then move
         // back to the top of that region and record its absolute row. Crucially this — and
         // the cursor-position query it needs — happens **before** mouse capture is enabled,
         // so the position report can't race with mouse/key events on stdin.
-        for _ in 0..n {
+        for _ in 0..visible {
             write!(out, "\r\n")?;
         }
-        execute!(out, cursor::MoveToPreviousLine(n as u16))?;
+        execute!(out, cursor::MoveToPreviousLine(visible as u16))?;
         let (_, first) = cursor::position()?;
         execute!(out, EnableMouseCapture)?;
 
         // Keep every item on one row: truncate to the terminal width (minus a column of slack).
         let width = terminal::size().map(|(w, _)| w).unwrap_or(80).max(20) as usize - 1;
 
-        let redraw = |out: &mut io::Stdout, sel: usize| -> io::Result<()> {
-            for (i, opt) in options.iter().enumerate() {
+        let redraw = |out: &mut io::Stdout, sel: usize, offset: usize| -> io::Result<()> {
+            for row in 0..visible {
+                let i = offset + row;
                 queue!(
                     out,
-                    cursor::MoveTo(0, first + i as u16),
+                    cursor::MoveTo(0, first + row as u16),
                     terminal::Clear(ClearType::CurrentLine)
                 )?;
-                write!(out, "{}", truncate_display(&menu_line(i == sel, opt, palette), width))?;
+                let mut line = menu_line(i == sel, &options[i], palette);
+                // Edge markers so a windowed list is visibly scrollable.
+                if row == 0 && offset > 0 {
+                    line.push_str(&palette.dim("  ↑"));
+                } else if row + 1 == visible && offset + visible < n {
+                    line.push_str(&palette.dim("  ↓"));
+                }
+                write!(out, "{}", truncate_display(&line, width))?;
             }
             out.flush()
         };
 
-        redraw(&mut out, sel)?; // initial paint
+        // Keep the selection inside the window, then repaint.
+        let clamp = |sel: usize, offset: usize| -> usize {
+            if sel < offset {
+                sel
+            } else if sel >= offset + visible {
+                sel + 1 - visible
+            } else {
+                offset
+            }
+        };
+
+        redraw(&mut out, sel, offset)?; // initial paint
 
         let choice = loop {
             match event::read()? {
                 Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         sel = (sel + n - 1) % n;
-                        redraw(&mut out, sel)?;
+                        offset = clamp(sel, offset);
+                        redraw(&mut out, sel, offset)?;
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         sel = (sel + 1) % n;
-                        redraw(&mut out, sel)?;
+                        offset = clamp(sel, offset);
+                        redraw(&mut out, sel, offset)?;
                     }
                     KeyCode::Home => {
                         sel = 0;
-                        redraw(&mut out, sel)?;
+                        offset = 0;
+                        redraw(&mut out, sel, offset)?;
                     }
                     KeyCode::End => {
                         sel = n - 1;
-                        redraw(&mut out, sel)?;
+                        offset = clamp(sel, offset);
+                        redraw(&mut out, sel, offset)?;
                     }
                     KeyCode::Enter => break Some(sel),
                     KeyCode::Esc | KeyCode::Char('q') => break None,
@@ -226,11 +256,11 @@ fn run_menu(
                     _ => {}
                 },
                 Event::Mouse(m) => {
-                    // Map a terminal row back to an item index (the menu occupies
-                    // `first..first+n`).
+                    // Map a terminal row back to an item index (the menu occupies the
+                    // `visible`-row window starting at `first`, showing `offset..offset+visible`).
                     let row_item = |row: u16| -> Option<usize> {
                         let idx = row.checked_sub(first)? as usize;
-                        (idx < n).then_some(idx)
+                        (idx < visible).then_some(offset + idx)
                     };
                     match m.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
@@ -243,16 +273,18 @@ fn run_menu(
                                 && i != sel
                             {
                                 sel = i;
-                                redraw(&mut out, sel)?;
+                                redraw(&mut out, sel, offset)?;
                             }
                         }
                         MouseEventKind::ScrollDown => {
                             sel = (sel + 1) % n;
-                            redraw(&mut out, sel)?;
+                            offset = clamp(sel, offset);
+                            redraw(&mut out, sel, offset)?;
                         }
                         MouseEventKind::ScrollUp => {
                             sel = (sel + n - 1) % n;
-                            redraw(&mut out, sel)?;
+                            offset = clamp(sel, offset);
+                            redraw(&mut out, sel, offset)?;
                         }
                         _ => {}
                     }
@@ -326,8 +358,9 @@ fn ask_key(question: &str, hint: &str, default_yes: bool) -> io::Result<bool> {
         loop {
             match event::read()? {
                 Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
-                    KeyCode::Char('y') | KeyCode::Char('Y') => return Ok(true),
-                    KeyCode::Char('n') | KeyCode::Char('N') => return Ok(false),
+                    // Russian «д/н» answer too — a ru-locale user shouldn't have to switch layouts.
+                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('д') | KeyCode::Char('Д') => return Ok(true),
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('н') | KeyCode::Char('Н') => return Ok(false),
                     KeyCode::Enter => return Ok(default_yes),
                     KeyCode::Esc => return Ok(false),
                     KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -357,10 +390,10 @@ fn ask_line(question: &str, hint: &str, default_yes: bool) -> bool {
     if io::stdin().read_line(&mut line).is_err() {
         return default_yes;
     }
-    match line.trim().to_ascii_lowercase().as_str() {
+    match line.trim().to_lowercase().as_str() {
         "" => default_yes,
-        "y" | "yes" => true,
-        "n" | "no" => false,
+        "y" | "yes" | "д" | "да" => true,
+        "n" | "no" | "н" | "нет" => false,
         _ => default_yes,
     }
 }

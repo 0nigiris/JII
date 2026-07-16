@@ -129,8 +129,12 @@ impl Registry {
 
     /// Record a successful removal.
     pub fn record_remove(&mut self, name: &str, source_id: &str) {
+        // The version of the copy actually removed — same package via another source may
+        // carry a different one, so the lookup matches both name and source.
         let version = self
-            .get(name)
+            .installed
+            .iter()
+            .find(|r| r.name == name && r.source_id == source_id)
             .and_then(|r| r.version.clone());
         self.installed
             .retain(|r| !(r.name == name && r.source_id == source_id));
@@ -143,9 +147,15 @@ impl Registry {
         });
     }
 
-    /// The recorded install for a package, if any.
+    /// The recorded install for a package, if any (the first when several sources own it).
     pub fn get(&self, name: &str) -> Option<&InstalledRecord> {
         self.installed.iter().find(|r| r.name == name)
+    }
+
+    /// Every recorded install of a package — one entry per owning source (`jii how` shows
+    /// them all instead of silently picking the first).
+    pub fn get_all(&self, name: &str) -> Vec<&InstalledRecord> {
+        self.installed.iter().filter(|r| r.name == name).collect()
     }
 
     /// All recorded installs.
