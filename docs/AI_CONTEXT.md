@@ -8,7 +8,7 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-15_
+_Last updated: 2026-07-16_
 
 ---
 
@@ -46,6 +46,12 @@ more. Fixed this batch:
 
 **276 tests, clippy clean.** Verified live on Fedora: `sources` disable/enable view, `htop:pipx` and
 `htop:brew` dry-runs, npm install/remove/`--run`, `--run` on a font and on a batch, `man -l` render.
+
+**Release cut: `v0.1.8-beta` (2026-07-15).** Version bumped in `Cargo.toml`, `Cargo.lock`,
+`packaging/jii.spec` (`%_tag` + `Version` + changelog); annotated tag `v0.1.8-beta` pushed →
+`release.yml` builds/publishes the x86_64/aarch64 musl binaries + `.tar.gz`/`.deb`/`.rpm`.
+**Post-release debt (same as every prior tag):** refresh `packaging/aur/PKGBUILD` `pkgver` +
+`sha256sums` from the published v0.1.8 tarballs once CI uploads them.
 
 **Known, not fixed (owner asked "why?", answered not coded):** registry sources return exact-name
 junk — `htop` on PyPI is an unrelated "1st training project", so `jii htop:pipx` installs it and pip
