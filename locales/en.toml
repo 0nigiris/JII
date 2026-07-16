@@ -88,6 +88,7 @@ sum_done = "updated"
 sum_changed = "{count} packages updated"
 sum_deprecated = "{count} deprecation warning(s)"
 sum_eol = "{count} end-of-life runtime(s) — run `flatpak uninstall --unused` to clean up"
+bulk_failed = "the system update failed for: {sources} (see the output above)"
 
 [exec]
 installing = "installing {names} via {source}"

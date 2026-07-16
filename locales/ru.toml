@@ -86,6 +86,7 @@ sum_done = "обновлено"
 sum_changed = "обновлено пакетов: {count}"
 sum_deprecated = "предупреждений об устаревании: {count}"
 sum_eol = "снятых с поддержки рантаймов: {count} — очистите: `flatpak uninstall --unused`"
+bulk_failed = "обновление системы не удалось для: {sources} (подробности выше)"
 
 [exec]
 installing = "устанавливаю {names} через {source}"

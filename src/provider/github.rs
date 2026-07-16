@@ -40,7 +40,12 @@ impl Forge for GithubForge {
         repo: &str,
         token: Option<&str>,
     ) -> Result<Release> {
-        let url = format!("{API}/repos/{owner}/{repo}/releases/latest");
+        // The release **list**, not `/releases/latest`: the latter 404s on a repo whose only
+        // releases are pre-releases (deliberately excluded there), which made `jii owner/repo`
+        // fail on perfectly installable projects — the same trap selfupdate and install.sh
+        // already dodged. The list is newest-first; take the newest non-draft that actually
+        // ships assets (a source-only release has nothing to install), else the newest non-draft.
+        let url = format!("{API}/repos/{owner}/{repo}/releases?per_page=20");
         let mut req = client.get(&url).header("Accept", "application/vnd.github+json");
         if let Some(t) = token {
             req = req.bearer_auth(t);
@@ -50,11 +55,13 @@ impl Forge for GithubForge {
             .await
             .and_then(|r| r.error_for_status())
             .map_err(|e| JiiError::Other(anyhow::anyhow!("github: {e}")))?;
-        let gh: GhRelease = resp
+        let releases: Vec<GhRelease> = resp
             .json()
             .await
             .map_err(|e| JiiError::Other(anyhow::anyhow!("github: malformed release json: {e}")))?;
-        Ok(gh.normalize())
+        pick_release(releases)
+            .map(GhRelease::normalize)
+            .ok_or_else(|| JiiError::Other(anyhow::anyhow!("github: {owner}/{repo} has no published release")))
     }
 
     async fn probe(&self, client: &reqwest::Client, token: Option<&str>) -> Probe {
@@ -159,10 +166,25 @@ async fn fetch_rate_limit(client: &reqwest::Client, token: Option<&str>) -> Resu
     Ok((body.rate.remaining, body.rate.limit))
 }
 
+/// The newest installable release from a newest-first list: the first non-draft **with
+/// assets** (a source-only release has nothing to install), else the first non-draft.
+fn pick_release(releases: Vec<GhRelease>) -> Option<GhRelease> {
+    let mut first_non_draft: Option<GhRelease> = None;
+    for r in releases.into_iter().filter(|r| !r.draft) {
+        if !r.assets.is_empty() {
+            return Some(r);
+        }
+        first_non_draft.get_or_insert(r);
+    }
+    first_non_draft
+}
+
 /// The subset of the GitHub release API we consume.
 #[derive(Debug, Deserialize)]
 struct GhRelease {
     tag_name: String,
+    #[serde(default)]
+    draft: bool,
     #[serde(default)]
     assets: Vec<GhAsset>,
 }
@@ -237,6 +259,26 @@ mod tests {
         assert_eq!(f.id(), "github");
         assert_eq!(f.label(), "GitHub");
         assert_eq!(f.repo_url("jqlang", "jq"), "https://github.com/jqlang/jq");
+    }
+
+    #[test]
+    fn pick_release_prefers_newest_non_draft_with_assets() {
+        let parse = |s: &str| serde_json::from_str::<Vec<GhRelease>>(s).unwrap();
+        // A prerelease-only repo (the /releases/latest 404 trap) still resolves.
+        let only_pre = parse(
+            r#"[{"tag_name":"v0.2-beta","assets":[{"name":"a","browser_download_url":"u","size":1}]}]"#,
+        );
+        assert_eq!(pick_release(only_pre).unwrap().tag_name, "v0.2-beta");
+        // A newer source-only release is skipped in favour of one that ships assets.
+        let source_only_first = parse(
+            r#"[{"tag_name":"v2"},
+                {"tag_name":"v1","assets":[{"name":"a","browser_download_url":"u","size":1}]}]"#,
+        );
+        assert_eq!(pick_release(source_only_first).unwrap().tag_name, "v1");
+        // Drafts never win; with no asset-bearing release the first non-draft is returned.
+        let drafts_and_bare = parse(r#"[{"tag_name":"vd","draft":true},{"tag_name":"v3"}]"#);
+        assert_eq!(pick_release(drafts_and_bare).unwrap().tag_name, "v3");
+        assert!(pick_release(vec![]).is_none());
     }
 
     #[test]

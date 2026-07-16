@@ -1498,9 +1498,12 @@ impl Cli {
         };
         let latest = match fetched {
             Ok(l) => l,
+            // A failed check is a failed command (exit ≠ 0) — scripts must be able to tell.
             Err(e) => {
-                renderer.error(&crate::t!("selfupdate.check_failed", error = e.to_string()));
-                return Ok(());
+                return Err(crate::error::JiiError::Other(anyhow::anyhow!(crate::t!(
+                    "selfupdate.check_failed",
+                    error = e.to_string()
+                ))));
             }
         };
         if !selfupdate::update_available(&latest.tag) {

@@ -649,6 +649,7 @@ impl Engine {
         // Bulk managers can be very chatty (npm/flatpak flood the terminal). Capture each one's
         // output and reduce it to a one-line, source-agnostic summary instead of streaming it.
         let palette = renderer.palette();
+        let mut failed_bulk: Vec<String> = Vec::new();
         for plan in system_plans {
             // A big `dnf upgrade` can take minutes with its output captured — without this the
             // terminal just sits there and reads as a hang (the owner's report).
@@ -678,6 +679,7 @@ impl Engine {
                 for line in out.lines().rev().take(4).collect::<Vec<_>>().into_iter().rev() {
                     renderer.info(&palette.dim(&format!("      {line}")));
                 }
+                failed_bulk.push(plan.source_id.clone());
             }
         }
 
@@ -700,7 +702,16 @@ impl Engine {
             }
         }
         self.registry.save()?;
-        outcome
+        outcome?;
+        // A failed bulk plan must fail the command: exiting 0 after printing a ✗ let scripts
+        // (and the closing "update complete") pretend a broken `dnf upgrade` succeeded.
+        if !failed_bulk.is_empty() {
+            return Err(crate::error::JiiError::Other(anyhow::anyhow!(crate::t!(
+                "update.bulk_failed",
+                sources = failed_bulk.join(", ")
+            ))));
+        }
+        Ok(())
     }
 
     /// Run every action of a bulk-update `plan` capturing output (for the whole-system update
