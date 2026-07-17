@@ -372,6 +372,9 @@ Safety is a first-class design constraint, not an afterthought.
   above it prompts default to "yes"; below it, JII still asks. You choose where the line is.
 - **JII is never fully run as root.** Providers *plan* privileged steps but never execute them;
   escalation is isolated, batched, and the exact command is shown before it runs.
+- **Name-squatters get demoted.** A language-registry package (npm / crates.io / PyPI) that merely
+  shares a name with a well-known tool — near-zero downloads, no description, abandoned for years —
+  is downgraded to `untrusted` and installed only past a loud warning, never picked by auto mode.
 - **Artifacts are verified where possible** — sha256 for release tarballs, GPG / sigstore where the
   source offers it.
 - **Everything is previewable.** `--dry-run` shows the full plan, root steps included, before a
@@ -393,7 +396,8 @@ JII treats *itself* like any other piece of software — the right way for how i
 - **`jii uninstall`** (or `jii remove jii`) removes it.
 
 Version comparison is deliberately honest — a *different published tag* means "an update is
-available", so you decide (no fragile semver guessing). All of it is previewable with `--dry-run`.
+available", so you decide (no fragile semver guessing); if the published tag looks *older* than
+what you run, JII says so before asking. All of it is previewable with `--dry-run`.
 
 ---
 

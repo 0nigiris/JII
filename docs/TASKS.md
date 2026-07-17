@@ -625,6 +625,29 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   **Open (owner asked, answered not coded):** registry name-squats — `htop` on PyPI is an
                   unrelated project, so an explicit `htop:pipx` installs junk and pip fails. Only bites on an
                   explicit pin (ranking puts dnf/apt first); a relevance heuristic is unscoped.
+            - [x] **Full-project audit + fix-everything round (2026-07-16/17, ADR-0067/0068).** Owner asked for
+                  a line-by-line audit; every P1–P3 finding fixed in one wave. **P1:** the github source resolves
+                  prerelease-only repos (`/releases?per_page=20` + `pick_release`, was a 404 from `/releases/latest`);
+                  `jii update` / self-update exit non-zero when a bulk source or the release check failed (was a
+                  silent success). **P2:** remove-chooser & forge errors localized; `@ref` pins honoured in
+                  `route_managers`; `sources --json` schema stable (explicit nulls); Flatpak plans idempotently add
+                  the **user-scope Flathub remote** first. **P3:** Russian `д/н` accepted at every y/n prompt;
+                  the chooser menu scrolls on short terminals; `jii how` shows **every** owner of a name
+                  (`Registry::get_all`); cache entries pruned after 30 days; self-update warns when the published
+                  tag looks like a **downgrade** (`selfupdate::looks_like_downgrade`); `record_remove` matches
+                  name+source. **Junk filter (ADR-0067):** `ranking::mark_suspicious` — community candidates from
+                  network registries with near-zero popularity (cargo/npm downloads), no summary, `0.0.x`, or a
+                  provider pre-mark (pipx: sole release >5 years old) → `untrusted` + red `install.suspicious`
+                  warning; never touches official/local/path-style names; auto mode therefore never picks them.
+                  **Hidden tester checklist:** `jii yes-I-am-dev-and-want-to-test` (`src/devtest.rs`, hidden from
+                  help/README, English-only) — 12 scripted steps incl. real install/remove of htop, per-step
+                  Y/n/s verdicts, full log with username/hostname scrubbed, one-key upload (0x0.st →
+                  paste.c-net.org fallback), pre-filled GitHub-issue link; exits non-zero on any FAIL. Tester
+                  guide: **docs/TESTING.md**. **Win/mac:** plan only, no code — ADR-0068 (three waves,
+                  macOS-first) + ROADMAP entries (incl. landing page / launch content). `install.sh` no longer
+                  prints a spurious `curl: (23)` while resolving the tag. 285 tests, clippy clean. **Verified
+                  live:** `search htop` shows pipx/cargo red-untrusted; `htop:pipx --dry-run` prints the warning;
+                  the checklist runs end-to-end and is absent from `--help`.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

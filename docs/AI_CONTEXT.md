@@ -8,11 +8,61 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-16_
+_Last updated: 2026-07-17_
 
 ---
 
-## Most recent work (2026-07-15, batch 7) — read this first
+## Most recent work (2026-07-16/17, batch 8) — read this first
+
+**Full-project audit → fix-everything wave (owner: "Вообще всё"), plus three features (ADR-0067/0068).**
+
+- **P1 fixes.** The github source now resolves **prerelease-only repos**: `latest_release` fetches
+  `/releases?per_page=20` and `pick_release` prefers the newest non-draft release *with assets*
+  (`/releases/latest` 404s when a repo has only prereleases). `jii update` returns an error naming
+  every source whose bulk update failed (was: silent exit 0); self-update errors when the release
+  check fails.
+- **P2 fixes.** Remove-chooser and forge errors fully localized (new `remove.*` keys); `@ref` pins
+  (`pkg@1.2`) recognised by `route_managers`; `jii sources --json` emits a stable schema (explicit
+  nulls for disabled rows); Flatpak install plans idempotently prepend
+  `flatpak remote-add --user --if-not-exists flathub …` so a fresh host works without setup.
+- **P3 fixes.** Russian `д/н/да/нет` accepted everywhere `y/n` is; the interactive chooser scrolls
+  on short terminals (window + ↑/↓ edge markers, mouse maps through the window); `jii how` prints
+  **every** installed copy of a name via new `Registry::get_all`; `record_remove` matches
+  name+source; the search cache prunes entries >30 days at save; self-update warns when the
+  published tag parses **older** than the running version (`selfupdate::looks_like_downgrade`);
+  `install.sh` no longer prints a spurious `curl: (23)` while resolving the tag.
+- **Junk-package filter (ADR-0067).** `ranking::mark_suspicious` runs before sorting: a *community*
+  candidate from a *network registry* (provider `can_search()`), non-path-style name, is demoted to
+  **untrusted** when it looks like a name-squat — popularity below 1 000 (cargo `recent_downloads`,
+  npm last-month downloads), or, with no popularity signal, no summary / `0.0.x` version, or a
+  provider pre-mark (`suspicious`: pipx marks a sole release >5 years stale). Result: red
+  `install.suspicious` warning, auto mode never picks it; a hard block was rejected — the owner
+  wants a loud warning, not a dead end. `PackageCandidate` gained `popularity`/`suspicious`
+  (serde-defaulted). Verified live: `jii search htop` shows pipx/cargo red; `htop:pipx --dry-run`
+  warns.
+- **Hidden tester checklist.** `jii yes-I-am-dev-and-want-to-test` (`src/devtest.rs`,
+  `#[command(hide = true)]`, absent from README/--help, English-only by design): 12 scripted steps
+  (doctor, search incl. junk heuristics, info, **real** htop install, list/how, update, **real**
+  remove, dead-end on a nonexistent name, `npm@1.0` rejection, sources). Per-step expectation text +
+  `[Y/n/s]` verdict; everything logged to `jii-test-YYYYMMDD-HHMMSS.log` with **username/hostname
+  scrubbed**; one-key upload (0x0.st multipart → paste.c-net.org fallback); prints a **pre-filled
+  GitHub issue link** with the PASS/FAIL table; exits non-zero if any step FAILed. Tester guide in
+  **docs/TESTING.md**. reqwest gained the `multipart` feature for the upload.
+- **Windows/macOS: plan only, NO code (ADR-0068).** Three waves, macOS-first (brew exists →
+  cheapest credible port): A = macOS via `platform` abstraction + brew/cask; B = Windows via
+  winget/scoop (needs privilege + path rework); C = parity polish. Roadmap also gained landing-page
+  and launch-content bullets (Future).
+- **Doc drift fixed:** CLAUDE.md now says the declarative-TOML source layer is *planned, not built*.
+
+**285 tests, clippy clean.** Committed in 5 local commits (`8ffd9fb`…`39e3e5a` + this docs commit);
+**not pushed yet.**
+
+**Post-release debt (carried):** refresh `packaging/aur/PKGBUILD` `pkgver` + `sha256sums` from the
+published v0.1.8-beta tarballs; `graphify-out/` sits untracked (owner to choose: .gitignore or drop).
+
+---
+
+## Previous work (2026-07-15, batch 7)
 
 **Owner testing round on v0.1.7-beta (Fedora + an apt host) — ten reports, all landed (ADR-0066).**
 The owner is actively testing across Fedora/Ubuntu/Arch/openSUSE/Nix/Gentoo/Void and reporting; expect
@@ -1080,7 +1130,8 @@ None.
 
 ## Test status
 
-`cargo test` — **186 passing, 0 failing**. Packaging coverage: `cli::cli_definition_is_valid`
+`cargo test` — **285 passing, 0 failing** (see the batch sections above for what the newer tests
+cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`
 (every ecosystem manager declares a non-empty binary + a usable `Bootstrap`; dnf/github declare none). U7 coverage: dnf/flatpak `plan_update_all` (whole-system

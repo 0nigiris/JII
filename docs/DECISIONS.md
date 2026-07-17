@@ -2658,3 +2658,42 @@ the project's "deterministic and explainable" ranking principle.
 packages under the floor get a warning + explicit confirm; that is the accepted trade. The engine may
 consult provider *traits* in ranking (can_search) — a precedent consistent with ADR-0004's "no concrete
 source id" rule.
+
+## ADR-0068 — Windows/macOS expansion: plan only (no code yet)
+
+**Status.** Accepted (2026-07-16) — a plan, deliberately without implementation.
+
+**Context.** The owner's horizon for JII is "everything, including Windows and macOS" (client PCs,
+servers, phones eventually). The MVP constraint is Fedora-first Linux; the `platform` abstraction was
+always the designated seam for cross-OS growth. The owner explicitly scoped this session to **plan +
+ADR only** — code follows after the Linux beta is validated by external testers.
+
+**Decision.** Cross-OS lands in three ordered waves, each behind the existing abstractions
+(`Provider` for sources, `platform.rs` for host facts, `privilege.rs` for elevation) — the core stays
+source- and OS-agnostic:
+
+1. **Wave 1 — macOS (smallest step).** Homebrew already exists as a provider and is the canonical mac
+   manager; the work is host-facts (`Platform::detect` for Darwin: no `/etc/os-release`, arch via
+   `uname`, elevation = `sudo` only), asset selection for `-darwin`/`-apple` release artifacts in the
+   forge provider (today hard-rejected), `~/Library` XDG mapping for config/state/cache, and CI
+   (macOS runner + a `aarch64-apple-darwin` release artifact). No new trust tiers.
+2. **Wave 2 — Windows (the real port).** New providers: **winget** (official tier) and **scoop /
+   chocolatey** (community tier); elevation via UAC (`runas` / `Start-Process -Verb RunAs`) as a new
+   `ElevationKind`; `%LOCALAPPDATA%` paths; forge assets `.exe`/`.msi`/`-windows.zip`; no `exec(2)`
+   (`--run` becomes spawn+wait); shell integration = PowerShell completions. The Unix-only bits
+   (`std::os::unix`) get `cfg(unix)`/`cfg(windows)` splits at the three call sites (exec's modes,
+   `--run`'s exec, privilege).
+3. **Wave 3 — phones et al.** Explicitly out of scope until 1 and 2 ship; recorded only so the
+   ambition is not lost (Termux/Android would ride the apt/pkg providers).
+
+**Gate.** Wave 1 starts only after the Linux beta's external-tester round (the
+`yes-I-am-dev-and-want-to-test` command) reports no criticals — "мало жалоб" is the readiness bar the
+owner set.
+
+**Alternatives.** (a) Start Windows first (biggest market) — rejected: it forks the execution model
+(no exec, UAC) before the Linux core is proven. (b) A cross-platform rewrite around a
+`trait Platform` object — rejected: `Platform` is a value object of host facts by design (ADR-0029);
+`cfg` splits at the handful of OS-specific call sites are smaller and honest.
+
+**Consequences.** No code changes now. `docs/ROADMAP.md` gains the wave ordering; the forge asset
+classifier keeps its Linux-only rejection list until Wave 1 flips it per-OS.

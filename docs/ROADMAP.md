@@ -159,7 +159,12 @@ one" — verified on five clean distros and presented as a polished public repo.
 - Cargo workspace split.
 - Semantic / AI search (Stage 4).
 - Cross-distro: apt, pacman, zypper, nix, AUR, snap.
-- Windows (winget), macOS (Homebrew).
+- Windows (winget), macOS (Homebrew) — planned in three waves, **macOS first** (ADR-0068);
+  gated on the external-tester round finding no criticals.
+- **Landing page + demo** (a one-page site with an asciinema/GIF of `jii htop`) and
+  **launch content** (a launch post for r/linux / Hacker News / Habr) — the pre-mortem
+  said the biggest risk is "никто не узнал"; distribution work is scheduled here, after
+  the tester round, not before.
 - Plugin SDK.
 - **GUI frontend** / universal software center — see "Future ideas" below.
 - **Version management** (`jii versions`, `@version`, rollback) — post-alpha; "Future ideas".
