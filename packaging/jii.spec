@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.8-beta
+%global _tag v0.1.9-beta
 
 Name:           jii
-Version:        0.1.8~beta
+Version:        0.1.9~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,13 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Jul 17 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.9~beta-1
+- Rebuild against the v0.1.9-beta release: full-project audit round — GitHub source
+  resolves prerelease-only repos; update/self-update fail loudly; name-squatting
+  registry packages (npm/crates/PyPI) are demoted to untrusted with a warning;
+  self-update warns before an apparent downgrade; Flatpak plans add the user-scope
+  Flathub remote; Russian y/n keys; scrolling chooser on short terminals; `jii how`
+  lists every copy of a name; search-cache pruning; localized remove/forge errors.
 * Wed Jul 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.8~beta-1
 - Rebuild against the v0.1.8-beta release: a missing manager is now set up only
   through a source that works here (no more "install pipx via pipx"); Homebrew/Nix
