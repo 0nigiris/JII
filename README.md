@@ -12,6 +12,7 @@ machine — picks the best option, and explains *why*.
 <br>
 
 [![Release](https://img.shields.io/github/v/release/0nigiris/JII?include_prereleases&sort=semver&label=release&color=blue)](https://github.com/0nigiris/JII/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/0nigiris/JII/ci.yml?label=CI)](https://github.com/0nigiris/JII/actions/workflows/ci.yml)
 [![Build](https://img.shields.io/github/actions/workflow/status/0nigiris/JII/release.yml?label=release%20build)](https://github.com/0nigiris/JII/actions)
 [![Stars](https://img.shields.io/github/stars/0nigiris/JII?logo=github&label=stars&color=gold)](https://github.com/0nigiris/JII/stargazers)
 [![Downloads](https://img.shields.io/github/downloads/0nigiris/JII/total?logo=github&label=downloads&color=brightgreen)](https://github.com/0nigiris/JII/releases)
@@ -19,6 +20,10 @@ machine — picks the best option, and explains *why*.
 [![Made with Rust](https://img.shields.io/badge/Rust-edition%202024-orange?logo=rust)](https://www.rust-lang.org/)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux%20(x86__64%20%7C%20aarch64)-lightgrey?logo=linux)](#install)
 [![Status: Beta](https://img.shields.io/badge/status-beta-yellow)](#-status)
+
+<br>
+
+**17 sources** · **1 static binary** · **285 tests** · **English + Русский** · **never runs fully as root**
 
 </div>
 
@@ -112,6 +117,15 @@ fully as root.
   package with the correct manager, and can upgrade your whole system in one go.
 - **♻️ Updates itself** — `jii update jii` (or a bare `jii update`) pulls the newest release from
   GitHub and swaps itself in place — no root for a user-space install.
+- **🧰 Bootstraps what's missing** — want a Flatpak app on a box without Flatpak? JII offers to set
+  the manager up first (through a source that actually works there), then installs the app.
+- **🚫 Spots name-squatters** — a registry package that merely shares a name with a famous tool
+  (zero downloads, abandoned for years) is demoted to `untrusted` with a loud warning, never
+  silently installed.
+- **🗣️ Speaks your language** — the whole interface is localized (English + Русский), down to
+  prompts and error remedies.
+- **▶️ Runs it too** — `jii htop --run` installs and launches in one go (and just launches if it's
+  already there).
 
 ---
 
@@ -160,9 +174,9 @@ yay -S jii-bin        # once published — see packaging/README.md
 If you prefer to place it yourself:
 
 ```sh
-tar -xzf jii-v0.1.3-beta-x86_64-linux.tar.gz
-sha256sum -c jii-v0.1.3-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
-install -Dm755 jii-v0.1.3-beta-x86_64-linux/jii ~/.local/bin/jii
+tar -xzf jii-v0.1.9-beta-x86_64-linux.tar.gz
+sha256sum -c jii-v0.1.9-beta-x86_64-linux.tar.gz.sha256   # optional integrity check
+install -Dm755 jii-v0.1.9-beta-x86_64-linux/jii ~/.local/bin/jii
 ```
 
 ### Build from source
@@ -314,9 +328,10 @@ Set a default in config (`[install] profile = "stable"`) or override per-run wit
 
 ## Sources & providers
 
-JII understands **14 sources** today. Each is a `Provider`; the core adds a new one just by
-implementing the trait (simple sources are declarative). Every source self-gates on its tool, so
-JII uses whatever is present on your machine — mix and match freely.
+JII understands **17 sources** today. Each is a `Provider`; adding a new one means implementing
+the trait — the core never changes (a declarative, data-driven layer for simple sources is
+planned). Every source self-gates on its tool, so JII uses whatever is present on your machine —
+mix and match freely.
 
 | Source | Ecosystem / what it is | Typical trust |
 |---|---|---|
@@ -474,8 +489,9 @@ self-gates on its tool, so JII uses whatever is present.
 
 This is a Beta to gather real-world feedback:
 
-- ✅ **Fedora path is well-exercised.**
-- 🧪 **Non-Fedora backends** are implemented but not yet validated on clean VMs of every distro.
+- ✅ **Fedora path is well-exercised** (daily driver).
+- 🧪 **Non-Fedora backends** (apt / pacman / AUR / zypper / XBPS / Portage / Nix) are implemented
+  and exercised in live testing rounds, but not yet validated on clean VMs of every distro.
 - 🧪 **aarch64 packages** are built and published but not yet installed on live ARM hardware.
 
 Bug reports and rough edges are exactly what we're looking for — please
@@ -526,7 +542,8 @@ changes nothing.
 <summary><b>How do I add a new source?</b></summary>
 
 Implement the `Provider` trait — the core never branches on the source name, so nothing else has to
-change. Simple sources are declarative. See <a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a>.
+change. A declarative, data-driven layer for simple sources (a TOML file instead of code) is
+planned. See <a href="docs/ARCHITECTURE.md">ARCHITECTURE.md</a>.
 </details>
 
 <details>
@@ -544,6 +561,8 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 - [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md) — the source of truth for design.
 - [**docs/DECISIONS.md**](docs/DECISIONS.md) — ADRs: *why* the architecture is the way it is.
 - [**docs/ROADMAP.md**](docs/ROADMAP.md) — phased delivery plan.
+- [**docs/JII_EXPLAINED.ru.md**](docs/JII_EXPLAINED.ru.md) — the whole project explained in one
+  file *(in Russian)*: every module, every decision, ready answers to common questions.
 - [**docs/TASKS.md**](docs/TASKS.md) — actionable checklist.
 - [**docs/RELEASE_TESTPLAN.md**](docs/RELEASE_TESTPLAN.md) — manual pre-release checklist across every command.
 - [**packaging/**](packaging/README.md) — how the `.rpm` / `.deb` / AUR / COPR artifacts are built.
@@ -551,8 +570,9 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 ### Tech
 
 Rust · async (`tokio`) · single crate (modular, not a workspace) · JSON state (SQLite later) ·
-provider-trait architecture with declarative, data-driven sources · static musl binaries built in
-CI for x86_64 + aarch64.
+provider-trait architecture (17 native sources; declarative data-driven sources planned) · fully
+localized UI (en/ru) · 285 unit tests, clippy-clean CI · static musl binaries built in CI for
+x86_64 + aarch64.
 
 ---
 

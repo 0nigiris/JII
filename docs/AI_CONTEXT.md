@@ -54,8 +54,13 @@ _Last updated: 2026-07-17_
   and launch-content bullets (Future).
 - **Doc drift fixed:** CLAUDE.md now says the declarative-TOML source layer is *planned, not built*.
 
-**285 tests, clippy clean.** Committed in 5 local commits (`8ffd9fb`…`39e3e5a` + this docs commit);
-**not pushed yet.**
+**285 tests, clippy clean.** Pushed to master and **released as `v0.1.9-beta`** (tag pushed
+2026-07-17; `release.yml` builds the artifacts — refresh `packaging/aur/PKGBUILD` from them, same
+debt as every tag). Afterwards (same day): **docs/JII_EXPLAINED.ru.md** — a single-file, owner-facing
+full explanation of the project in Russian (every module, decision digest, event-ready FAQ; the
+owner is presenting JII at Hack Club Star Dance / Beest), plus a README polish round (17-source
+count fixed, stats strip under the badges, CI badge, bootstrap/junk/locale/--run bullets,
+declarative-layer drift fixed, v0.1.9 tarball example, honest live-testing status).
 
 **Post-release debt (carried):** refresh `packaging/aur/PKGBUILD` `pkgver` + `sha256sums` from the
 published v0.1.8-beta tarballs; `graphify-out/` sits untracked (owner to choose: .gitignore or drop).
