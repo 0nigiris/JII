@@ -648,6 +648,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   prints a spurious `curl: (23)` while resolving the tag. 285 tests, clippy clean. **Verified
                   live:** `search htop` shows pipx/cargo red-untrusted; `htop:pipx --dry-run` prints the warning;
                   the checklist runs end-to-end and is absent from `--help`.
+            - [x] **Owner feedback round #2 (2026-07-25, ADR-0069/0070) → `v0.1.10-beta`.** Two owner asks.
+                  (1) *Live progress.* Friendly-mode installs/updates/downloads now draw a real bar with a
+                  percentage read from the source's own output — new source-agnostic `src/progress.rs`
+                  (`[done/total]` counter or bare `NN%`, strict parsing rejects dates/prose), new
+                  `Privilege::run_streamed` (line-streaming, replaces `run_captured`), `Spinner` +
+                  `ProgressReporter` drawing `████░░░░ 45% [3/41]`, chunk-streaming `download_reported` for exact
+                  byte % (reqwest `stream` feature), and `run_plan_streamed` for the whole-system update.
+                  (2) *Flatpak update-all* dropped `--user` → `flatpak update -y` updates system-wide apps too
+                  (the Discover bug); still root-free (flatpak's polkit). 297 tests, clippy clean. **Found, not
+                  fixed:** `jii install` can dead-end when the top pick's manager needs bootstrapping and that
+                  fails, instead of falling back to a listed alternative (see AI_CONTEXT batch 9 — next release).
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.9-beta
+%global _tag v0.1.10-beta
 
 Name:           jii
-Version:        0.1.9~beta
+Version:        0.1.10~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,13 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Jul 25 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.10~beta-1
+- Rebuild against the v0.1.10-beta release: installs, updates and downloads now show a
+  live progress bar with a real percentage read from the source's own output (dnf/apt's
+  [3/41] step counter, a download's byte percentage) instead of a bare spinner; and
+  `jii update` now updates *every* Flatpak — the system-wide apps a desktop store
+  installed under /var/lib/flatpak, not just per-user ones (fixes "update said done but
+  Discover still lists updates").
 * Fri Jul 17 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.9~beta-1
 - Rebuild against the v0.1.9-beta release: full-project audit round — GitHub source
   resolves prerelease-only repos; update/self-update fail loudly; name-squatting

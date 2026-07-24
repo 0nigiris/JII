@@ -23,7 +23,7 @@ machine — picks the best option, and explains *why*. (Hey reader. This project
 
 <br>
 
-**17 sources** · **1 static binary** · **285 tests** · **English + Русский** · **never runs fully as root**
+**17 sources** · **1 static binary** · **297 tests** · **English + Русский** · **never runs fully as root**
 
 </div>
 
@@ -126,6 +126,9 @@ fully as root.
   prompts and error remedies.
 - **▶️ Runs it too** — `jii htop --run` installs and launches in one go (and just launches if it's
   already there).
+- **📊 Shows real progress** — installs, updates and downloads draw a live bar with a percentage
+  read from the tool's own output (`dnf`'s step counter, a download's byte count), so you can see
+  how far along it is — not just a spinner and a clock.
 
 ---
 
@@ -571,7 +574,7 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 
 Rust · async (`tokio`) · single crate (modular, not a workspace) · JSON state (SQLite later) ·
 provider-trait architecture (17 native sources; declarative data-driven sources planned) · fully
-localized UI (en/ru) · 285 unit tests, clippy-clean CI · static musl binaries built in CI for
+localized UI (en/ru) · 297 unit tests, clippy-clean CI · static musl binaries built in CI for
 x86_64 + aarch64.
 
 ---

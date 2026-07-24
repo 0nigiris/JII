@@ -8,11 +8,50 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-17_
+_Last updated: 2026-07-25_
 
 ---
 
-## Most recent work (2026-07-16/17, batch 8) — read this first
+## Most recent work (2026-07-25, batch 9) — read this first
+
+**Released `v0.1.10-beta` (tag pushed; `release.yml` builds the artifacts). Two changes, ADR-0069/0070.**
+
+- **Live progress bars (ADR-0069).** Friendly-mode installs/updates/downloads now draw a real bar
+  with a percentage read from the source's own output — no source-branching (ADR-0004).
+  - New `src/progress.rs`: `parse_progress(line) -> Option<Progress>` reads two universal shapes only —
+    a bracketed `[done/total]` counter (preferred, monotonic) or a bare `NN%`. Strict bracket parsing
+    rejects dates/prose ratios. Unit-tested (dnf5 `[ 3/41]`, pip `(1/5)`, download `%`, negatives).
+  - `Privilege::run_streamed` (replaces `run_captured`, removed): spawns piped stdout+stderr, reads
+    both concurrently line by line, feeds each to a callback as it arrives, still returns
+    `(success, combined)` for the error tail / update summary. stdin is null (plans pass `-y`).
+  - `Spinner` grew `reporter() -> ProgressReporter` (a cloneable shared-reading handle) and draws
+    `████░░░░  45%  [3/41]` when a reading exists, elapsed time otherwise. `render_bar` unit-tested.
+  - Wiring: `exec::run_actions_quiet` streams `RunCommand`s and uses a chunk-streaming
+    `download_reported` (exact byte % via `reqwest` `bytes_stream`; needed the new `stream` feature)
+    for `Download`. `engine::run_plan_streamed` (replaces `run_plan_captured`) does the same for the
+    whole-system update so `jii update` shows per-source bars too.
+- **Flatpak update-all fix (ADR-0070).** `plan_update_all` dropped `--user`: `flatpak update -y`
+  updates **every** scope, so `jii update` now refreshes the system-wide apps a desktop store
+  installed under `/var/lib/flatpak`, not just per-user ones. Fixes the owner's report ("update said
+  done, but KDE Discover still lists a pile"). Still root-free for JII — flatpak's own polkit handles
+  the system portion. Install/uninstall/single-update stay `--user` (JII only tracks its own installs).
+- **297 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
+
+### Known bug found this session, NOT yet fixed (candidate for next release)
+
+`jii install <name>` can **dead-end** when the top-ranked candidate comes from an ecosystem manager
+that isn't installed (e.g. Snap) *and* bootstrapping that manager fails/declines: the app is dropped
+with "Skipped <name>" even though working alternatives (cargo/npm/pipx/brew) were just listed as "Also
+available". Root cause: the install loop keeps only the single `best` per package
+(`cli/mod.rs` ~L654) and discards the ranked alternatives before `bootstrap_missing_managers` runs, so
+a failed bootstrap has nothing to fall back to. Proper fix = thread the ranked alternatives through and
+retry the package with the next candidate whose manager is available (respect "never dead-end"). Not
+done here to keep the v0.1.10 release focused/stable; reproduced on the dev host with
+`jii install ripgrep --dry-run`.
+
+---
+
+## Previous work (2026-07-16/17, batch 8)
 
 **Full-project audit → fix-everything wave (owner: "Вообще всё"), plus three features (ADR-0067/0068).**
 
@@ -1135,7 +1174,7 @@ None.
 
 ## Test status
 
-`cargo test` — **285 passing, 0 failing** (see the batch sections above for what the newer tests
+`cargo test` — **297 passing, 0 failing** (see the batch sections above for what the newer tests
 cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`

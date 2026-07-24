@@ -2697,3 +2697,63 @@ owner set.
 
 **Consequences.** No code changes now. `docs/ROADMAP.md` gains the wave ordering; the forge asset
 classifier keeps its Linux-only rejection list until Wave 1 flips it per-OS.
+
+## ADR-0069 — Live progress bars: stream the source's own output, parse universal signals
+
+**Status.** Accepted, implemented in v0.1.10-beta.
+
+**Context.** Friendly mode captured a manager's output and showed only a timed spinner (ADR/UX #6).
+For a long `dnf install` or a big download the owner saw a spinner and an elapsed clock but no sense
+of *how far along* or *how much is left* — "выглядит как обновление и время, всё". The managers
+themselves already print progress (dnf5's `[ 3/41]` step counter, download bars' `NN%`); JII was
+throwing that signal away by waiting for the whole command to finish (`.output()`).
+
+**Decision.** Read progress from the source and draw a real bar, without ever branching on the source
+id (ADR-0004 holds):
+1. **Stream, don't capture-then-parse.** `Privilege::run_streamed` spawns with piped stdout+stderr,
+   reads them concurrently line by line, hands each line to a callback *as it arrives*, and still
+   returns `(success, combined_output)` for the error tail / update summary. It replaces the old
+   `run_captured` (removed — its one caller moved over).
+2. **A source-agnostic parser** (`src/progress.rs`) turns one line into an optional reading from only
+   two universal shapes: a bracketed `[done/total]` counter (preferred — monotonic across a whole
+   transaction) or a bare `NN%` (a download bar's current value). A manager JII has never met still
+   animates a real bar if it speaks either dialect; one that speaks neither falls back to the timed
+   spinner — never a wrong number. Strict bracket parsing keeps dates/prose ratios out.
+3. **The `Spinner` grows a `ProgressReporter`** (a cloneable handle onto a shared reading) and draws
+   `████████░░░░  45%  [3/41]` when a reading is present, elapsed time otherwise. Downloads report an
+   exact byte percentage (`downloaded / Content-Length`) via a streaming `reqwest` body — the honest
+   number for a GitHub-release install where there is no manager to emit a counter.
+
+**Alternatives.** (a) Pull in `indicatif` for the bar — rejected: it draws on its own schedule and
+would fight the existing self-erasing spinner/`renderer.info` line discipline; the reading/drawing we
+need is a dozen lines. (The unused `indicatif` dep is left untouched, not adopted.) (b) Parse per
+source (`if dnf { … }`) — rejected outright (ADR-0004). (c) Keep capturing and fake a percentage from
+elapsed time — rejected: dishonest, and the real number was already on the wire.
+
+**Consequences.** `install`, `update` (per-package and whole-system) and downloads all show live
+progress in Friendly mode. `--json`/piped/Advanced output is unchanged (the spinner is inert there).
+Progress bars that redraw with `\r` on a TTY are not seen here because piping makes managers
+line-buffer plain text — exactly the newline framing the streamer reads.
+
+## ADR-0070 — `jii update` updates every Flatpak scope, not just per-user
+
+**Status.** Accepted, implemented in v0.1.10-beta.
+
+**Context.** The Flatpak provider does everything `--user` so installs never need root. But
+`plan_update_all` also carried `--user`, so `flatpak update --user -y` skipped every **system-wide**
+app — the ones KDE Discover / GNOME Software install under `/var/lib/flatpak`. The owner reported
+`jii update` saying Flatpak was done while Discover still listed a pile of updates.
+
+**Decision.** `plan_update_all` drops the scope flag: `flatpak update -y` updates *all* installations
+(per-user **and** system-wide). "Update everything" has to mean everything. JII still never runs
+itself as root here — the system-scope portion is authorized by flatpak's own polkit agent, not by
+JII wrapping the command in sudo (`needs_root` stays false). Install/uninstall/single-update stay
+`--user`: JII only tracks what it installed itself (always user-scope), so those paths are unaffected.
+
+**Alternatives.** (a) Two explicit steps (`--system` then `--user`) — rejected: `flatpak update` with
+no scope already means "all installations", and one command matches the user's mental model. (b) Keep
+`--user` and document the limitation — rejected: it silently under-delivers on the command's promise.
+
+**Consequences.** On a desktop, a system-scope update triggers the polkit GUI prompt (as Discover
+does). On a headless session with no polkit agent the system portion fails with "not authorized",
+which JII surfaces via its loud-failure path rather than hiding.
