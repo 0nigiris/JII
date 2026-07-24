@@ -14,6 +14,7 @@ mod i18n;
 mod model;
 mod platform;
 mod privilege;
+mod progress;
 mod provider;
 mod recommend;
 mod registry;

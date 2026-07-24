@@ -74,21 +74,60 @@ impl Privilege {
         Ok(())
     }
 
-    /// Run one command **capturing** its output (stdout+stderr merged) instead of streaming it,
-    /// elevating if `needs_root`. Used by the whole-system update so a chatty manager (npm,
-    /// flatpak) can be reduced to a one-line summary rather than flooding the terminal. Returns
-    /// `(success, combined_output)`; a spawn failure is still a hard error. The caller must have
-    /// `prime`d first (so `sudo` doesn't need to prompt with stdin captured).
-    pub async fn run_captured(&self, argv: &[String], needs_root: bool) -> Result<(bool, String)> {
+    /// Run one command **streaming** its output line by line — each line is handed to `on_line`
+    /// *as it arrives* and also accumulated — while still returning `(success, combined_output)`
+    /// (so a chatty manager can be reduced to a one-line summary without flooding the terminal).
+    /// This is what lets a live progress bar read the manager's own
+    /// `[3/41]` / `NN%` chatter without waiting for the whole command to finish (which
+    /// `.output()` would). The caller must have `prime`d first (stdin is closed, so a manager
+    /// must be non-interactive — our plans already pass `-y`).
+    ///
+    /// stdout and stderr are both piped and read concurrently (managers split progress across
+    /// the two), so neither can block the other by filling its pipe. Lines are split on `\n`:
+    /// when piped, managers line-buffer plain text rather than the `\r`-animated bar they draw
+    /// on a TTY, so newline framing is exactly what arrives here.
+    pub async fn run_streamed<F: FnMut(&str)>(
+        &self,
+        argv: &[String],
+        needs_root: bool,
+        mut on_line: F,
+    ) -> Result<(bool, String)> {
+        use std::process::Stdio;
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
         let argv = self.elevated_argv(argv, needs_root);
-        let output = Command::new(&argv[0])
+        let mut child = Command::new(&argv[0])
             .args(&argv[1..])
-            .output()
-            .await
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| JiiError::spawn(&argv[0], e))?;
-        let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
-        combined.push_str(&String::from_utf8_lossy(&output.stderr));
-        Ok((output.status.success(), combined))
+
+        let stdout = child.stdout.take().expect("stdout piped");
+        let stderr = child.stderr.take().expect("stderr piped");
+        let mut out_lines = BufReader::new(stdout).lines();
+        let mut err_lines = BufReader::new(stderr).lines();
+
+        let mut combined = String::new();
+        let (mut out_done, mut err_done) = (false, false);
+        while !(out_done && err_done) {
+            tokio::select! {
+                line = out_lines.next_line(), if !out_done => match line {
+                    Ok(Some(l)) => { on_line(&l); combined.push_str(&l); combined.push('\n'); }
+                    Ok(None) => out_done = true,
+                    Err(e) => return Err(JiiError::spawn(&argv[0], e)),
+                },
+                line = err_lines.next_line(), if !err_done => match line {
+                    Ok(Some(l)) => { on_line(&l); combined.push_str(&l); combined.push('\n'); }
+                    Ok(None) => err_done = true,
+                    Err(e) => return Err(JiiError::spawn(&argv[0], e)),
+                },
+            }
+        }
+
+        let status = child.wait().await.map_err(|e| JiiError::spawn(&argv[0], e))?;
+        Ok((status.success(), combined))
     }
 }
 
@@ -122,5 +161,32 @@ mod tests {
             kind: ElevationKind::Sudo,
         };
         assert_eq!(p.elevated_argv(&argv(), false), argv());
+    }
+
+    #[tokio::test]
+    async fn run_streamed_forwards_each_line_and_captures_output() {
+        let p = Privilege::detect();
+        let mut seen: Vec<String> = Vec::new();
+        let (ok, combined) = p
+            .run_streamed(
+                &["sh".into(), "-c".into(), "printf '[1/2] a\\n[2/2] b\\n'".into()],
+                false,
+                |line| seen.push(line.to_string()),
+            )
+            .await
+            .unwrap();
+        assert!(ok);
+        assert_eq!(seen, ["[1/2] a", "[2/2] b"]);
+        assert!(combined.contains("[1/2] a") && combined.contains("[2/2] b"));
+    }
+
+    #[tokio::test]
+    async fn run_streamed_reports_failure_without_erroring() {
+        let p = Privilege::detect();
+        let (ok, _) = p
+            .run_streamed(&["false".into()], false, |_| {})
+            .await
+            .unwrap();
+        assert!(!ok); // a non-zero exit is (false, output), not a hard Err
     }
 }

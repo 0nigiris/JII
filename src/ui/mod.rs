@@ -107,6 +107,7 @@ impl Palette {
 /// mode (where every action is streamed anyway) all get a no-op.
 pub struct Spinner {
     stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    progress: std::sync::Arc<std::sync::Mutex<Option<crate::progress::Progress>>>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -116,12 +117,15 @@ impl Spinner {
     pub fn start(renderer: &Renderer, label: &str) -> Self {
         let live = renderer.is_friendly() && crate::platform::Platform::detect().is_tty;
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(None));
         if !live {
-            return Spinner { stop, handle: None };
+            return Spinner { stop, progress, handle: None };
         }
         let flag = stop.clone();
+        let progress_read = progress.clone();
         let label = label.to_string();
         let unicode = renderer.unicode;
+        let color = renderer.color;
         let handle = tokio::spawn(async move {
             use std::io::Write;
             let frames: &[&str] = if unicode {
@@ -132,12 +136,20 @@ impl Spinner {
             let started = std::time::Instant::now();
             let mut tick = 0usize;
             while !flag.load(std::sync::atomic::Ordering::Relaxed) {
-                // Past a few seconds show the elapsed time too: on a long step (a cargo build,
-                // a big upgrade) "it's alive" isn't enough — "how long has this been going" is
-                // the actual question.
-                let secs = started.elapsed().as_secs();
-                let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
-                eprint!("\r\x1b[2K  {} {label}{elapsed}", frames[tick % frames.len()]);
+                let frame = frames[tick % frames.len()];
+                // A live progress reading (the manager's own `[3/41]`/`NN%`) becomes a real bar —
+                // the number the owner asked to see. Until one arrives, and for jobs that emit
+                // none, fall back to elapsed time: past a few seconds "it's alive" isn't enough,
+                // "how long has this been going" is the actual question.
+                let reading = progress_read.lock().ok().and_then(|g| *g);
+                let line = if let Some(p) = reading {
+                    format!("  {frame} {label}  {}", render_bar(p, unicode, color))
+                } else {
+                    let secs = started.elapsed().as_secs();
+                    let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
+                    format!("  {frame} {label}{elapsed}")
+                };
+                eprint!("\r\x1b[2K{line}");
                 let _ = std::io::stderr().flush();
                 tick += 1;
                 tokio::time::sleep(std::time::Duration::from_millis(90)).await;
@@ -145,7 +157,14 @@ impl Spinner {
             eprint!("\r\x1b[2K"); // erase the line; the caller prints the outcome
             let _ = std::io::stderr().flush();
         });
-        Spinner { stop, handle: Some(handle) }
+        Spinner { stop, progress, handle: Some(handle) }
+    }
+
+    /// A cheap handle the streaming executor uses to push live progress readings onto this
+    /// spinner. Cloneable and inert-safe: on a non-TTY spinner the readings are simply never
+    /// drawn. See [`ProgressReporter`].
+    pub fn reporter(&self) -> ProgressReporter {
+        ProgressReporter { cell: self.progress.clone() }
     }
 
     /// Stop the animation and wait for the line to be erased, so nothing printed next collides
@@ -169,6 +188,51 @@ impl Drop for Spinner {
             use std::io::Write;
             let _ = std::io::stderr().flush();
         }
+    }
+}
+
+/// A cloneable handle onto a [`Spinner`]'s live progress reading. The streaming executor calls
+/// [`ProgressReporter::update`] for every line the manager prints that parses as progress, and
+/// [`ProgressReporter::clear`] between actions so a fresh step starts the bar over. All calls are
+/// cheap and lock-guarded; on an inert (non-TTY) spinner they update a cell nobody draws.
+#[derive(Clone)]
+pub struct ProgressReporter {
+    cell: std::sync::Arc<std::sync::Mutex<Option<crate::progress::Progress>>>,
+}
+
+impl ProgressReporter {
+    /// Publish the latest progress reading for the animation loop to draw.
+    pub fn update(&self, progress: crate::progress::Progress) {
+        if let Ok(mut cell) = self.cell.lock() {
+            *cell = Some(progress);
+        }
+    }
+
+    /// Drop back to the timed spinner (e.g. between two commands in one plan).
+    pub fn clear(&self) {
+        if let Ok(mut cell) = self.cell.lock() {
+            *cell = None;
+        }
+    }
+}
+
+/// Render a compact `████████░░░░░░░░  45%` bar (with an optional `[3/41]` when a step counter
+/// drove it). Unicode blocks on a capable terminal, ASCII `#`/`-` otherwise; the filled run is
+/// green when colour is on. Width is fixed and small so it fits a narrow terminal on one line.
+fn render_bar(p: crate::progress::Progress, unicode: bool, color: bool) -> String {
+    const WIDTH: usize = 16;
+    let filled = ((p.percent as usize * WIDTH) / 100).min(WIDTH);
+    let (full, empty) = if unicode { ('█', '░') } else { ('#', '-') };
+    let bar_full = full.to_string().repeat(filled);
+    let bar_empty = empty.to_string().repeat(WIDTH - filled);
+    let bar = if color {
+        format!("\x1b[32m{bar_full}\x1b[0m{bar_empty}")
+    } else {
+        format!("{bar_full}{bar_empty}")
+    };
+    match p.steps {
+        Some((done, total)) => format!("{bar}  {:>3}%  [{done}/{total}]", p.percent),
+        None => format!("{bar}  {:>3}%", p.percent),
     }
 }
 
@@ -396,5 +460,32 @@ fn action_to_json(action: &Action) -> serde_json::Value {
         Action::Replace { src, dest } => serde_json::json!({
             "kind": "replace", "src": src, "dest": dest,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::progress::Progress;
+
+    #[test]
+    fn bar_fills_proportionally_and_shows_percent_and_steps() {
+        // 25% of a 16-cell bar = 4 filled; the counter that drove it is shown too.
+        let s = render_bar(Progress { percent: 25, steps: Some((1, 4)) }, true, false);
+        assert_eq!(s, "████░░░░░░░░░░░░   25%  [1/4]");
+    }
+
+    #[test]
+    fn bar_ascii_fallback_and_no_steps() {
+        let s = render_bar(Progress { percent: 100, steps: None }, false, false);
+        assert_eq!(s, "################  100%");
+    }
+
+    #[test]
+    fn bar_wraps_fill_in_colour_when_enabled() {
+        let s = render_bar(Progress { percent: 50, steps: None }, true, true);
+        // Green SGR around the filled run, reset before the empty run.
+        assert!(s.starts_with("\x1b[32m████████\x1b[0m"));
+        assert!(s.contains("50%"));
     }
 }

@@ -666,7 +666,7 @@ impl Engine {
                 renderer,
                 &crate::t!("exec.updating_all", source = plan.source_id.clone()),
             );
-            let captured = self.run_plan_captured(plan).await;
+            let captured = self.run_plan_streamed(plan, &spinner.reporter()).await;
             spinner.stop().await;
             let (ok, out) = captured?;
             let summary = crate::exec::summarize_update(&out);
@@ -723,16 +723,29 @@ impl Engine {
         Ok(())
     }
 
-    /// Run every action of a bulk-update `plan` capturing output (for the whole-system update
-    /// summary). Update-all plans are `RunCommand`s (e.g. `apt-get update` then `apt-get
-    /// upgrade`); their combined output is concatenated. Returns `(all_ok, combined_output)` —
-    /// a spawn failure is still a hard error. Priming happens in the caller.
-    async fn run_plan_captured(&self, plan: &InstallPlan) -> Result<(bool, String)> {
+    /// Run every action of a bulk-update `plan`, streaming each step's output so its live
+    /// `[3/41]`/`NN%` progress drives the caller's spinner bar, while still concatenating the
+    /// full output for the one-line summary. Update-all plans are `RunCommand`s (e.g. `apt-get
+    /// update` then `apt-get upgrade`). Returns `(all_ok, combined_output)` — a spawn failure is
+    /// still a hard error. Priming happens in the caller.
+    async fn run_plan_streamed(
+        &self,
+        plan: &InstallPlan,
+        reporter: &crate::ui::ProgressReporter,
+    ) -> Result<(bool, String)> {
         let mut combined = String::new();
         let mut ok = true;
         for action in &plan.actions {
             if let crate::model::Action::RunCommand { argv, needs_root } = action {
-                let (step_ok, out) = self.privilege.run_captured(argv, *needs_root).await?;
+                reporter.clear();
+                let (step_ok, out) = self
+                    .privilege
+                    .run_streamed(argv, *needs_root, |line| {
+                        if let Some(p) = crate::progress::parse_progress(line) {
+                            reporter.update(p);
+                        }
+                    })
+                    .await?;
                 combined.push_str(&out);
                 if !step_ok {
                     ok = false;

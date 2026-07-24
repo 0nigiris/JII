@@ -53,32 +53,51 @@ pub async fn run_actions_quiet(
     label: &str,
 ) -> Result<()> {
     let spinner = Spinner::start(renderer, label);
+    let reporter = spinner.reporter();
     for action in &plan.actions {
-        // Only a command floods the terminal; download/place/extract are silent anyway and keep
-        // their normal handlers (their progress is the spinner).
-        let Action::RunCommand { argv, needs_root } = action else {
-            if let Err(e) = run_action(action, privilege).await {
-                spinner.stop().await;
-                return Err(e);
-            }
-            continue;
-        };
-        match privilege.run_captured(argv, *needs_root).await {
-            Ok((true, _)) => {}
-            Ok((false, out)) => {
-                spinner.stop().await;
-                renderer.error(&crate::t!("exec.step_failed", command = argv.join(" ")));
-                for line in tail(&out, 12) {
-                    renderer.info(&renderer.palette().dim(&format!("  {line}")));
+        match action {
+            // A command's own output is streamed line by line (not shown, but parsed): the
+            // manager's `[3/41]`/`NN%` chatter drives a live bar on the spinner instead of
+            // flooding the terminal.
+            Action::RunCommand { argv, needs_root } => {
+                reporter.clear();
+                let streamed = privilege
+                    .run_streamed(argv, *needs_root, |line| {
+                        if let Some(p) = crate::progress::parse_progress(line) {
+                            reporter.update(p);
+                        }
+                    })
+                    .await;
+                match streamed {
+                    Ok((true, _)) => {}
+                    Ok((false, out)) => {
+                        spinner.stop().await;
+                        renderer.error(&crate::t!("exec.step_failed", command = argv.join(" ")));
+                        for line in tail(&out, 12) {
+                            renderer.info(&renderer.palette().dim(&format!("  {line}")));
+                        }
+                        return Err(JiiError::Other(anyhow::anyhow!("`{}` failed", argv.join(" "))));
+                    }
+                    Err(e) => {
+                        spinner.stop().await;
+                        return Err(e);
+                    }
                 }
-                return Err(JiiError::Other(anyhow::anyhow!(
-                    "`{}` failed",
-                    argv.join(" ")
-                )));
             }
-            Err(e) => {
-                spinner.stop().await;
-                return Err(e);
+            // A download is the one file action with an exact percentage to show (bytes over
+            // the Content-Length), so it feeds the same bar; place/extract are instant.
+            Action::Download { url, dest, verify } => {
+                reporter.clear();
+                if let Err(e) = download_reported(url, dest, verify, &reporter).await {
+                    spinner.stop().await;
+                    return Err(e);
+                }
+            }
+            other => {
+                if let Err(e) = run_action(other, privilege).await {
+                    spinner.stop().await;
+                    return Err(e);
+                }
             }
         }
     }
@@ -211,12 +230,59 @@ async fn download(url: &str, dest: &Path, verify: &Verification) -> Result<()> {
         .await
         .map_err(|e| JiiError::Other(anyhow::anyhow!("download failed: {e}")))?;
 
-    verify_bytes(&bytes, verify)?;
+    finish_download(&bytes, dest, verify)
+}
 
+/// Like [`download`], but streams the body in chunks and reports byte progress to `reporter`
+/// (a real `downloaded / Content-Length` percentage — the honest number for a GitHub-release
+/// install, where there is no manager to emit `[3/41]`). Falls back to no percentage, just the
+/// timed spinner, when the server sends no `Content-Length`. Verification and the atomic write
+/// are identical to [`download`] — the bytes only land at `dest` if the digest matches.
+async fn download_reported(
+    url: &str,
+    dest: &Path,
+    verify: &Verification,
+    reporter: &crate::ui::ProgressReporter,
+) -> Result<()> {
+    use futures::StreamExt;
+
+    if !url.starts_with("https://") {
+        return Err(JiiError::Other(anyhow::anyhow!(
+            "refusing to download over insecure transport: {url}"
+        )));
+    }
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("download failed: {e}")))?
+        .error_for_status()
+        .map_err(|e| JiiError::Other(anyhow::anyhow!("download failed: {e}")))?;
+
+    let total = response.content_length().filter(|t| *t > 0);
+    let mut downloaded: u64 = 0;
+    let mut bytes: Vec<u8> = Vec::with_capacity(total.unwrap_or(0) as usize);
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| JiiError::Other(anyhow::anyhow!("download failed: {e}")))?;
+        bytes.extend_from_slice(&chunk);
+        if let Some(total) = total {
+            downloaded = (downloaded + chunk.len() as u64).min(total);
+            let percent = ((downloaded * 100) / total) as u8;
+            reporter.update(crate::progress::Progress { percent, steps: None });
+        }
+    }
+
+    finish_download(&bytes, dest, verify)
+}
+
+/// Verify freshly downloaded `bytes` and, only if they pass, write them to `dest` (creating
+/// parents). Shared by [`download`] and [`download_reported`] so the security check and the
+/// "bytes appear only after verification" guarantee live in exactly one place.
+fn finish_download(bytes: &[u8], dest: &Path, verify: &Verification) -> Result<()> {
+    verify_bytes(bytes, verify)?;
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| JiiError::io(parent.display().to_string(), e))?;
     }
-    std::fs::write(dest, &bytes).map_err(|e| JiiError::io(dest.display().to_string(), e))?;
+    std::fs::write(dest, bytes).map_err(|e| JiiError::io(dest.display().to_string(), e))?;
     Ok(())
 }
 
