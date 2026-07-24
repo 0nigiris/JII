@@ -173,9 +173,16 @@ impl Provider for Flatpak {
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
-        // `flatpak update --user -y` with no refs = update every user-installed app/runtime (D10).
+        // `flatpak update -y` with **no scope flag** updates *every* installation — both the
+        // per-user apps JII installs and the system-wide ones the desktop store (KDE Discover,
+        // GNOME Software) put under /var/lib/flatpak. Scoping this to `--user` (as install does,
+        // to stay root-free) was a real bug: `jii update` reported success while a pile of
+        // system apps stayed stale in Discover. "Update everything" has to mean everything.
+        //
+        // We still never run jii as root here: the system-scope portion is authorized by
+        // flatpak's own polkit agent, not by us wrapping it in sudo (needs_root stays false).
         let reasons = vec![crate::t!("reason.flatpak_upgrade_all")];
-        Ok(Some(user_plan("all flatpaks", &["update", "--user", "-y"], reasons)))
+        Ok(Some(user_plan("all flatpaks", &["update", "-y"], reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
@@ -445,7 +452,9 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert!(!plan.needs_root());
         match &plan.actions[0] {
             Action::RunCommand { argv, .. } => {
-                assert_eq!(argv, &["flatpak", "update", "--user", "-y"]);
+                // No `--user`: update-all must cover system-wide apps too (the Discover bug),
+                // and still without jii escalating (flatpak's polkit handles the system part).
+                assert_eq!(argv, &["flatpak", "update", "-y"]);
             }
             other => panic!("expected run, got {other:?}"),
         }
