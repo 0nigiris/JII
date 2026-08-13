@@ -8,13 +8,18 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-13_
+_Last updated: 2026-08-14_
 
 ---
 
-## Most recent work (2026-08-13, batch 11) — read this first
+## Most recent work (2026-08-14, batch 11) — read this first
 
-**Owner feedback round #4 (not released — heading toward v0.1.11). Working tree green, uncommitted.**
+**Owner feedback round #4 — RELEASED as `v0.1.11-beta` (tag pushed; CI builds the artifacts).**
+Committed + pushed. The owner's live secret-installer run surfaced that the *released* binary must
+carry the achievements code for `jii achievements` and the `sans` sentinel-unlock to work — hence this
+release. Known follow-up the owner raised: the achievements ledger is trivially forgeable (plain JSON +
+the sentinel file); add lightweight tamper-detection (an HMAC keyed in the binary → a snarky reset on a
+mismatch) as deterrence, not real security (a local file can always be forged).
 
 - **Installer header: bordered, centre-aligned tagline card + download spinner (owner: "A and B, text
   dead-centre").** `install.sh`'s `banner` now draws the ASCII JII cube beside a rounded box (`╭─╮`,
