@@ -23,7 +23,7 @@ machine — picks the best option, and explains *why*. (Hey reader. This project
 
 <br>
 
-**17 sources** · **1 static binary** · **297 tests** · **English + Русский** · **never runs fully as root**
+**17 sources** · **1 static binary** · **300 tests** · **English + Русский** · **never runs fully as root**
 
 </div>
 
@@ -259,6 +259,7 @@ jii doctor           diagnose sources + host, then interactively set up what's m
                      (git/curl, PATH, Flathub, RPM Fusion, codecs, fonts…) — one y/n per item
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
 jii history          installation history
+jii achievements     playful badges you've unlocked using JII (some are secret…)
 jii lang [en|ru]     show or set the interface language (auto = follow the system)
 jii cache [clear]    show the search-cache path, or delete it
 jii setup            re-run the first-run wizard (output mode, optional doctor)
@@ -574,7 +575,7 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 
 Rust · async (`tokio`) · single crate (modular, not a workspace) · JSON state (SQLite later) ·
 provider-trait architecture (17 native sources; declarative data-driven sources planned) · fully
-localized UI (en/ru) · 297 unit tests, clippy-clean CI · static musl binaries built in CI for
+localized UI (en/ru) · 300 unit tests, clippy-clean CI · static musl binaries built in CI for
 x86_64 + aarch64.
 
 ---

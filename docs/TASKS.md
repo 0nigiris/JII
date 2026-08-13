@@ -659,6 +659,28 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (the Discover bug); still root-free (flatpak's polkit). 297 tests, clippy clean. **Found, not
                   fixed:** `jii install` can dead-end when the top pick's manager needs bootstrapping and that
                   fails, instead of falling back to a listed alternative (see AI_CONTEXT batch 9 — next release).
+            - [~] **Owner feedback round #3 (2026-07-26, polishing → toward v0.1.11).** Eight owner items; four
+                  landed, two open, two answered. **Done:** (1) *Branded `install.sh`* — ASCII JII-cube logo +
+                  tagline, section rules, decorative completion bars, "ready/run/uninstall/docs" footer; pure
+                  shell presentation, gated on TTY+UTF-8, logic untouched (owner: "copy Hydra's installer look").
+                  (2) *Progress bar fills terminal width* — `render_bar` takes a `budget`, stretches to
+                  `crossterm::terminal::size` (re-read per frame → resizes) like dnf/pacman, `MIN_BAR_CELLS` floor.
+                  (3) *Never recommend untrusted* (ADR-0071) — `ranking::recommended_index` stars the first
+                  trustworthy match, or nothing + `install.no_trusted_match` warning (the `jii google` name-squat
+                  bug). (4) *Spinner on `doctor`'s silent `makecache` wait*. **Answered:** test command is
+                  `cargo test`. **Open:** (a) codec re-offer bug — needs the owner's live VM run to see the real
+                  failure; (b) refresh `jii-test-guide.html` (after the codec fix). 300 tests, clippy clean.
+                  **Not tagged/pushed** — `install.sh` needs a push to master to be testable live (awaiting go).
+            - [~] **Owner feedback round #4 (2026-08-13, → toward v0.1.11).** **Done:** (1) *Installer header A+B* —
+                  `install.sh` `banner` now draws a rounded, **centre-aligned** tagline card beside the cube
+                  (`_center`/`_repeat`, `╾─` connector, ASCII fallback) and a braille **download spinner**
+                  (`dl_progress`/`_spin_wait`) so a slow fetch never looks hung; logic untouched, `sh -n` clean.
+                  (2) *Achievements subsystem* (ADR-0072) — `src/achievements.rs` ledger + `jii achievements`
+                  (`first-install`/`doctor`/secret `sans`), localized en+ru, best-effort grants, secret shows
+                  `???`; `sans` granted via a `secret-install` **sentinel** for the coming secret installer.
+                  304 tests, clippy clean, **uncommitted**. **Next:** build the `secret` branch's
+                  `secret_install.sh` (self-hosted Sans-fight fork → local `/claim` → sentinel → install;
+                  mandatory headless fallback). Owner locked: fork+self-host assets, achievements first (done).
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

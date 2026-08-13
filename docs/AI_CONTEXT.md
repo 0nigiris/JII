@@ -8,13 +8,86 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-07-25_
+_Last updated: 2026-08-13_
 
 ---
 
-## Most recent work (2026-07-25, batch 9) — read this first
+## Most recent work (2026-08-13, batch 11) — read this first
 
-**Released `v0.1.10-beta` (tag pushed; `release.yml` builds the artifacts). Two changes, ADR-0069/0070.**
+**Owner feedback round #4 (not released — heading toward v0.1.11). Working tree green, uncommitted.**
+
+- **Installer header: bordered, centre-aligned tagline card + download spinner (owner: "A and B, text
+  dead-centre").** `install.sh`'s `banner` now draws the ASCII JII cube beside a rounded box (`╭─╮`,
+  `╾─` connector to the logo, ASCII `+ | <-` fallback) whose title + two tagline lines are exactly
+  centred via `_center`/`_repeat` (ASCII text → `${#…}` is the true width). New `_spin_wait` +
+  `dl_progress` wrap the *actual* package download in a braille spinner (`⠋⠙⠹…`, ASCII `|/-\`), so a
+  slow network no longer looks hung; inert with no TTY, propagates the download's exit status. Install
+  logic untouched; `sh -n` clean, rendered + status-propagation verified. **Still must be pushed to
+  `master` to test the `curl … | sh` live.**
+- **Achievements subsystem (ADR-0072) — first half of the owner's "secret Sans-fight installer".** New
+  `src/achievements.rs`: a cosmetic JSON ledger (`$XDG_STATE_HOME/jii/achievements.json`) of
+  `{id → unlocked_at}`, a static `CATALOG` (`first-install` 🌱, `doctor` 🩺, secret `sans` 💀), localized
+  titles/descs (`achieve.<id>.title|desc`, en+ru). `jii achievements` (alias `achievement`) lists
+  progress; secret+locked shows `???` (and `null` in `--json`) — never spoiled. `grant_achievement`
+  is best-effort (swallows all errors, silent in JSON). Wired: `first-install` on a successful install,
+  `doctor` on `jii doctor`. `sans` is granted via a **sentinel file** (`…/jii/secret-install`) the
+  future secret installer drops, consumed once by `Achievements::take_sentinel` in `run()`. Verified
+  end-to-end (sentinel → toast → `1/3`). 4 unit tests.
+- **304 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
+
+### Next: second half of the Sans installer (owner decisions locked in)
+The `secret` branch's `secret_install.sh`: download a **self-hosted fork** of `c2-sans-fight` (owner
+accepted the Undertale-asset "grey zone" as repo owner), serve it on `127.0.0.1:PORT`, `xdg-open` it,
+the forked game hits a local `/claim` on victory (same-origin, no CORS), the server then drops the
+`secret-install` sentinel and runs the normal JII install. **Fallbacks are mandatory** (headless / no
+browser / SSH / CI must degrade, never dead-end). Not started.
+
+---
+
+## Previous work (2026-07-26, batch 10)
+
+**Post-`v0.1.10` polishing round (owner feedback, not yet released).**
+Working tree is clean/green; **not tagged**. (The install.sh banner from this batch was superseded by
+batch 11's boxed version above.)
+
+- **Branded `install.sh` (owner: "copy Hydra's installer look for us").** The `curl … | sh` output
+  now leads with an ASCII render of the JII cube logo + a tagline, section rules, a decorative
+  progress bar on completed download steps (`ok_bar`), and a "JII is ready / Run / Uninstall /
+  Docs·Issues" footer. Pure presentation — a `Presentation` block of shell helpers (`banner`, `ok`,
+  `bullet`, `ok_bar`, `rule`, `warn`, `done_footer`) gated on `[ -t 1 ]` (colour) and a UTF-8 locale
+  (glyphs), ASCII fallback otherwise. Install *logic* is untouched. `sh -n` clean; previewed.
+  **To let the owner test it live it must be pushed to `master`** (install.sh is served from the raw
+  master URL). Not pushed yet — awaiting the owner's go.
+- **Progress bar fills the terminal width (ADR-0069 follow-up).** `render_bar` took a fixed 16 cells;
+  it now takes a `budget` and stretches the bar to the live terminal width (`crossterm::terminal::size`
+  re-read each frame, so it re-fits on resize) like dnf/pacman, reserving the `NN% [d/t]` suffix and a
+  right margin, with a `MIN_BAR_CELLS` floor for narrow terminals. 5 `render_bar` tests.
+- **Never present untrusted as "recommended" (ADR-0071).** New `ranking::recommended_index` = the
+  first candidate that is not `Untrusted`/`suspicious`; the install chooser stars *that* (and defaults
+  the cursor to it), and when nothing trusted matches it stars nothing and warns
+  `install.no_trusted_match` instead of crowning a name-squat. Fixes the owner's `jii google` report
+  (an untrusted `google` crate was starred "recommended"). New locale key (en/ru), 1 test.
+- **Spinner on `doctor`'s silent `makecache` wait.** `refresh_repo_metadata` now animates a `Spinner`
+  around a *captured* `dnf5 makecache` (was a bare, silent `run_plain_command` that looked like a
+  hang). sudo/inherited-output steps keep their own output + intent line (a spinner would fight them).
+- **300 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
+
+### Owner items still OPEN this round (do next)
+
+1. **Codec re-offer bug (`jii doctor`).** Owner: doctor offers Multimedia codecs a 3rd time and asks
+   again after "installing" them — and "why didn't you install?". `doctor` treats a suggestion as done
+   only when *all* its packages show in `dnf repoquery --installed`, so a re-offer means the codec
+   install actually **failed** and the message was lost. Root cause needs the **live run output** from
+   the owner's Fedora VM (dev host can't reproduce the failure). Also worth: make a failed
+   `apply_suggestion` say so explicitly instead of propagating a bare error.
+2. **`file:///home/oni/Downloads/jii-test-guide.html`** — owner wants the tester guide refreshed
+   (deferred until the codec fix lands, to avoid rewriting it twice).
+
+---
+
+## Previous work (2026-07-25, batch 9) — released `v0.1.10-beta`
+
+**Two changes, ADR-0069/0070.**
 
 - **Live progress bars (ADR-0069).** Friendly-mode installs/updates/downloads now draw a real bar
   with a percentage read from the source's own output — no source-branching (ADR-0004).
@@ -37,7 +110,7 @@ _Last updated: 2026-07-25_
   the system portion. Install/uninstall/single-update stay `--user` (JII only tracks its own installs).
 - **297 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
 
-### Known bug found this session, NOT yet fixed (candidate for next release)
+### Known bug found in batch 9, still NOT fixed (candidate for next release)
 
 `jii install <name>` can **dead-end** when the top-ranked candidate comes from an ecosystem manager
 that isn't installed (e.g. Snap) *and* bootstrapping that manager fails/declines: the app is dropped

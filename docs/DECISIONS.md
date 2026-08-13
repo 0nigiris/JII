@@ -2757,3 +2757,66 @@ no scope already means "all installations", and one command matches the user's m
 **Consequences.** On a desktop, a system-scope update triggers the polkit GUI prompt (as Discover
 does). On a headless session with no polkit agent the system portion fails with "not authorized",
 which JII surfaces via its loud-failure path rather than hiding.
+
+## ADR-0071 — Untrusted candidates are never presented as "recommended"
+
+**Status.** Accepted, implemented post-v0.1.10-beta (batch 10).
+
+**Context.** Ranking sorts primarily by name-match closeness (ADR-0042), so an *exact*-name candidate
+outranks a mere prefix/substring match even from a lower-priority source. For a query like `google`
+that meant an untrusted name-squat crate (`google` v0.0.0, "Reserved for use by Google.") sorted to
+index 0 and the install chooser unconditionally starred index 0 as "⭐ recommended". So JII was
+actively recommending an untrusted package — directly at odds with ADR-0006 (auto mode never installs
+untrusted). The owner reported it: "`jii google` should give me something normal, not this."
+
+**Decision.** Separate *ordering* from *recommendation*. Ranking is unchanged (an exact name is still
+the closest match and stays at the top of the list — an explicit pick still works). But the
+"recommended" star is now placed by `ranking::recommended_index` = the first candidate that is **not**
+`Untrusted` and **not** `suspicious`. When that is `None` (every match is untrusted/suspicious), the
+chooser stars nothing, defaults the cursor to the top, and prints `install.no_trusted_match`
+("nothing trusted matches '{name}' — pick explicitly only if you're sure"). Never a dead-end: the
+untrusted candidates are still listed and pickable (memory: "never refuse without an offer").
+
+**Alternatives.** (a) Demote untrusted below trusted in the *ordering* itself — rejected: it would
+bury a knowingly-typed exact name under unrelated trusted substrings, and the list order should still
+reflect name-closeness. (b) Hard-filter untrusted out of the chooser — rejected: an explicit pick of a
+known name-squat is a legitimate (if rare) user choice; JII warns, it doesn't forbid. (c) A curated
+"did you mean google-chrome?" catalog (offered to the owner) — declined this round as extra data; the
+generic honest message covers the reliability need without hard-coding package names (ADR-0004).
+
+**Consequences.** The star/default now marks the best *trustworthy* option, or nothing when there is
+none, with an honest heads-up. The auto/non-interactive path is unchanged (ADR-0006 already forces an
+explicit answer for an untrusted top candidate). Pure presentation policy — no source-branching.
+
+## ADR-0072 — Achievements: a cosmetic, decoupled ledger with a secret-install hook
+
+**Status.** Accepted, implemented post-v0.1.10-beta (batch 11). First half of the owner's
+"secret Sans-fight installer" idea; built first so the reward has somewhere to land.
+
+**Context.** The owner wants a playful `jii achievements` command with unlockable badges, including
+one hidden `???` entry granted only by a forthcoming *secret* install path (a Sans battle served
+locally by the `secret` branch's `secret_install.sh`). Achievements must never affect what JII
+installs, rank, or recommend, and must survive across runs.
+
+**Decision.** A standalone `achievements` module mirroring `registry`: a JSON ledger at
+`$XDG_STATE_HOME/jii/achievements.json` (falls back to the data dir) holding only `{id → unlocked_at}`.
+A static `CATALOG` of `Achievement { id, icon, secret }` defines the set; titles/descriptions are
+**localized**, not stored (ADR-0050) — locale keys `achieve.<id>.title` / `achieve.<id>.desc`, keyed by
+the stable id (never renamed). `unlock(id)` is idempotent and returns "newly unlocked" so callers can
+show a one-time toast; unknown ids are ignored so the store can only ever hold catalog ids. Granting is
+**best-effort and cosmetic** — every load/save failure is swallowed so an achievement can never break a
+real command. Secret+locked entries render as `???` with a teaser (and are `null` in `--json`), so a
+secret is never spoiled. The secret install path is decoupled via a **sentinel file**
+(`$XDG_STATE_HOME/jii/secret-install`) the installer drops; `Achievements::take_sentinel` consumes it
+once on JII's next run and grants `sans`. Initial catalog: `first-install`, `doctor` (real events
+already wired), `sans` (secret).
+
+**Alternatives.** (a) Store the badge text in the ledger — rejected: violates ADR-0050 and would freeze
+English into state files. (b) A hidden `jii __unlock <id>` subcommand for the installer to call —
+rejected: needs `jii` already on PATH mid-install and couples the installer to a private CLI; a sentinel
+file is simpler and order-independent. (c) Fold achievements into the registry — rejected: unrelated
+concerns; a cosmetic feature must not risk the install ledger's integrity.
+
+**Consequences.** `jii achievements` (alias `achievement`) lists progress; new achievements are one
+`CATALOG` entry + two locale keys each. The `sans` reward is ready before the secret installer exists —
+the installer just drops the sentinel. No source-branching, no effect on the install core. 4 unit tests.
