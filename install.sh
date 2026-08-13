@@ -26,6 +26,135 @@ METHOD="${JII_METHOD:-auto}"
 err() { printf 'jii-install: %s\n' "$1" >&2; exit 1; }
 info() { printf '%s\n' "$1"; }
 
+# --- Presentation -----------------------------------------------------------
+# A friendly, branded install experience (the owner's ask: make `curl … | sh` look
+# as polished as a good vendor installer). Everything degrades cleanly: colour only on a
+# real terminal that isn't NO_COLOR/dumb, Unicode glyphs only under a UTF-8 locale (and
+# never on the framebuffer console, whose font lacks them). None of this touches the
+# install logic below — it only styles the output.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; then
+  _e=$(printf '\033')
+  C0="${_e}[0m"; CB="${_e}[1m"; CD="${_e}[2m"; CG="${_e}[32m"; CP="${_e}[38;5;99m"; CY="${_e}[33m"
+else
+  C0=""; CB=""; CD=""; CG=""; CP=""; CY=""
+fi
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+  *[Uu][Tt][Ff]8* | *[Uu][Tt][Ff]-8*) _uni=1 ;;
+  *) _uni=0 ;;
+esac
+[ "${TERM:-}" = "linux" ] && _uni=0
+if [ "$_uni" = 1 ]; then
+  OK="✓"; DOT="•"; RL="─"; ARR="→"; BUL="·"
+  BTL="╭"; BTR="╮"; BBL="╰"; BBR="╯"; BV="│"; BCN="╾─"
+else
+  OK="+"; DOT="="; RL="-"; ARR="->"; BUL="*"
+  BTL="+"; BTR="+"; BBL="+"; BBR="+"; BV="|"; BCN="<-"
+fi
+
+# Repeat $1 exactly $2 times (small counts only — the banner and rules).
+_repeat() { _n=$2; _o=""; _i=0; while [ "$_i" -lt "$_n" ]; do _o="$_o$1"; _i=$((_i + 1)); done; printf '%s' "$_o"; }
+# Centre ASCII text $1 inside a field of width $2 with spaces (exact — ASCII only, so
+# ${#…} is the display width). Longer-than-field text is returned unchanged.
+_center() {
+  _t="$1"; _w="$2"; _l=${#_t}
+  [ "$_l" -ge "$_w" ] && { printf '%s' "$_t"; return; }
+  _pad=$((_w - _l)); _lft=$((_pad / 2)); _rgt=$((_pad - _lft))
+  printf '%s%s%s' "$(_repeat ' ' "$_lft")" "$_t" "$(_repeat ' ' "$_rgt")"
+}
+
+# Terminal width, clamped to a comfortable range (falls back to 60 with no `tput`).
+_cols() {
+  c=$(tput cols 2>/dev/null || echo 0)
+  case "$c" in *[!0-9]* | "") c=60 ;; esac
+  [ "$c" -lt 24 ] && c=24
+  [ "$c" -gt 72 ] && c=72
+  printf '%s' "$c"
+}
+# A dim horizontal rule across the width (a section separator, like the vendor mockup).
+rule() {
+  w=$(_cols); i=0; s=""
+  while [ "$i" -lt "$w" ]; do s="$s$RL"; i=$((i + 1)); done
+  printf '%s%s%s\n' "$CD" "$s" "$C0"
+}
+ok() { printf '%s%s%s %s\n' "$CG" "$OK" "$C0" "$1"; }
+bullet() { printf '%s%s%s %s\n' "$CD" "$BUL" "$C0" "$1"; }
+warn() { printf '%s%s %s%s\n' "$CY" "!" "$1" "$C0"; }
+# A completed step with a decorative full progress bar, e.g. `✓ Downloaded jii… [•••••] 100%`.
+ok_bar() {
+  w=$(_cols)
+  cells=$((w - ${#1} - 12))
+  [ "$cells" -lt 6 ] && cells=6
+  [ "$cells" -gt 32 ] && cells=32
+  bar=""; i=0
+  while [ "$i" -lt "$cells" ]; do bar="$bar$DOT"; i=$((i + 1)); done
+  printf '%s%s%s %s  %s[%s%s%s]%s %s100%%%s\n' \
+    "$CG" "$OK" "$C0" "$1" "$CD" "$CP" "$bar" "$CD" "$C0" "$CB" "$C0"
+}
+# A spinner shown while a background job (a download) runs, so a slow network never
+# looks like a hang. Inert when there's no terminal to animate (a pipe / CI).
+_spin_frames() {
+  if [ "$_uni" = 1 ]; then printf '⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏'; else printf '| / - \\'; fi
+}
+_spin_wait() {
+  _p="$1"; _lbl="$2"
+  if [ ! -t 1 ]; then wait "$_p" 2>/dev/null; return "$?"; fi
+  while kill -0 "$_p" 2>/dev/null; do
+    for _f in $(_spin_frames); do
+      kill -0 "$_p" 2>/dev/null || break
+      printf '\r  %s%s%s %s' "$CP" "$_f" "$C0" "$_lbl"
+      sleep 0.08 2>/dev/null || sleep 1
+    done
+  done
+  printf '\r%s\r' "$(_repeat ' ' $((${#_lbl} + 4)))"
+  wait "$_p" 2>/dev/null
+}
+# Download $1 → $2 while showing a spinner labelled $3; propagates the download's status.
+dl_progress() {
+  if [ -t 1 ]; then
+    dl "$1" "$2" &
+    _spin_wait "$!" "$3"
+  else
+    dl "$1" "$2"
+  fi
+}
+
+# The JII cube (its logo, in ASCII) beside a bordered, centre-aligned tagline card.
+banner() {
+  _t1="One installer for every source"
+  _t2="you have. It explains its picks."
+  _bar="$(_repeat "$RL" 36)"
+  # Box rows (border dim, title bold); content is centred inside a 36-wide field.
+  BXa="${CD}${BTL}${_bar}${BTR}${C0}"
+  BXb="${CD}${BV}${C0}$(_repeat ' ' 36)${CD}${BV}${C0}"
+  BXc="${CD}${BV}${C0}${CB}$(_center 'Just Install It.' 36)${C0}${CD}${BV}${C0}"
+  BXe="${CD}${BV}${C0}$(_center "$_t1" 36)${CD}${BV}${C0}"
+  BXf="${CD}${BV}${C0}$(_center "$_t2" 36)${CD}${BV}${C0}"
+  BXh="${CD}${BBL}${_bar}${BBR}${C0}"
+  GAP="   "; GAPC=" ${CD}${BCN}${C0}"
+  printf '\n'
+  printf '%s%s%s%s%s\n' "$CP" "            " "$C0" "$GAP"  "$BXa"
+  printf '%s%s%s%s%s\n' "$CP" "   ________ " "$C0" "$GAP"  "$BXb"
+  printf '%s%s%s%s%s\n' "$CP" "  /       /|" "$C0" "$GAP"  "$BXc"
+  printf '%s%s%s%s%s\n' "$CP" " /_______/ |" "$C0" "$GAP"  "$BXb"
+  printf '%s%s%s%s%s\n' "$CP" " | J I I | |" "$C0" "$GAPC" "$BXe"
+  printf '%s%s%s%s%s\n' "$CP" " |       | /" "$C0" "$GAP"  "$BXf"
+  printf '%s%s%s%s%s\n' "$CP" " |_______|/ " "$C0" "$GAP"  "$BXb"
+  printf '%s%s%s%s%s\n' "$CP" "            " "$C0" "$GAP"  "$BXh"
+  printf '\n'
+}
+# The closing "you're all set" block: what to run, how to remove, where the docs are.
+done_footer() {
+  _run="$1"; _uninstall="$2"
+  printf '\n'
+  rule
+  ok "${CB}JII is ready.${C0}"
+  [ -n "$_run" ] && bullet "Run:        $_run"
+  bullet "Uninstall:  $_uninstall"
+  printf '\n'
+  printf '%sDocs %s github.com/%s   %s   Issues %s github.com/%s/issues%s\n' \
+    "$CD" "$ARR" "$REPO" "$BUL" "$ARR" "$REPO" "$C0"
+}
+
 # --- 0. Parse args ----------------------------------------------------------
 for arg in "$@"; do
   case "$arg" in
@@ -104,9 +233,10 @@ case "$NATIVE_KIND" in
 esac
 
 # --- 4. Resolve the version -------------------------------------------------
+banner
 TAG="${JII_VERSION:-}"
 if [ -z "$TAG" ]; then
-  info "Finding the latest release…"
+  bullet "Finding the latest release…"
   # Use the /releases *list*, not /releases/latest: the latter 404s on a repo whose
   # only releases are pre-releases (every JII beta tag is one). The list is newest-first,
   # so the first tag_name is the newest published release. Parsed without needing jq.
@@ -118,6 +248,7 @@ if [ -z "$TAG" ]; then
   TAG=$(printf '%s\n' "$RELEASES" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
   [ -n "$TAG" ] || err "could not determine the latest release; set JII_VERSION=<tag>."
 fi
+ok "JII $TAG is available"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT INT TERM
@@ -151,7 +282,7 @@ fi
 # --- 7. Native install (returns non-zero to request a portable fallback) ----
 native_install() {
   REL_JSON=$(fetch "https://api.github.com/repos/$REPO/releases/tags/$TAG") || {
-    info "Could not fetch release metadata; falling back to a portable install."
+    warn "Could not fetch release metadata; falling back to a portable install."
     return 1
   }
   case "$NATIVE_KIND" in
@@ -165,20 +296,20 @@ native_install() {
     | sed 's/.*"\(https[^"]*\)".*/\1/' \
     | grep -E "$PAT\$" | grep -v '\.sha256$' | head -n1)
   [ -n "$URL" ] || {
-    info "No native $NATIVE_KIND package for $ARCH in $TAG; falling back to a portable install."
+    warn "No native $NATIVE_KIND package for $ARCH in $TAG; falling back to a portable install."
     return 1
   }
 
   ASSET=$(basename "$URL")
-  info "Downloading $ASSET …"
-  dl "$URL" "$TMP/$ASSET" || {
-    info "Download failed; falling back to a portable install."
+  dl_progress "$URL" "$TMP/$ASSET" "Downloading $ASSET…" || {
+    warn "Download failed; falling back to a portable install."
     return 1
   }
+  ok_bar "Downloaded $ASSET"
   if dl "$URL.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
-    info "Verifying checksum…"
     verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
       || err "checksum verification failed — refusing to install."
+    ok "Checksum verified"
   fi
 
   case "$NATIVE_MGR" in
@@ -187,12 +318,12 @@ native_install() {
     apt) set -- apt-get install -y "$TMP/$ASSET" ;;
     *) return 1 ;;
   esac
-  info ""
-  info "JII will install the native package with this command (sudo may ask for your password):"
-  info "    ${ESC:+$ESC }$*"
+  rule
+  bullet "Installing via $NATIVE_MGR (sudo may ask for your password):"
+  bullet "  ${ESC:+$ESC }$*"
   # shellcheck disable=SC2086
   $ESC "$@" || {
-    info "Native install failed; falling back to a portable install."
+    warn "Native install failed; falling back to a portable install."
     return 1
   }
   return 0
@@ -203,15 +334,15 @@ portable_install() {
   ASSET="jii-${TAG}-${ARCH}-linux.tar.gz"
   BASE="https://github.com/$REPO/releases/download/$TAG"
 
-  info "Downloading $ASSET …"
-  dl "$BASE/$ASSET" "$TMP/$ASSET" || err "download failed: $BASE/$ASSET"
+  dl_progress "$BASE/$ASSET" "$TMP/$ASSET" "Downloading $ASSET…" || err "download failed: $BASE/$ASSET"
+  ok_bar "Downloaded $ASSET"
 
   if dl "$BASE/$ASSET.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
-    info "Verifying checksum…"
     verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
       || err "checksum verification failed — refusing to install."
+    ok "Checksum verified"
   else
-    info "No checksum published for this asset; skipping verification."
+    warn "No checksum published for this asset; skipping verification."
   fi
 
   tar -xzf "$TMP/$ASSET" -C "$TMP"
@@ -221,21 +352,19 @@ portable_install() {
 
   mkdir -p "$BIN_DIR"
   install -m 0755 "$SRC" "$BIN_DIR/jii"
-  info "Installed jii $TAG → $BIN_DIR/jii"
+  ok "Installed to $BIN_DIR/jii"
 
   # PATH hint (portable only — the native path lands in /usr/bin, already on PATH).
   # Either way say something, so the user always knows whether `jii` is runnable now
   # (some distros, e.g. openSUSE, already put ~/.local/bin on PATH — then just confirm it).
   case ":$PATH:" in
     *":$BIN_DIR:"*)
-      info ""
-      info "$BIN_DIR is on your PATH — just run:  jii"
+      PORTABLE_RUN="jii doctor"
       ;;
     *)
-      info ""
-      info "Note: $BIN_DIR is not on your PATH yet. Add it, e.g.:"
-      info "    echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
-      info "Until then, run it with the full path:  $BIN_DIR/jii"
+      PORTABLE_RUN="$BIN_DIR/jii doctor"
+      bullet "$BIN_DIR is not on your PATH yet — add it to run \`jii\` by name:"
+      bullet "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
       ;;
   esac
 }
@@ -243,23 +372,21 @@ portable_install() {
 # --- 9. Do it ---------------------------------------------------------------
 if [ "$METHOD" = "native" ]; then
   if [ "$NATIVE_KIND" = "aur" ]; then
-    info "On Arch, the native package is the AUR 'jii-bin' (\`yay -S jii-bin\`) — not published yet."
-    info "Installing the portable binary for now."
+    warn "On Arch, the native package is the AUR 'jii-bin' (\`yay -S jii-bin\`) — not published yet."
+    bullet "Installing the portable binary for now."
     METHOD="portable"
   elif [ "$NATIVE_OK" -eq 1 ]; then
     if native_install; then
-      info "Installed jii $TAG (native $NATIVE_KIND via $NATIVE_MGR)."
-      info ""
-      info "Done. Try:  jii doctor"
+      ok "Installed via $NATIVE_MGR"
+      done_footer "jii doctor" "${ESC:+$ESC }$NATIVE_MGR remove jii"
       exit 0
     fi
     METHOD="portable"
   else
-    info "No supported native package manager with escalation here; installing portable."
+    warn "No supported native package manager with escalation here; installing portable."
     METHOD="portable"
   fi
 fi
 
 portable_install
-info ""
-info "Done. Try:  jii doctor"
+done_footer "${PORTABLE_RUN:-jii doctor}" "rm $BIN_DIR/jii"
