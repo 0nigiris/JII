@@ -176,12 +176,14 @@ esac
 # --- 1. Preconditions -------------------------------------------------------
 [ "$(uname -s)" = "Linux" ] || err "JII is Linux-only (found $(uname -s))."
 
+# `--retry` survives a transient hiccup (a reset mid-transfer, a 5xx, a timeout) instead of failing
+# the whole install on one unlucky packet — GitHub's release CDN drops a connection now and then.
 if command -v curl >/dev/null 2>&1; then
-  dl() { curl -fsSL "$1" -o "$2"; }
-  fetch() { curl -fsSL "$1"; }
+  dl() { curl -fsSL --retry 3 --retry-delay 1 "$1" -o "$2"; }
+  fetch() { curl -fsSL --retry 3 --retry-delay 1 "$1"; }
 elif command -v wget >/dev/null 2>&1; then
-  dl() { wget -qO "$2" "$1"; }
-  fetch() { wget -qO- "$1"; }
+  dl() { wget -q --tries=3 --waitretry=1 -O "$2" "$1"; }
+  fetch() { wget -q --tries=3 --waitretry=1 -O- "$1"; }
 else
   err "need curl or wget to download."
 fi
