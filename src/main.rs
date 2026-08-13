@@ -3,6 +3,7 @@
 //! Wiring only. The command surface lives in [`cli`], presentation in [`ui`], and
 //! the domain model in [`model`]. See `docs/ARCHITECTURE.md` for the full picture.
 
+mod achievements;
 mod cache;
 mod cli;
 mod config;

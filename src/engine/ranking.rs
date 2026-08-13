@@ -33,6 +33,20 @@ pub fn rank(config: &Config, query: &str, mut candidates: Vec<PackageCandidate>)
     candidates
 }
 
+/// The index of the candidate that should carry the "⭐ recommended" flag — the first one that
+/// is trustworthy enough to suggest by default (not `Untrusted`, not flagged `suspicious`).
+///
+/// Returns `None` when every match is untrusted/suspicious: there is then no honest
+/// recommendation, and the caller says so plainly rather than starring a name-squat. This keeps
+/// ADR-0006 consistent — auto mode never *installs* untrusted, so untrusted must never be
+/// *presented* as the pick either (the `jii google` report: an untrusted `google` crate was
+/// wrongly starred "recommended"). Candidates are assumed already ranked (best first).
+pub fn recommended_index(candidates: &[PackageCandidate]) -> Option<usize> {
+    candidates
+        .iter()
+        .position(|c| c.trust != TrustLevel::Untrusted && !c.suspicious)
+}
+
 /// Recent downloads below which a language-registry package reads as obscure. Deliberately
 /// low: the point is to catch name-squatters (tens of downloads), not to punish small tools.
 const POPULARITY_FLOOR: u64 = 1_000;
@@ -319,6 +333,30 @@ mod tests {
         let mut v = vec![path];
         mark_suspicious(&netsrc(), &mut v);
         assert!(!v[0].suspicious);
+    }
+
+    #[test]
+    fn recommended_index_skips_untrusted_and_is_none_when_all_untrusted() {
+        // The first trustworthy candidate earns the star (an untrusted one ahead of it is skipped).
+        let cands = vec![
+            candidate("cargo", TrustLevel::Untrusted, true),
+            candidate("flatpak", TrustLevel::Community, true),
+            candidate("dnf", TrustLevel::Official, true),
+        ];
+        assert_eq!(recommended_index(&cands), Some(1));
+
+        // A `suspicious` candidate is skipped even if its trust hasn't been downgraded yet.
+        let mut suspect = candidate("dnf", TrustLevel::Official, true);
+        suspect.suspicious = true;
+        let cands = vec![suspect, candidate("flatpak", TrustLevel::Community, true)];
+        assert_eq!(recommended_index(&cands), Some(1));
+
+        // Every match untrusted → no honest recommendation (the `jii google` name-squat case).
+        let cands = vec![
+            candidate("cargo", TrustLevel::Untrusted, true),
+            candidate("pipx", TrustLevel::Untrusted, true),
+        ];
+        assert_eq!(recommended_index(&cands), None);
     }
 
     #[test]

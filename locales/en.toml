@@ -133,6 +133,7 @@ update_now = "Update now?"
 keeping = "Keeping the installed version."
 choose_header = "'{name}' is available from several sources — you choose:"
 recommended_tag = "recommended"
+no_trusted_match = "Nothing trusted matches '{name}'. Everything below is untrusted — pick one explicitly only if you're sure it's the right thing."
 continue_rest = "Continue installing the rest?"
 installed = "Installed {names}."
 also_available = "Also available:"
@@ -450,3 +451,20 @@ current = "Current language: {lang}"
 available = "Available: {list}"
 set = "Language set to {lang}."
 unknown = "Unknown language '{code}'. Available: {list}"
+
+[achieve]
+unlocked = "Achievement unlocked  {icon}  {title}"
+header = "Achievements  {earned}/{total}"
+hidden = "Keep using JII to uncover this one."
+
+[achieve.first-install]
+title = "Just Installed It"
+desc = "Installed your first package with JII."
+
+[achieve.doctor]
+title = "House Call"
+desc = "Ran jii doctor to check the system over."
+
+[achieve.sans]
+title = "I can do everything to install JII"
+desc = "Downloaded JII via the secret method."

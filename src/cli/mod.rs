@@ -148,6 +148,10 @@ pub enum Commands {
     },
     /// Show installation history.
     History,
+    /// Show your JII achievements — the ones you've unlocked and the ones still to find
+    /// (secret ones show as `???` until earned).
+    #[command(alias = "achievement")]
+    Achievements,
     /// List installation sources and whether each is usable here (native managers for other
     /// distros are hidden by default; `--all` shows all). Ecosystem managers (Flatpak, Snap,
     /// cargo, npm, AUR helpers…) are annotated with how to add or remove them.
@@ -280,6 +284,7 @@ impl Cli {
                 Some(if *audit { "jii list --audit".to_string() } else { "jii list".to_string() })
             }
             Some(Commands::History) => Some("jii history".to_string()),
+            Some(Commands::Achievements) => None,
             Some(Commands::Sources { .. }) => None,
             None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
         }
@@ -288,6 +293,13 @@ impl Cli {
     /// Dispatch the parsed command.
     pub async fn run(self, config: Config) -> crate::error::Result<()> {
         let renderer = self.renderer_for(&config);
+
+        // The secret install path (the `secret` branch's Sans-fight installer) drops a
+        // sentinel that JII picks up on its very next run to grant the hidden `sans`
+        // achievement. Consumed once, best-effort, and silent in JSON mode.
+        if crate::achievements::Achievements::take_sentinel() {
+            self.grant_achievement("sans", &renderer);
+        }
 
         // First-run onboarding for *any* task (not just bare `jii`): the very first time JII is
         // used on an interactive terminal, run the setup wizard first, then continue with the
@@ -349,6 +361,7 @@ impl Cli {
             Some(Commands::How { package }) => self.how(package, config, &renderer),
             Some(Commands::List { audit }) => self.list(*audit, config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
+            Some(Commands::Achievements) => self.achievements(&renderer),
 
             Some(Commands::Doctor { fix: _ }) => self.doctor(config, &renderer).await,
 
@@ -620,14 +633,21 @@ impl Cli {
                 && !self.global.no
                 && self.interactive(renderer);
             let best = if offer_choice {
-                // The top (index 0) candidate is the recommendation — tag it so the menu says
-                // *which* to pick and why it's first (#4); the rest are honest alternatives.
+                // The recommendation is the closest match that is *trustworthy enough* to crown —
+                // never an untrusted name-squat, even when it's the exact-name top rank (ADR-0006:
+                // auto never installs untrusted, so it's never presented as the pick either). When
+                // nothing trusted matches, we star nothing and say so, leaving an explicit choice
+                // (the `jii google` report: an untrusted `google` crate was wrongly "recommended").
                 let palette = renderer.palette();
+                let rec = crate::engine::ranking::recommended_index(&ranked);
+                if rec.is_none() {
+                    renderer.warn(&crate::t!("install.no_trusted_match", name = name));
+                }
                 let labels: Vec<String> = ranked
                     .iter()
                     .enumerate()
                     .map(|(i, c)| {
-                        if i == 0 {
+                        if Some(i) == rec {
                             format!(
                                 "{}  {} {}",
                                 candidate_line(c, palette),
@@ -640,7 +660,7 @@ impl Cli {
                     })
                     .collect();
                 let header = crate::t!("install.choose_header", name = name);
-                match prompt::choose(renderer, &header, &labels, 0) {
+                match prompt::choose(renderer, &header, &labels, rec.unwrap_or(0)) {
                     Some(index) => {
                         chose_interactively = true;
                         ranked.remove(index)
@@ -875,6 +895,7 @@ impl Cli {
         // 6. One escalation, one run; records are written as each plan succeeds.
         engine.install_batch(&batch, renderer).await?;
         renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
+        self.grant_achievement("first-install", renderer);
 
         // 7. `--run`: start it. Last of all, because it replaces this process.
         if self.global.run
@@ -2786,6 +2807,7 @@ impl Cli {
     /// offered as a yes/no question and, on "yes", applied on the spot. It stays read-only in
     /// `--json`, under `-n/--no`, or with no TTY (Analyze → Explain → Ask → Apply).
     async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+        self.grant_achievement("doctor", renderer);
         // Capture what the system checks (and the questionnaire) need before `config` moves
         // into the engine.
         let token_env = config.network.github_token_env.clone();
@@ -3208,6 +3230,84 @@ impl Cli {
         }
         for line in lines {
             renderer.info(&line);
+        }
+        Ok(())
+    }
+
+    /// Grant an achievement as a side effect of a real action, showing a one-time toast the
+    /// first time it's earned. Best-effort and cosmetic: any failure to load or persist the
+    /// ledger is swallowed so it can never break the surrounding command. Silent in JSON mode.
+    fn grant_achievement(&self, id: &str, renderer: &Renderer) {
+        let Ok(mut store) = crate::achievements::Achievements::load() else {
+            return;
+        };
+        if store.unlock(id) {
+            let _ = store.save();
+            if !renderer.is_json()
+                && let Some(a) = crate::achievements::find(id)
+            {
+                let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
+                renderer.success(&crate::t!("achieve.unlocked", icon = a.icon, title = title));
+            }
+        }
+    }
+
+    /// `jii achievements` — the playful ledger: what you've unlocked and what's left to find.
+    /// Secret-and-locked entries show as `???` with a teasing description; everything is
+    /// read-only.
+    fn achievements(&self, renderer: &Renderer) -> crate::error::Result<()> {
+        let store = crate::achievements::Achievements::load()?;
+
+        if renderer.is_json() {
+            let rows: Vec<_> = crate::achievements::CATALOG
+                .iter()
+                .map(|a| {
+                    let unlocked = store.is_unlocked(a.id);
+                    // A secret, still-locked achievement is not spoiled even in JSON.
+                    let reveal = unlocked || !a.secret;
+                    serde_json::json!({
+                        "id": a.id,
+                        "unlocked": unlocked,
+                        "unlocked_at": store.unlocked_at(a.id),
+                        "secret": a.secret,
+                        "title": reveal.then(|| crate::i18n::tr(&format!("achieve.{}.title", a.id))),
+                        "description": reveal
+                            .then(|| crate::i18n::tr(&format!("achieve.{}.desc", a.id))),
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        let palette = renderer.palette();
+        let total = crate::achievements::CATALOG.len();
+        let earned = crate::achievements::CATALOG
+            .iter()
+            .filter(|a| store.is_unlocked(a.id))
+            .count();
+        renderer.info(&palette.heading(&crate::t!(
+            "achieve.header",
+            earned = earned,
+            total = total
+        )));
+        renderer.info("");
+
+        for a in crate::achievements::CATALOG {
+            let unlocked = store.is_unlocked(a.id);
+            // Keep a secret hidden until earned: show `???` and a teaser, not the real text.
+            if a.secret && !unlocked {
+                let title = palette.dim("???");
+                renderer.info(&format!("  {}  {}", a.icon, title));
+                renderer.info(&format!("      {}", palette.dim(&crate::t!("achieve.hidden"))));
+                continue;
+            }
+            let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
+            let desc = crate::i18n::tr(&format!("achieve.{}.desc", a.id));
+            let mark = if unlocked { palette.good(a.icon) } else { palette.dim(a.icon) };
+            let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
+            renderer.info(&format!("  {mark}  {title}"));
+            renderer.info(&format!("      {}", palette.dim(&desc)));
         }
         Ok(())
     }
@@ -3831,8 +3931,13 @@ async fn refresh_repo_metadata(renderer: &Renderer) {
     if !crate::provider::which("dnf5").await {
         return;
     }
-    renderer.info(&format!("    {}", crate::t!("doctor.refreshing_meta")));
-    let _ = run_plain_command(&["dnf5".to_string(), "makecache".to_string()]).await;
+    // A bare `dnf5 makecache` can sit silent for several seconds — indistinguishable from a
+    // hang (the owner's ask: "put a spinner on waits like these"). Animate one while it runs,
+    // and capture its output (run_capture) so the manager's chatter doesn't fight the spinner
+    // line. Best-effort: a failure is swallowed — the transaction below may refresh on its own.
+    let spinner = crate::ui::Spinner::start(renderer, &crate::t!("doctor.refreshing_meta"));
+    let _ = crate::provider::run_capture(&["dnf5", "makecache"]).await;
+    spinner.stop().await;
 }
 
 /// Run a documented catalog `manual` command through `sh -c` — it may use shell syntax

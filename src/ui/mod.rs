@@ -143,7 +143,14 @@ impl Spinner {
                 // "how long has this been going" is the actual question.
                 let reading = progress_read.lock().ok().and_then(|g| *g);
                 let line = if let Some(p) = reading {
-                    format!("  {frame} {label}  {}", render_bar(p, unicode, color))
+                    // Size the bar to the *live* terminal width so it fills the line like
+                    // dnf/pacman and re-fits when the window is resized. The prefix
+                    // ("  {frame} {label}  ") is fixed chrome; the bar gets what's left, minus
+                    // a one-column right margin. Fall back to 80 when the width is unknown.
+                    let prefix = format!("  {frame} {label}  ");
+                    let cols = crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
+                    let budget = cols.saturating_sub(prefix.chars().count() + 1);
+                    format!("{prefix}{}", render_bar(p, unicode, color, budget))
                 } else {
                     let secs = started.elapsed().as_secs();
                     let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
@@ -216,24 +223,31 @@ impl ProgressReporter {
     }
 }
 
-/// Render a compact `████████░░░░░░░░  45%` bar (with an optional `[3/41]` when a step counter
-/// drove it). Unicode blocks on a capable terminal, ASCII `#`/`-` otherwise; the filled run is
-/// green when colour is on. Width is fixed and small so it fits a narrow terminal on one line.
-fn render_bar(p: crate::progress::Progress, unicode: bool, color: bool) -> String {
-    const WIDTH: usize = 16;
-    let filled = ((p.percent as usize * WIDTH) / 100).min(WIDTH);
+/// Below this many cells a bar is useless, so we stop shrinking on a narrow terminal and let
+/// it be the one thing that may wrap rather than vanish entirely.
+const MIN_BAR_CELLS: usize = 6;
+
+/// Render a `████████░░░░  45%  [3/41]` bar that fills `budget` columns — the width left on the
+/// line after the spinner's fixed prefix. The trailing `  NN%` (and optional `  [done/total]`)
+/// is reserved first; the bar cells fill whatever remains, so it stretches with the terminal
+/// like dnf/pacman instead of sitting at a fixed width. Unicode blocks on a capable terminal,
+/// ASCII `#`/`-` otherwise; the filled run is green when colour is on. Pure, for unit testing.
+fn render_bar(p: crate::progress::Progress, unicode: bool, color: bool, budget: usize) -> String {
+    let suffix = match p.steps {
+        Some((done, total)) => format!("  {:>3}%  [{done}/{total}]", p.percent),
+        None => format!("  {:>3}%", p.percent),
+    };
+    let cells = budget.saturating_sub(suffix.chars().count()).max(MIN_BAR_CELLS);
+    let filled = ((p.percent as usize * cells) / 100).min(cells);
     let (full, empty) = if unicode { ('█', '░') } else { ('#', '-') };
     let bar_full = full.to_string().repeat(filled);
-    let bar_empty = empty.to_string().repeat(WIDTH - filled);
+    let bar_empty = empty.to_string().repeat(cells - filled);
     let bar = if color {
         format!("\x1b[32m{bar_full}\x1b[0m{bar_empty}")
     } else {
         format!("{bar_full}{bar_empty}")
     };
-    match p.steps {
-        Some((done, total)) => format!("{bar}  {:>3}%  [{done}/{total}]", p.percent),
-        None => format!("{bar}  {:>3}%", p.percent),
-    }
+    format!("{bar}{suffix}")
 }
 
 /// Renders output as either human-friendly text or machine-readable JSON.
@@ -470,22 +484,39 @@ mod tests {
 
     #[test]
     fn bar_fills_proportionally_and_shows_percent_and_steps() {
-        // 25% of a 16-cell bar = 4 filled; the counter that drove it is shown too.
-        let s = render_bar(Progress { percent: 25, steps: Some((1, 4)) }, true, false);
+        // 25% of a 16-cell bar = 4 filled; the counter that drove it is shown too. Budget 29 =
+        // 16 bar cells + the 13-char "   25%  [1/4]" suffix.
+        let s = render_bar(Progress { percent: 25, steps: Some((1, 4)) }, true, false, 29);
         assert_eq!(s, "████░░░░░░░░░░░░   25%  [1/4]");
     }
 
     #[test]
     fn bar_ascii_fallback_and_no_steps() {
-        let s = render_bar(Progress { percent: 100, steps: None }, false, false);
+        // Budget 22 = 16 bar cells + the 6-char "  100%" suffix.
+        let s = render_bar(Progress { percent: 100, steps: None }, false, false, 22);
         assert_eq!(s, "################  100%");
     }
 
     #[test]
     fn bar_wraps_fill_in_colour_when_enabled() {
-        let s = render_bar(Progress { percent: 50, steps: None }, true, true);
+        let s = render_bar(Progress { percent: 50, steps: None }, true, true, 22);
         // Green SGR around the filled run, reset before the empty run.
         assert!(s.starts_with("\x1b[32m████████\x1b[0m"));
         assert!(s.contains("50%"));
+    }
+
+    #[test]
+    fn bar_stretches_to_fill_a_wider_budget() {
+        // The pacman/dnf behaviour: a wider line yields a wider bar. Budget 40, suffix "  100%"
+        // is 6 cols → 34 cells, all filled at 100%.
+        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 40);
+        assert_eq!(s.chars().filter(|&c| c == '█').count(), 34);
+    }
+
+    #[test]
+    fn bar_keeps_a_minimum_on_a_narrow_terminal() {
+        // Budget below suffix + minimum: the bar stops shrinking at MIN_BAR_CELLS, it doesn't vanish.
+        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 2);
+        assert_eq!(s.chars().filter(|&c| c == '█').count(), MIN_BAR_CELLS);
     }
 }

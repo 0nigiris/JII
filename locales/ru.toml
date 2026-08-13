@@ -131,6 +131,7 @@ update_now = "Обновить сейчас?"
 keeping = "Оставляю установленную версию."
 choose_header = "«{name}» доступен из нескольких источников — выбирайте:"
 recommended_tag = "рекомендуется"
+no_trusted_match = "По запросу «{name}» нет ничего доверенного. Всё ниже — непроверенное; выбирайте явно, только если уверены, что это именно то."
 continue_rest = "Продолжить установку остального?"
 installed = "Установлено: {names}."
 also_available = "Также доступно:"
@@ -448,3 +449,20 @@ current = "Текущий язык: {lang}"
 available = "Доступные: {list}"
 set = "Язык переключён на {lang}."
 unknown = "Неизвестный язык «{code}». Доступные: {list}"
+
+[achieve]
+unlocked = "Достижение получено  {icon}  {title}"
+header = "Достижения  {earned}/{total}"
+hidden = "Продолжай пользоваться JII, чтобы открыть это."
+
+[achieve.first-install]
+title = "Just Installed It"
+desc = "Установил первый пакет через JII."
+
+[achieve.doctor]
+title = "Врач на дом"
+desc = "Запустил jii doctor, чтобы проверить систему."
+
+[achieve.sans]
+title = "Я сделаю что угодно, лишь бы установить JII"
+desc = "Установил JII секретным способом."
