@@ -2820,3 +2820,43 @@ concerns; a cosmetic feature must not risk the install ledger's integrity.
 **Consequences.** `jii achievements` (alias `achievement`) lists progress; new achievements are one
 `CATALOG` entry + two locale keys each. The `sans` reward is ready before the secret installer exists —
 the installer just drops the sentinel. No source-branching, no effect on the install core. 4 unit tests.
+
+## ADR-0073 — The secret Sans-fight installer (second half of ADR-0072)
+
+**Status.** Accepted, implemented post-v0.1.10-beta (batch 11). Lives on an **orphan `secret`
+branch**, not master. The reward plumbing (the `sans` achievement + sentinel) is ADR-0072.
+
+**Context.** The owner wanted a hidden install path: `curl -fsSL …/secret/secret_install.sh | sh`
+opens the classic Sans battle, and JII installs only once you win — unlocking the secret `sans`
+achievement. The fight is a compiled Construct 2 browser game (`c2runtime.js`/`data.js`), and a
+terminal `| sh` cannot render it, nor can a page on `github.io` (https) signal a local shell
+(mixed-content blocks `fetch('http://127.0.0.1')`).
+
+**Decision.** Serve a **self-hosted fork locally** and bridge victory over same-origin HTTP:
+`secret_install.sh` downloads a `game.tar.gz` bundle, starts a **python3 one-shot server** on
+`127.0.0.1:<random>` (SimpleHTTPRequestHandler subclass), `xdg-open`s it, and blocks. The bundle's
+`index.html` is a cleaned copy of the deployed page — Yandex portal SDK, AdSense, gtag and the
+service worker stripped, with no-op stubs for the ad hooks the compiled game still calls
+(`ShowAd()`, `ysdk.features.*`) so they don't throw — plus a **victory poller** that reads the C2
+runtime's Text-object `.text` for Sans's concession line ("you win"); **no game code is patched**.
+On detection the page calls `/claim?token=<random>` (a token templated into the served HTML gates
+against other local processes); the server writes a marker, replies, and `os._exit`s (the
+`shutdown()` dance proved flaky). The shell then drops the `secret-install` sentinel (ADR-0072) and
+delegates the actual install to master's canonical `install.sh`. **Fallbacks are mandatory and
+honest:** no TTY / no `$DISPLAY` / no `python3` (3.7+) / no browser → a normal install, no fight, no
+achievement (never a dead end). The Undertale fan-game assets are redistributed on the `secret`
+branch per the repo owner's explicit decision (grey-zone fan content); audio (`media/*.ogg`) is
+bundled so the fight isn't silent.
+
+**Alternatives.** (a) Host the fork on GitHub Pages and signal localhost — rejected: https→http
+mixed-content is blocked, so victory can't reach the shell. (b) Patch the compiled win event in
+`data.js` — rejected: fragile against the C2 data model; polling rendered text is robust and
+touches nothing. (c) A `nc`/shell server — rejected: netcat variants differ and binary assets
+(audio/sprites) serve incorrectly. (d) A bundled Rust server — rejected: per-arch build/ship
+overhead for an easter egg; python3 is near-universal on desktop Linux.
+
+**Consequences.** A self-contained, decoupled easter egg: master carries only the reward plumbing;
+the `secret` branch is a thin delivery vehicle (installer + bundle). Verified end-to-end headlessly
+(server/token/claim/shutdown, sentinel drop, the no-TTY fallback) and in a real browser (game boots
+to MainMenu, audio decodes with no console errors, the poller detects an injected "you win" on the
+live runtime). Not tested: an actual human playthrough — that's the owner's to run.

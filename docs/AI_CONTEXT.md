@@ -35,12 +35,23 @@ _Last updated: 2026-08-13_
   end-to-end (sentinel → toast → `1/3`). 4 unit tests.
 - **304 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
 
-### Next: second half of the Sans installer (owner decisions locked in)
-The `secret` branch's `secret_install.sh`: download a **self-hosted fork** of `c2-sans-fight` (owner
-accepted the Undertale-asset "grey zone" as repo owner), serve it on `127.0.0.1:PORT`, `xdg-open` it,
-the forked game hits a local `/claim` on victory (same-origin, no CORS), the server then drops the
-`secret-install` sentinel and runs the normal JII install. **Fallbacks are mandatory** (headless / no
-browser / SSH / CI must degrade, never dead-end). Not started.
+- **Secret Sans-fight installer (ADR-0073) — DONE, on the orphan `secret` branch.** `curl …/secret/
+  secret_install.sh | sh` downloads a self-hosted fork of the Bad Time Simulator (`game.tar.gz`,
+  2.8M incl. `media/*.ogg` audio), serves it via a python3 one-shot local server (token-gated
+  `/claim`, self-terminating via `os._exit`), `xdg-open`s it, and on victory drops the
+  `secret-install` sentinel (ADR-0072) then runs master's `install.sh`. The bundled `index.html` is
+  a cleaned copy of the deployed page (Yandex SDK/ads/gtag/service-worker stripped, no-op stubs for
+  `ShowAd()`/`ysdk.*`) + a poller that reads the C2 runtime's Text objects for Sans's "you win" line
+  — **no game code patched**. Honest fallbacks (no TTY/DISPLAY/python3/browser → normal install).
+  Verified headlessly (server/token/claim/shutdown, sentinel, no-TTY fallback) and in a real browser
+  (boots to MainMenu, audio decodes clean, poller detects an injected win on the live runtime). The
+  `secret` branch is **local only — not pushed yet** (needed for the live `curl` test). A real human
+  playthrough is the owner's to run.
+
+### Next (owner to steer)
+Owner rounds #3/#4 items still open: the **codec re-offer bug** (needs a live Fedora-VM `jii doctor`
+run to see the real failure) and refreshing `jii-test-guide.html`. Otherwise back to the beta-freeze
+priorities below.
 
 ---
 

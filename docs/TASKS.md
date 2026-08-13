@@ -678,9 +678,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (2) *Achievements subsystem* (ADR-0072) — `src/achievements.rs` ledger + `jii achievements`
                   (`first-install`/`doctor`/secret `sans`), localized en+ru, best-effort grants, secret shows
                   `???`; `sans` granted via a `secret-install` **sentinel** for the coming secret installer.
-                  304 tests, clippy clean, **uncommitted**. **Next:** build the `secret` branch's
-                  `secret_install.sh` (self-hosted Sans-fight fork → local `/claim` → sentinel → install;
-                  mandatory headless fallback). Owner locked: fork+self-host assets, achievements first (done).
+                  304 tests, clippy clean. (3) *Secret Sans-fight installer* (ADR-0073) on the orphan
+                  **`secret`** branch: `secret_install.sh` (python3 one-shot local server, token-gated
+                  `/claim`, self-terminating) + `game.tar.gz` (cleaned C2 fork: portal SDK/ads/SW stripped,
+                  no-op ad stubs, victory poller on the runtime's "you win" text, `media/*.ogg` audio).
+                  On a win → drops the `secret-install` sentinel → runs master's `install.sh`; honest
+                  fallbacks (no TTY/DISPLAY/python3/browser → normal install). Verified headlessly + in a
+                  real browser (boots to MainMenu, audio clean, poller detects an injected win). Owner
+                  locked: fork+self-host assets, achievements first. **`secret` branch local, not pushed.**
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
