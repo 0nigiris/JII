@@ -98,10 +98,16 @@ fi
 
 # --- Fetch and unpack the game ----------------------------------------------
 WORK=$(mktemp -d)
-# Cleanup on exit; a Ctrl-C just stops the server so we fall through to the normal install
-# (as promised on screen), rather than aborting outright.
+# Cleanup always. A Ctrl-C cancels outright — the user deliberately chose the secret path,
+# so we stop rather than silently doing a plain install they didn't ask for.
+jii_cancel() {
+  kill "${SRV:-}" 2>/dev/null
+  printf '\n'
+  warn "Cancelled — nothing was installed."
+  exit 130
+}
 trap 'kill "${SRV:-}" 2>/dev/null; rm -rf "$WORK"' EXIT
-trap 'kill "${SRV:-}" 2>/dev/null' INT TERM
+trap jii_cancel INT TERM
 GAME="$WORK/game"
 mkdir -p "$GAME"
 
@@ -221,9 +227,10 @@ else
 fi
 
 printf '\n%s* It'"'"'s a beautiful day outside. Beat Sans to install JII.%s\n' "$CB" "$C0"
-info "Waiting for your victory…  (Ctrl-C to skip and install normally)"
+info "Waiting for your victory…  (Ctrl-C to cancel)"
 
-# Block until the server shuts down (a valid /claim) or the user interrupts.
+# Block until the server shuts down on a valid /claim. A Ctrl-C is handled by jii_cancel
+# (which exits); reaching past this line means the server ended on its own.
 wait "$SRV" 2>/dev/null || true
 
 printf '\n'
@@ -236,6 +243,8 @@ if [ -f "$CLAIMED" ]; then
     run_normal_install
   fi
 else
-  warn "No win recorded — installing JII the normal way instead."
-  run_normal_install
+  # Server ended without a win and without a Ctrl-C (unexpected). Don't spring a surprise
+  # install on the user — just stop.
+  warn "The fight ended without a win — nothing was installed."
+  exit 1
 fi
