@@ -41,9 +41,9 @@ banner() {
 
 # --- Downloader --------------------------------------------------------------
 if command -v curl >/dev/null 2>&1; then
-  dl() { curl -fsSL "$1" -o "$2"; }
+  dl() { curl -fsSL --retry 3 --retry-delay 1 "$1" -o "$2"; }
 elif command -v wget >/dev/null 2>&1; then
-  dl() { wget -qO "$2" "$1"; }
+  dl() { wget -q --tries=3 --waitretry=1 -O "$2" "$1"; }
 else
   dl() { return 1; }
 fi
@@ -52,9 +52,9 @@ fi
 run_normal_install() {
   info "Installing JII the normal way…"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$INSTALL_URL" | sh
+    curl -fsSL --retry 3 --retry-delay 1 "$INSTALL_URL" | sh
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO- "$INSTALL_URL" | sh
+    wget -q --tries=3 --waitretry=1 -O- "$INSTALL_URL" | sh
   else
     err "need curl or wget to install."
   fi
@@ -79,8 +79,12 @@ if command -v python3 >/dev/null 2>&1 \
   PYOK=1
 fi
 
-if [ ! -t 1 ] || [ ! -t 0 ]; then
-  warn "No interactive terminal — skipping the fight."
+# Note: with `curl … | sh` stdin is the script pipe, not a terminal — that's the *normal* way
+# to run this, so we must NOT require a TTY on stdin. We only need stdout to be a real terminal
+# (so this isn't a `> log` / CI capture); the fight itself lives in the browser, and the fallback
+# installer reads its own prompts from /dev/tty.
+if [ ! -t 1 ]; then
+  warn "Not an interactive terminal — skipping the fight."
   run_normal_install; exit 0
 fi
 if [ "$GRAPHICAL" -ne 1 ]; then
