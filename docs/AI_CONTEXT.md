@@ -31,9 +31,13 @@ found the game's source (`CherrySodaPop/Jevil-VGB`) — not yet used.
   — achievement shipped (v0.1.13); **two** Jevil games both unlock it: (1) the **Chaos Simulator**
   (Electron, built locally, pending owner playtest — below) and (2) **Jevil-VGB**
   (`CherrySodaPop/Jevil-VGB`, a Game-Boy-styled Godot fight with an **HTML5/web export** + open
-  GDScript source → the easy browser-bridge path like Sans; not built yet). 🎭 **Spamton**
-  (`~/Downloads/SURVEY_PROGRAM.x86_64`, **native Godot 3.6** binary, compiled `.gdc`, no readable win
-  signal, no RE tooling) — **deferred as hard**; no achievement/marker yet.
+  GDScript source → the easy browser-bridge path like Sans; not built yet). 🎭 **Spamton** — **no longer
+  hard.** The native `SURVEY_PROGRAM.x86_64` (compiled Godot, would need RE tooling) is dropped in
+  favour of the owner-found source **`CherrySodaPop/Spamton-NEO-VGB`** — a Game-Boy-styled Godot
+  fight with an **HTML5/web export + open GDScript source** (GPL-3.0), i.e. the same easy
+  browser-bridge path as Sans/Jevil-VGB. Gets its own future secret achievement (🎭 `spamton`);
+  not built yet. **All the "VGB" fights (Jevil-VGB, Spamton-NEO-VGB) + Sans are browser/HTML5 → a
+  shared "browser-boss installer" pattern is worth factoring out** rather than one-off each.
 - **Still to build (on a new orphan `chaos` branch, next):** `chaos_install.sh` + the *modified*
   Electron bundle — renderer watches the Scratch VM for the fight's end (spare = `battler.spare`/
   `joker.spare` broadcasts; kill = `battler.health%` → 0; player death via `CutScene.GameOver.*` is
