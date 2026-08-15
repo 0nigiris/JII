@@ -3001,3 +3001,56 @@ live and unit-verified (kill/spare markers each unlock it with the matching endi
 the fight installer + the modified bundle + the Release asset are the remaining `chaos`-branch
 work. Linux-x86_64 only (the Electron build) — acceptable for a secret path, with a normal
 install everywhere else. A real human playthrough (spare and kill) is the owner's to run.
+
+---
+
+## ADR-0077 — Generic boss sentinels + the two VGB fights (Jevil-VGB, Spamton NEO)
+
+**Status.** Accepted (2026-08-15).
+
+**Context.** ADR-0076 shipped one secret fight with one hard-wired sentinel
+(`take_chaos_sentinel`). The owner then found two more fan games by the same author —
+`CherrySodaPop/Jevil-VGB` and `CherrySodaPop/Spamton-NEO-VGB`, both Deltarune fights
+recreated "handheld-console style" in **Godot 3.6, GPL-3.0, full source published**. A
+per-boss method in `achievements.rs` plus a per-boss branch in `cli/mod.rs` would grow
+linearly with every new fight, and the first Chaos-Simulator detector had already proved
+that guessing the ending from the wrong health variable is easy to get wrong.
+
+**Decision.** Two parts.
+
+*Plumbing.* Replace `chaos_sentinel_path`/`take_chaos_sentinel` with a generic
+`Achievements::boss_sentinel_path(file)` / `take_boss_sentinel(file)` plus named constants
+(`JEVIL_SENTINEL = "chaos-install"`, `SPAMTON_SENTINEL = "spamton-install"`), and replace
+`grant_jevil` with `grant_boss(id, variant, renderer)`. `run()` loops over a
+`(sentinel, achievement id)` table, so a new fight is one table row, one catalog entry and
+one locale block — no new code paths. `achievement_desc_key` treats every boss id the same
+way (`<id>-spare` / `<id>-kill` counters pick the description).
+
+*The fights.* Both games are **built from source** rather than repacked: a 24-line
+`jii_marker.gd` writes `$XDG_STATE_HOME/jii/<marker>` with `spare`|`kill`, and each fight
+script calls it at the exact branch the game already distinguishes — Jevil: `health <= 0`
+(kill) vs `sleepHealth <= 0` (pacified); Spamton NEO: `health <= 0` (kill) vs
+`wireHealth <= 0` (strings cut, "real boy"). No health guessing, no VM hooks, no bridge —
+the win conditions are named in the game's own code. Exported with Godot 3.6 as a single
+embedded-PCK Linux binary (~43 MB each), so the installer is a plain download + `chmod +x`
++ run, with no tarball and no `--no-sandbox` caveat. Jevil-VGB writes the **same**
+`chaos-install` marker as the Chaos Simulator: two Jevil fights, one 🃏. Spamton NEO gets
+his own 🎭 `spamton` (secret, so `completionist` still ignores it).
+
+*Hosting.* `vgb_install.sh` joins `chaos_install.sh` on the `chaos` branch; Spamton gets an
+orphan `spamton` branch and a `spamton-game` release. Because these are **GPL-3.0** works we
+redistribute in binary form, each release also carries the complete modified source
+(`*-source.tar.gz`) — the licence obligation the Chaos Simulator (unknown licence, ADR-0073
+grey zone) doesn't let us discharge.
+
+**Alternatives.** (a) Keep per-boss methods — rejected: linear growth, and the loop is
+smaller than what it replaces. (b) Ship the HTML5 export and reuse the Sans browser bridge —
+rejected: a native window is what the owner asked for, and the Godot export removes the
+bridge entirely. (c) Bundle the Godot editor and run the project unexported — rejected:
+bigger download, worse UX. (d) Give Jevil-VGB its own achievement — rejected: same boss,
+same badge; the ending text still says which way it went.
+
+**Consequences.** JII has 15 achievements, three secret. Adding a fourth fight now costs one
+table row. Linux-x86_64 only (the exports), with the usual honest fallback to a normal
+install. The kill/spare branches are verified in the games' own source, and `jii_marker.gd`
+is runtime-tested, but a real playthrough of each ending remains the owner's to run.

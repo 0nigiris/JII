@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.13-beta
+%global _tag v0.1.14-beta
 
 Name:           jii
-Version:        0.1.13~beta
+Version:        0.1.14~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,11 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.14~beta-1
+- A third secret achievement: 🎭 `spamton`, earned by beating Spamton NEO in the
+  matching install path (the `spamton` branch). Like 🃏 it remembers the ending —
+  blown apart, or freed by cutting his strings. The boss sentinels are now a
+  single generic mechanism, so a new fight needs no new plumbing (ADR-0077).
 * Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.13~beta-1
 - A second secret achievement: 🃏 `jevil`, earned by beating Jevil in the
   Chaos-Simulator install path (the `chaos` branch, coming next). It remembers

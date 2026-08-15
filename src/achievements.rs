@@ -66,7 +66,14 @@ pub const CATALOG: &[Achievement] = &[
     // Secret.
     Achievement { id: "sans", icon: "💀", secret: true },
     Achievement { id: "jevil", icon: "🃏", secret: true },
+    Achievement { id: "spamton", icon: "🎭", secret: true },
 ];
+
+/// Sentinel file names a boss-fight installer drops beside the ledger. Both Jevil fights (the
+/// Chaos Simulator and the handheld-style VGB one) share `chaos-install` because they share the
+/// 🃏 achievement; Spamton NEO has his own.
+pub const JEVIL_SENTINEL: &str = "chaos-install";
+pub const SPAMTON_SENTINEL: &str = "spamton-install";
 
 /// Install-count milestones (the `installs` counter).
 pub const CENTURION_AT: u64 = 100;
@@ -147,13 +154,13 @@ impl Achievements {
         Some(base.join("secret-install"))
     }
 
-    /// The sentinel the *chaos* installer drops (`$XDG_STATE_HOME/jii/chaos-install`) to grant the
-    /// secret `jevil` on JII's next run. Its contents record how the fight ended — `spare` or
-    /// `kill` — so the achievement can show which path you took.
-    pub fn chaos_sentinel_path() -> Option<PathBuf> {
+    /// The sentinel a *boss-fight* installer drops beside the ledger, named by `file` (see
+    /// [`JEVIL_SENTINEL`] / [`SPAMTON_SENTINEL`]). Its contents record how the fight ended —
+    /// `spare` or `kill` — so the achievement can show which path you took.
+    pub fn boss_sentinel_path(file: &str) -> Option<PathBuf> {
         let dirs = directories::ProjectDirs::from("", "", "jii")?;
         let base = dirs.state_dir().unwrap_or_else(|| dirs.data_dir());
-        Some(base.join("chaos-install"))
+        Some(base.join(file))
     }
 
     /// This machine's stable id, so a valid ledger can't simply be copied to another machine.
@@ -323,11 +330,11 @@ impl Achievements {
         self.ledger.sources.len()
     }
 
-    /// If the chaos-install sentinel exists, delete it and return how the fight ended:
-    /// `"spare"` or `"kill"` (anything else — or empty — is normalized to `"spare"`). Returns
-    /// `None` when there's no sentinel. The caller unlocks `jevil` and remembers the path.
-    pub fn take_chaos_sentinel() -> Option<String> {
-        let path = Self::chaos_sentinel_path()?;
+    /// If the named boss sentinel exists, delete it and return how the fight ended: `"spare"`
+    /// or `"kill"` (anything else — or empty — is normalized to `"spare"`). Returns `None` when
+    /// there's no sentinel. The caller unlocks the matching secret and remembers the path.
+    pub fn take_boss_sentinel(file: &str) -> Option<String> {
+        let path = Self::boss_sentinel_path(file)?;
         let body = std::fs::read_to_string(&path).ok()?;
         let _ = std::fs::remove_file(&path);
         let variant = match body.trim().to_ascii_lowercase().as_str() {
@@ -379,7 +386,7 @@ mod tests {
 
     #[test]
     fn secret_achievements_are_marked_secret() {
-        for id in ["sans", "jevil"] {
+        for id in ["sans", "jevil", "spamton"] {
             let a = find(id).unwrap_or_else(|| panic!("{id} missing from catalog"));
             assert!(a.secret, "{id} must be secret");
         }

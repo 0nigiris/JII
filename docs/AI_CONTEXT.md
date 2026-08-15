@@ -12,39 +12,43 @@ _Last updated: 2026-08-15_
 
 ---
 
-## Most recent work (2026-08-15, batch 13) — read this first
+## Most recent work (2026-08-15, batch 14) — read this first
 
-**Owner ask: a second secret installer — beat *Jevil* (Deltarune) in the "Chaos Simulator", and
-JII installs whether you spare or kill him. In progress; recorded as ADR-0076.** The found game is
-a **TurboWarp/Scratch project packaged as Electron** (`~/Downloads/chaos-simulator`,
-`resources/app/` unpacked, ~242 MB) — already a native window, with a built-in `ipcMain`+`preload`
-bridge, so the fight can signal the shell directly (no local HTTP server like Sans). Owner also
-found the game's source (`CherrySodaPop/Jevil-VGB`) — not yet used.
+**Owner ask: ship the Jevil fight and add the remaining bosses. Chaos Simulator is LIVE; the two
+Godot "VGB" fights are built and their JII half is in v0.1.14-beta. ADR-0077.**
 
-- **v0.1.13-beta ships the in-binary half (done, releasing).** New secret achievement **`jevil` 🃏**
-  (`CATALOG`); JII consumes a `chaos-install` sentinel (contents `spare`|`kill`) on its next run via
-  `Achievements::take_chaos_sentinel()` → `grant_jevil()` unlocks it, records the ending in a
-  `jevil-spare`/`jevil-kill` counter, and `achievement_desc_key()` shows the matching description.
-  `completionist` still excludes secrets. 309 tests, clippy clean; verified live (kill/spare markers
-  each unlock 🃏 with the right text; catalog now 14).
-- **Secret-boss roster (owner decision 2026-08-15).** 💀 `sans` — done/live (secret branch). 🃏 `jevil`
-  — achievement shipped (v0.1.13); **two** Jevil games both unlock it: (1) the **Chaos Simulator**
-  (Electron, built locally, pending owner playtest — below) and (2) **Jevil-VGB**
-  (`CherrySodaPop/Jevil-VGB`, a Game-Boy-styled Godot fight with an **HTML5/web export** + open
-  GDScript source → the easy browser-bridge path like Sans; not built yet). 🎭 **Spamton** — **no longer
-  hard.** The native `SURVEY_PROGRAM.x86_64` (compiled Godot, would need RE tooling) is dropped in
-  favour of the owner-found source **`CherrySodaPop/Spamton-NEO-VGB`** — a Game-Boy-styled Godot
-  fight with an **HTML5/web export + open GDScript source** (GPL-3.0), i.e. the same easy
-  browser-bridge path as Sans/Jevil-VGB. Gets its own future secret achievement (🎭 `spamton`);
-  not built yet. **All the "VGB" fights (Jevil-VGB, Spamton-NEO-VGB) + Sans are browser/HTML5 → a
-  shared "browser-boss installer" pattern is worth factoring out** rather than one-off each.
-- **Still to build (on a new orphan `chaos` branch, next):** `chaos_install.sh` + the *modified*
-  Electron bundle — renderer watches the Scratch VM for the fight's end (spare = `battler.spare`/
-  `joker.spare` broadcasts; kill = `battler.health%` → 0; player death via `CutScene.GameOver.*` is
-  NOT a win), `preload` exposes a one-way channel, `electron-main.js` `ipcMain` writes the
-  `chaos-install` sentinel then quits; the shell runs `install.sh`. Bundle hosted as a **GitHub
-  Release asset** (>100 MB can't go in git). Honest fallbacks (no `$DISPLAY`/GUI/x86_64-Linux →
-  normal install). See ADR-0076.
+- **🃏 Jevil #1 — the Chaos Simulator — is published and playtested.** Orphan branch **`chaos`**
+  (`chaos_install.sh` + its own README with credits/takedown notice); the modified Electron bundle
+  is the `chaos-simulator-linux-x86_64.tar.gz` asset on the **`chaos-game`** release.
+  `curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/chaos/chaos_install.sh | sh`.
+  The owner confirmed **both** endings write the right marker (a first detector version misread
+  `battler.health%` — the *player's* HP — and reported every kill as a spare; the shipped detector
+  treats a `*spare*` broadcast as definitive and any un-spared `battle_end` as a kill, with
+  `joker.healthReal` only as corroboration and a `chaos-debug.log` trail).
+- **Boss plumbing is now generic (ADR-0077).** `Achievements::boss_sentinel_path(file)` /
+  `take_boss_sentinel(file)` + `JEVIL_SENTINEL`/`SPAMTON_SENTINEL` constants replace the
+  Jevil-specific pair; `grant_boss(id, variant, renderer)` replaces `grant_jevil`; `run()` loops a
+  `(sentinel, id)` table. **A new fight = one table row + one catalog entry + one locale block.**
+- **v0.1.14-beta adds the third secret: 🎭 `spamton`** (catalog now 15, three secret;
+  `completionist` still excludes secrets). Endings: `kill` (blown apart) / `spare` (strings cut).
+  309 tests, clippy clean.
+- **Both VGB fights are BUILT from source, not repacked.** `CherrySodaPop/Jevil-VGB` and
+  `CherrySodaPop/Spamton-NEO-VGB` (Godot **3.6**, `config_version=4`, GPL-3.0). A 24-line
+  `jii_marker.gd` writes `$XDG_STATE_HOME/jii/<marker>`; each fight script calls it at the branch
+  the game already has — Jevil `health<=0` (kill) vs `sleepHealth<=0` (pacify); Spamton `health<=0`
+  (kill) vs `wireHealth<=0` (strings cut). Exported with **Flatpak `org.godotengine.Godot3` 3.6**
+  (`--export "Linux/X11"`, `binary_format/embed_pck=true`) → **one self-contained ~43 MB binary
+  each**, so no tarball, no bridge, no `--no-sandbox`. Templates: only `linux_x11_64_*` copied into
+  `~/.var/app/org.godotengine.Godot3/data/godot/templates/3.6.stable/`. Build tree: `~/vgb-build/`.
+  `jii_marker.gd` is runtime-verified (writes correctly; note that **inside Flatpak**
+  `XDG_STATE_HOME` points into `~/.var/app/…`, which is why a sandboxed test seems to write
+  nothing to `~/.local/state`).
+- **Jevil-VGB shares 🃏** — it writes the same `chaos-install` marker; its `jevil-vgb.x86_64` is a
+  second asset on the **`chaos-game`** release, installed by `vgb_install.sh` on the `chaos` branch.
+- **GPL-3.0 compliance:** both releases also carry the complete modified sources
+  (`jevil-vgb-source.tar.gz`, `spamton-neo-vgb-source.tar.gz`) — required, since we redistribute
+  GPL binaries. (The Chaos Simulator has no known licence; it stays under the ADR-0073 grey-zone
+  decision with a takedown note in the branch README.)
 
 ## Previous work (2026-08-15, batch 12)
 

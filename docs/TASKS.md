@@ -701,16 +701,24 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (`curl -fsSL https://sudonit.com/install.sh | sh`) across README/install.sh/TESTING/
                   SUPPORTED_SYSTEMS/JII_EXPLAINED, GitHub raw kept as fallback; binaries still from Releases.
                   Deployed + verified live (both 200). Keep the two `install.sh` copies in sync.
-            - [~] **Owner feedback round #6 (2026-08-15, → v0.1.13-beta): the Jevil "Chaos Simulator"
-                  installer** (ADR-0076). **Done (v0.1.13):** second secret achievement 🃏 `jevil` +
-                  `chaos-install` sentinel (`take_chaos_sentinel` → `grant_jevil`, remembers spare/kill via a
-                  counter, shows the matching desc; `completionist` excludes secrets). 309 tests, clippy clean,
-                  verified live (14 achievements). **Still open:** the `chaos` orphan branch — `chaos_install.sh`
-                  + the modified Electron bundle (found at `~/Downloads/chaos-simulator`, TurboWarp/Scratch in
-                  Electron): renderer watches the Scratch VM for spare (`battler.spare`/`joker.spare`) or kill
-                  (`battler.health%`→0), `preload` bridge + `ipcMain` writes the sentinel then quits; bundle as a
-                  GitHub Release asset (242 MB); honest fallbacks. Owner also found the game source
-                  `CherrySodaPop/Jevil-VGB` (maybe a lighter rebuild later). A human playthrough is the owner's.
+            - [x] **Owner feedback round #6 (2026-08-15, → v0.1.13-beta): the Jevil "Chaos Simulator"
+                  installer** (ADR-0076). Second secret achievement 🃏 `jevil` + the `chaos-install` sentinel
+                  (remembers spare/kill via a counter and shows the matching desc; `completionist` excludes
+                  secrets). Shipped end-to-end: orphan **`chaos`** branch (`chaos_install.sh` + README with
+                  credits/takedown note), the modified Electron bundle as the `chaos-simulator-linux-x86_64.tar.gz`
+                  asset on the **`chaos-game`** release, honest fallbacks. **Owner playtested both endings.**
+                  (A first detector misread `battler.health%` — the *player's* HP — and called every kill a spare;
+                  fixed to "a `*spare*` broadcast is definitive, an un-spared `battle_end` is a kill".)
+            - [x] **Owner feedback round #7 (2026-08-15, → v0.1.14-beta): the two Godot "VGB" fights**
+                  (ADR-0077). Boss sentinels made **generic** (`boss_sentinel_path`/`take_boss_sentinel` +
+                  `JEVIL_SENTINEL`/`SPAMTON_SENTINEL`, `grant_boss(id, variant, …)`, a `(sentinel, id)` table in
+                  `run()`) — a new fight is now one table row. Third secret achievement 🎭 `spamton` (catalog 15,
+                  three secret). Both `CherrySodaPop` games (Godot 3.6, GPL-3.0) **built from source** with a
+                  24-line `jii_marker.gd` hooked into the win branches the games already have (Jevil
+                  `health`/`sleepHealth`, Spamton `health`/`wireHealth`), exported as single embedded-PCK ~43 MB
+                  Linux binaries. `vgb_install.sh` (→ same 🃏, `chaos-game` release) and the orphan **`spamton`**
+                  branch + `spamton-game` release (→ 🎭). Both releases also carry the complete modified sources
+                  (GPL-3.0 §6). 309 tests, clippy clean. Playthroughs of each ending are the owner's to run.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

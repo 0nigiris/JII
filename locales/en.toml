@@ -515,8 +515,16 @@ desc = "Downloaded JII via the secret method."
 
 [achieve.jevil]
 title = "Chaos, Chaos!"
-desc = "Installed JII by beating Jevil in the Chaos Simulator."
+desc = "Installed JII by beating Jevil."
 desc-spare = "Spared Jevil, had a laugh together — and installed JII anyway."
 desc-kill = "Struck Jevil down — and installed JII all the same."
 toast-spare = "* You spared him. Chaos, chaos — and JII installs either way."
 toast-kill = "* You struck him down. Chaos, chaos — and JII installs either way."
+
+[achieve.spamton]
+title = "[BIG SHOT]"
+desc = "Installed JII by beating Spamton NEO."
+desc-spare = "Cut the strings, set him free — and installed JII on the way out."
+desc-kill = "Blew Spamton NEO apart — and installed JII on the way out."
+toast-spare = "* You cut his strings. A real boy at last — and JII is yours."
+toast-kill = "* You blew him away. [HYPERLINK BLOCKED] — and JII is yours."
