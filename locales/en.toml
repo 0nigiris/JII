@@ -457,6 +457,10 @@ unlocked = "Achievement unlocked  {icon}  {title}"
 header = "Achievements  {earned}/{total}"
 hidden = "Keep using JII to uncover this one."
 
+[achieve.tamper]
+line1 = "* so you edited the ledger by hand. that's cheating, and cheaters get nothing."
+line2 = "* your achievements have been reset. earn them for real this time."
+
 [achieve.first-install]
 title = "Just Installed It"
 desc = "Installed your first package with JII."
@@ -464,6 +468,46 @@ desc = "Installed your first package with JII."
 [achieve.doctor]
 title = "House Call"
 desc = "Ran jii doctor to check the system over."
+
+[achieve.explorer]
+title = "Curious"
+desc = "Ran your first search with jii search."
+
+[achieve.cleaner]
+title = "Clean Sweep"
+desc = "Removed a package with JII."
+
+[achieve.fresh]
+title = "Freshly Pressed"
+desc = "Ran an update."
+
+[achieve.self-made]
+title = "Self-Made"
+desc = "Updated JII itself with jii update jii."
+
+[achieve.bootstrapper]
+title = "Bootstrapper"
+desc = "Let JII set up a package manager that wasn't installed."
+
+[achieve.night-owl]
+title = "Night Owl"
+desc = "Installed something between midnight and 4am."
+
+[achieve.polyglot]
+title = "Polyglot"
+desc = "Installed from five different sources."
+
+[achieve.centurion]
+title = "Centurion"
+desc = "Installed 100 packages with JII."
+
+[achieve.millennium]
+title = "Five Hundred"
+desc = "Installed 500 packages with JII. Are you okay?"
+
+[achieve.completionist]
+title = "Completionist"
+desc = "Unlocked every other achievement."
 
 [achieve.sans]
 title = "I can do everything to install JII"

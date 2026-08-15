@@ -686,6 +686,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   fallbacks (no TTY/DISPLAY/python3/browser → normal install). Verified headlessly + in a
                   real browser (boots to MainMenu, audio clean, poller detects an injected win). Owner
                   locked: fork+self-host assets, achievements first. **`secret` branch local, not pushed.**
+            - [x] **Owner feedback round #5 (2026-08-15, → v0.1.12-beta): achievements expansion + anti-tamper**
+                  (ADR-0074). Catalog 3 → 13 (everyday explorer/cleaner/fresh; hunt-for self-made/bootstrapper/
+                  night-owl/polyglot/centurion; extreme millennium/completionist; secret sans). Ledger gained
+                  `counters`+`sources`; `record_install` + `grant_achievement` hooks at each command's success.
+                  **HMAC-SHA256** signing keyed in the binary + bound to `/etc/machine-id`: a hand-edited or
+                  sig-stripped ledger is caught, mocked (Sans-flavoured, en+ru) and wiped; legacy unsigned files
+                  grandfathered so honest badges survive. Deterrence not security (stated). 308 tests, clippy
+                  clean, verified live. **Still open from this session:** put JII on `sudonit.com` (Astro site at
+                  `/home/oni/V1` — project page ru/en/es + rich landing + home surface + download block) and
+                  switch the canonical `curl` command to `https://sudonit.com/install.sh` (GitHub raw kept as
+                  fallback); ship the site serving the file *before* flipping the URL in README/docs.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

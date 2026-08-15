@@ -8,37 +8,41 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-14_
+_Last updated: 2026-08-15_
 
 ---
 
-## Most recent work (2026-08-14, batch 11) — read this first
+## Most recent work (2026-08-15, batch 12) — read this first
 
-**Owner feedback round #4 — RELEASED as `v0.1.11-beta` (tag pushed; CI builds the artifacts).**
-Committed + pushed. The owner's live secret-installer run surfaced that the *released* binary must
-carry the achievements code for `jii achievements` and the `sans` sentinel-unlock to work — hence this
-release. Known follow-up the owner raised: the achievements ledger is trivially forgeable (plain JSON +
-the sentinel file); add lightweight tamper-detection (an HMAC keyed in the binary → a snarky reset on a
-mismatch) as deterrence, not real security (a local file can always be forged).
+**Owner ask: expand achievements + make the ledger tamper-resistant. DONE in code; cutting
+`v0.1.12-beta`.** Builds on ADR-0072/0073; recorded as **ADR-0074**.
 
-- **Installer header: bordered, centre-aligned tagline card + download spinner (owner: "A and B, text
-  dead-centre").** `install.sh`'s `banner` now draws the ASCII JII cube beside a rounded box (`╭─╮`,
-  `╾─` connector to the logo, ASCII `+ | <-` fallback) whose title + two tagline lines are exactly
-  centred via `_center`/`_repeat` (ASCII text → `${#…}` is the true width). New `_spin_wait` +
-  `dl_progress` wrap the *actual* package download in a braille spinner (`⠋⠙⠹…`, ASCII `|/-\`), so a
-  slow network no longer looks hung; inert with no TTY, propagates the download's exit status. Install
-  logic untouched; `sh -n` clean, rendered + status-propagation verified. **Still must be pushed to
-  `master` to test the `curl … | sh` live.**
-- **Achievements subsystem (ADR-0072) — first half of the owner's "secret Sans-fight installer".** New
-  `src/achievements.rs`: a cosmetic JSON ledger (`$XDG_STATE_HOME/jii/achievements.json`) of
-  `{id → unlocked_at}`, a static `CATALOG` (`first-install` 🌱, `doctor` 🩺, secret `sans` 💀), localized
-  titles/descs (`achieve.<id>.title|desc`, en+ru). `jii achievements` (alias `achievement`) lists
-  progress; secret+locked shows `???` (and `null` in `--json`) — never spoiled. `grant_achievement`
-  is best-effort (swallows all errors, silent in JSON). Wired: `first-install` on a successful install,
-  `doctor` on `jii doctor`. `sans` is granted via a **sentinel file** (`…/jii/secret-install`) the
-  future secret installer drops, consumed once by `Achievements::take_sentinel` in `run()`. Verified
-  end-to-end (sentinel → toast → `1/3`). 4 unit tests.
-- **304 tests, clippy clean.** `cargo build`/`clippy`/`test` all green.
+- **Catalog grew 3 → 13 (`src/achievements.rs` `CATALOG`, display order easy→hard).** Everyday:
+  `explorer` 🔍 (first search), `cleaner` 🧹 (remove), `fresh` 🔄 (update). Hunt-for: `self-made` 🧬
+  (self-update), `bootstrapper` 🔧 (T6 manager bootstrap), `night-owl` 🌙 (install 00:00–04:00 local),
+  `polyglot` 🗺️ (5 distinct sources), `centurion` 🏆 (100 installs). Extreme: `millennium` 💯 (500
+  installs), `completionist` 👑 (every non-secret badge — secret never required). Plus the existing
+  `first-install` 🌱, `doctor` 🩺, secret `sans` 💀.
+- **Ledger gained `counters` (`installs` total) + `sources` (distinct source ids).** New
+  `record_install` (bumps counter, records sources, checks the install-driven badges + night-owl +
+  completionist) replaces the lone `first-install` grant; `grant_achievement`/`maybe_completionist`
+  handle the rest. Hooks at each command's success point in `cli/mod.rs`. Constants: `CENTURION_AT`
+  100, `MILLENNIUM_AT` 500, `POLYGLOT_SOURCES` 5.
+- **Anti-tamper (ADR-0074): HMAC-SHA256 over the ledger, keyed in the binary + bound to
+  `/etc/machine-id`.** `save` signs; `load` flags a bad/stripped signature as tampering → wipes the
+  ledger and `run()` scolds once (Sans-flavoured `achieve.tamper.line1/2`, en+ru) then re-signs.
+  Pre-signing legacy files (only `unlocked`, no `sig`) are **grandfathered** so honest v0.1.11 badges
+  (incl. the owner's 💀) survive. HMAC hand-rolled on `sha2` (no new crate). **Deterrence, not
+  security — the key is extractable; it defeats a text editor, not a reverse-engineer.**
+- **308 tests, clippy clean.** Verified live: fresh list renders `0/13` with 💀 hidden; a forged
+  ledger is scolded, wiped and re-signed on the next command; second run silent.
+- **Owner's other asks this session (NOT in this release, next up):** (1) put JII on the
+  `sudonit.com` site (`/home/oni/V1`, Astro/GitHub-Pages, tri-lingual) — owner wants the full
+  treatment: a `projects` collection entry (ru/en/es → `/jii`) + a rich landing + surfaced on home +
+  a download/install block. (2) Switch the canonical `curl` command to
+  `https://sudonit.com/install.sh` (file served from the site's `public/`) with the GitHub raw URL
+  kept as a working fallback. Order: ship the site serving `install.sh` first, *then* flip the URL in
+  JII's README/docs — otherwise the new command 404s.
 
 - **Secret Sans-fight installer (ADR-0073) — DONE, on the orphan `secret` branch.** `curl …/secret/
   secret_install.sh | sh` downloads a self-hosted fork of the Bad Time Simulator (`game.tar.gz`,

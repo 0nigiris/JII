@@ -12,8 +12,19 @@
 //! they are earned. One of them — `sans` — is granted only by the secret install path: that
 //! installer drops a sentinel file which JII notices on its next run (see [`Achievements::
 //! take_sentinel`]).
+//!
+//! # Anti-tamper (ADR-0074)
+//!
+//! The ledger is a plain local file the user owns, so it can never be *truly* tamper-proof — any
+//! key baked into the binary is extractable. What we can do is make casual hand-editing detectable
+//! and unrewarding. Every save writes an HMAC-SHA256 signature over the ledger's content, keyed by
+//! a constant in the binary and bound to this machine's `/etc/machine-id`. On load a bad signature
+//! (a hand-edited JSON, or a ledger copied from another machine) is treated as tampering: the
+//! ledger is wiped and JII reacts once, in-character. This is deterrence, not security — see the
+//! ADR. Ledgers written before signing shipped (`sig` absent, no v2 fields) are grandfathered in
+//! once and re-signed; a v2-shaped file with its `sig` stripped is treated as tampering.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -21,8 +32,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{JiiError, Result};
 
-/// A static catalog entry. The persisted store holds only ids + timestamps; all the
-/// presentational metadata (icon, secrecy) and text (via locale keys) live here / in the
+/// A static catalog entry. The persisted store holds only ids, timestamps and a few counters;
+/// all the presentational metadata (icon, secrecy) and text (via locale keys) live here / in the
 /// locale files.
 pub struct Achievement {
     /// Stable id — the persistence key *and* the locale-key stem. Never rename an existing id.
@@ -33,27 +44,90 @@ pub struct Achievement {
     pub secret: bool,
 }
 
-/// The full set JII knows about. The order here is the display order in `jii achievements`.
+/// The full set JII knows about. The order here is the display order in `jii achievements`:
+/// the everyday ones you stumble into first, then the ones you have to hunt for, the two
+/// extreme grinds, and finally the secret.
 pub const CATALOG: &[Achievement] = &[
+    // Everyday — you bump into these just by using JII.
     Achievement { id: "first-install", icon: "🌱", secret: false },
     Achievement { id: "doctor", icon: "🩺", secret: false },
+    Achievement { id: "explorer", icon: "🔍", secret: false },
+    Achievement { id: "cleaner", icon: "🧹", secret: false },
+    Achievement { id: "fresh", icon: "🔄", secret: false },
+    // Have to hunt for these.
+    Achievement { id: "self-made", icon: "🧬", secret: false },
+    Achievement { id: "bootstrapper", icon: "🔧", secret: false },
+    Achievement { id: "night-owl", icon: "🌙", secret: false },
+    Achievement { id: "polyglot", icon: "🗺️", secret: false },
+    Achievement { id: "centurion", icon: "🏆", secret: false },
+    // Extreme grinds.
+    Achievement { id: "millennium", icon: "💯", secret: false },
+    Achievement { id: "completionist", icon: "👑", secret: false },
+    // Secret.
     Achievement { id: "sans", icon: "💀", secret: true },
 ];
+
+/// Install-count milestones (the `installs` counter).
+pub const CENTURION_AT: u64 = 100;
+pub const MILLENNIUM_AT: u64 = 500;
+/// How many *distinct* sources you must have installed from to earn `polyglot`.
+pub const POLYGLOT_SOURCES: usize = 5;
 
 /// Look up a catalog entry by id.
 pub fn find(id: &str) -> Option<&'static Achievement> {
     CATALOG.iter().find(|a| a.id == id)
 }
 
-/// The persisted ledger: which achievements are unlocked, and when.
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Achievements {
-    /// id → unlock timestamp. A `BTreeMap` keeps the on-disk JSON stable and ordered.
+/// The signed content of the ledger — everything an HMAC must cover. Split out so we can
+/// serialize *exactly this* (in stable `BTreeMap`/`BTreeSet` order) to sign and verify it,
+/// with the signature living outside in [`StoredOut`].
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
+struct Ledger {
+    /// id → unlock timestamp.
     unlocked: BTreeMap<String, DateTime<Utc>>,
-    /// Where this ledger is persisted. Not serialized.
-    #[serde(skip)]
-    path: Option<PathBuf>,
+    /// Named running totals (e.g. `installs` → 137).
+    counters: BTreeMap<String, u64>,
+    /// Distinct source ids ever installed from (drives `polyglot`).
+    sources: BTreeSet<String>,
 }
+
+/// On-disk shape when reading: every field optional so we can tell a pre-signing legacy file
+/// (only `unlocked`) from a v2 file whose `sig` was stripped (has `counters`/`sources`).
+#[derive(Debug, Default, Deserialize)]
+struct RawStored {
+    #[serde(default)]
+    unlocked: Option<BTreeMap<String, DateTime<Utc>>>,
+    #[serde(default)]
+    counters: Option<BTreeMap<String, u64>>,
+    #[serde(default)]
+    sources: Option<BTreeSet<String>>,
+    #[serde(default)]
+    sig: Option<String>,
+}
+
+/// On-disk shape when writing: the signed content, flattened, plus its signature.
+#[derive(Debug, Serialize)]
+struct StoredOut<'a> {
+    #[serde(flatten)]
+    ledger: &'a Ledger,
+    sig: String,
+}
+
+/// The in-memory ledger: unlocked achievements, counters, seen sources, and whether the file
+/// we loaded had been tampered with.
+#[derive(Debug, Default)]
+pub struct Achievements {
+    ledger: Ledger,
+    /// Where this ledger is persisted. Not serialized.
+    path: Option<PathBuf>,
+    /// Set at load time when the on-disk signature didn't verify (hand-edited or copied from
+    /// another machine). When true, `ledger` has been wiped; the caller reacts once and saves.
+    tampered: bool,
+}
+
+/// The HMAC key baked into the binary. This is obfuscation, not a secret — a determined user can
+/// extract it. It only has to defeat a text editor (ADR-0074).
+const SIGN_KEY: &[u8] = b"jii/ach/v2:d0e0-4000-4ba8-99ae-fa57e1e57e14/keep-your-sins-off-the-ledger";
 
 impl Achievements {
     /// Default path: `$XDG_STATE_HOME/jii/achievements.json` (falls back to the data dir),
@@ -72,20 +146,99 @@ impl Achievements {
         Some(base.join("secret-install"))
     }
 
-    /// Load from `path`, or start empty (remembering the path) if it does not exist.
-    pub fn load_from(path: &Path) -> Result<Achievements> {
-        match std::fs::read_to_string(path) {
-            Ok(text) => {
-                let mut a: Achievements = serde_json::from_str(&text)
-                    .map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
-                a.path = Some(path.to_path_buf());
-                Ok(a)
+    /// This machine's stable id, so a valid ledger can't simply be copied to another machine.
+    /// Best-effort: if nothing is readable we fall back to a constant, which still defeats a
+    /// plain hand-edit (the signature just won't be machine-specific).
+    fn machine_id() -> Vec<u8> {
+        for p in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+            if let Ok(s) = std::fs::read_to_string(p) {
+                let t = s.trim();
+                if !t.is_empty() {
+                    return t.as_bytes().to_vec();
+                }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Achievements {
-                path: Some(path.to_path_buf()),
-                ..Default::default()
-            }),
-            Err(e) => Err(JiiError::io(path, e)),
+        }
+        b"jii-no-machine-id".to_vec()
+    }
+
+    /// HMAC-SHA256, hand-rolled on the `sha2` we already depend on (no new crate for ~15 lines).
+    fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        const BLOCK: usize = 64;
+        let mut k = [0u8; BLOCK];
+        if key.len() > BLOCK {
+            k[..32].copy_from_slice(&Sha256::digest(key));
+        } else {
+            k[..key.len()].copy_from_slice(key);
+        }
+        let mut ipad = [0x36u8; BLOCK];
+        let mut opad = [0x5cu8; BLOCK];
+        for i in 0..BLOCK {
+            ipad[i] ^= k[i];
+            opad[i] ^= k[i];
+        }
+        let mut inner = Sha256::new();
+        inner.update(ipad);
+        inner.update(msg);
+        let ih = inner.finalize();
+        let mut outer = Sha256::new();
+        outer.update(opad);
+        outer.update(ih);
+        outer.finalize().into()
+    }
+
+    /// The signature string for a ledger on this machine: HMAC over `machine-id \0 canonical-json`,
+    /// rendered as lowercase hex. Canonical because `BTreeMap`/`BTreeSet` serialize in a fixed order.
+    fn sign(ledger: &Ledger) -> String {
+        let body = serde_json::to_vec(ledger).unwrap_or_default();
+        let mut msg = Self::machine_id();
+        msg.push(0);
+        msg.extend_from_slice(&body);
+        let mac = Self::hmac_sha256(SIGN_KEY, &msg);
+        let mut hex = String::with_capacity(64);
+        for b in mac {
+            hex.push_str(&format!("{b:02x}"));
+        }
+        hex
+    }
+
+    /// Load from `path`, or start empty (remembering the path) if it does not exist.
+    ///
+    /// Verifies the signature. A file whose `sig` doesn't check out — or a v2-shaped file with its
+    /// `sig` stripped — is treated as tampering: the returned ledger is wiped and [`tampered`](
+    /// Self::tampered) is `true`. A pre-signing legacy file (only `unlocked`, no `sig`) is
+    /// grandfathered in and will be re-signed on the next save.
+    pub fn load_from(path: &Path) -> Result<Achievements> {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Achievements { path: Some(path.to_path_buf()), ..Default::default() });
+            }
+            Err(e) => return Err(JiiError::io(path, e)),
+        };
+        let raw: RawStored = serde_json::from_str(&text)
+            .map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
+
+        let has_v2_fields = raw.counters.is_some() || raw.sources.is_some();
+        let ledger = Ledger {
+            unlocked: raw.unlocked.unwrap_or_default(),
+            counters: raw.counters.unwrap_or_default(),
+            sources: raw.sources.unwrap_or_default(),
+        };
+
+        let tampered = match raw.sig {
+            // Signed: trust it only if the signature verifies for this machine.
+            Some(sig) => sig != Self::sign(&ledger),
+            // Unsigned but v2-shaped → the signature was stripped. Tamper.
+            None if has_v2_fields => true,
+            // Unsigned, only `unlocked` → genuine pre-signing legacy. Grandfather it in.
+            None => false,
+        };
+
+        if tampered {
+            Ok(Achievements { ledger: Ledger::default(), path: Some(path.to_path_buf()), tampered: true })
+        } else {
+            Ok(Achievements { ledger, path: Some(path.to_path_buf()), tampered: false })
         }
     }
 
@@ -97,7 +250,7 @@ impl Achievements {
         }
     }
 
-    /// Persist to disk. A no-op if there is no path (e.g. no HOME).
+    /// Persist to disk, signing the content. A no-op if there is no path (e.g. no HOME).
     pub fn save(&self) -> Result<()> {
         let Some(path) = &self.path else {
             return Ok(());
@@ -105,30 +258,54 @@ impl Achievements {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| JiiError::io(parent, e))?;
         }
-        let text = serde_json::to_string_pretty(self)
+        let out = StoredOut { ledger: &self.ledger, sig: Self::sign(&self.ledger) };
+        let text = serde_json::to_string_pretty(&out)
             .map_err(|e| JiiError::Other(anyhow::anyhow!("failed to serialize achievements: {e}")))?;
         std::fs::write(path, text).map_err(|e| JiiError::io(path, e))
     }
 
+    /// Was the loaded ledger tampered with? When true its content has been wiped; the caller
+    /// should react once and [`save`](Self::save) the clean, freshly-signed ledger.
+    pub fn tampered(&self) -> bool {
+        self.tampered
+    }
+
     /// Is `id` unlocked?
     pub fn is_unlocked(&self, id: &str) -> bool {
-        self.unlocked.contains_key(id)
+        self.ledger.unlocked.contains_key(id)
     }
 
     /// When `id` was unlocked, if it is.
     pub fn unlocked_at(&self, id: &str) -> Option<DateTime<Utc>> {
-        self.unlocked.get(id).copied()
+        self.ledger.unlocked.get(id).copied()
     }
 
     /// Unlock `id` if it isn't already. Returns `true` only when this call *newly* unlocked it,
     /// so the caller can show a one-time toast. An unknown id is ignored (returns `false`),
     /// keeping the store honest — it can only ever hold ids from the catalog.
     pub fn unlock(&mut self, id: &str) -> bool {
-        if find(id).is_none() || self.unlocked.contains_key(id) {
+        if find(id).is_none() || self.ledger.unlocked.contains_key(id) {
             return false;
         }
-        self.unlocked.insert(id.to_string(), Utc::now());
+        self.ledger.unlocked.insert(id.to_string(), Utc::now());
         true
+    }
+
+    /// Add `by` to a named counter and return its new value (saturating).
+    pub fn bump(&mut self, key: &str, by: u64) -> u64 {
+        let e = self.ledger.counters.entry(key.to_string()).or_insert(0);
+        *e = e.saturating_add(by);
+        *e
+    }
+
+    /// Record that we installed from `source_id`. Returns `true` if it was newly seen.
+    pub fn add_source(&mut self, source_id: &str) -> bool {
+        self.ledger.sources.insert(source_id.to_string())
+    }
+
+    /// How many distinct sources we've ever installed from.
+    pub fn source_count(&self) -> usize {
+        self.ledger.sources.len()
     }
 
     /// If the secret-install sentinel exists, delete it and return `true` (the caller then
@@ -149,6 +326,12 @@ impl Achievements {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn temp_ledger() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("achievements.json");
+        (dir, path)
+    }
 
     #[test]
     fn unlock_is_idempotent_and_reports_only_first_time() {
@@ -175,12 +358,75 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_through_json() {
+    fn counters_and_sources_accumulate() {
         let mut a = Achievements::default();
+        assert_eq!(a.bump("installs", 3), 3);
+        assert_eq!(a.bump("installs", 2), 5, "counter accumulates across bumps");
+        assert!(a.add_source("dnf"));
+        assert!(!a.add_source("dnf"), "same source not counted twice");
+        assert!(a.add_source("flatpak"));
+        assert_eq!(a.source_count(), 2);
+    }
+
+    #[test]
+    fn signed_ledger_round_trips_and_loads_clean() {
+        let (_d, path) = temp_ledger();
+        let mut a = Achievements::load_from(&path).unwrap();
         a.unlock("doctor");
-        let text = serde_json::to_string(&a).unwrap();
-        let back: Achievements = serde_json::from_str(&text).unwrap();
+        a.bump("installs", 7);
+        a.add_source("cargo");
+        a.save().unwrap();
+
+        let mut back = Achievements::load_from(&path).unwrap();
+        assert!(!back.tampered(), "our own save must verify");
         assert!(back.is_unlocked("doctor"));
+        assert_eq!(back.bump("installs", 0), 7, "counter survives the round trip");
+        assert_eq!(back.source_count(), 1);
+    }
+
+    #[test]
+    fn hand_edited_signed_ledger_is_flagged_and_wiped() {
+        let (_d, path) = temp_ledger();
+        let mut a = Achievements::load_from(&path).unwrap();
+        a.unlock("doctor");
+        a.save().unwrap();
+
+        // Forge `sans` into the JSON, leaving the (now-stale) signature in place.
+        let text = std::fs::read_to_string(&path).unwrap();
+        let doctored = text.replacen(
+            "\"doctor\":",
+            "\"sans\": \"2020-01-01T00:00:00Z\",\n    \"doctor\":",
+            1,
+        );
+        std::fs::write(&path, doctored).unwrap();
+
+        let back = Achievements::load_from(&path).unwrap();
+        assert!(back.tampered(), "a bad signature must be caught");
+        assert!(!back.is_unlocked("sans"), "forged unlock is wiped");
+        assert!(!back.is_unlocked("doctor"), "the whole ledger is reset on tamper");
+    }
+
+    #[test]
+    fn stripped_signature_on_v2_file_is_tamper() {
+        // A v2-shaped file (has counters/sources) with no `sig` = the signature was removed.
+        let (_d, path) = temp_ledger();
+        std::fs::write(
+            &path,
+            r#"{"unlocked":{"sans":"2020-01-01T00:00:00Z"},"counters":{},"sources":[]}"#,
+        )
+        .unwrap();
+        let back = Achievements::load_from(&path).unwrap();
+        assert!(back.tampered());
         assert!(!back.is_unlocked("sans"));
+    }
+
+    #[test]
+    fn legacy_unsigned_ledger_is_grandfathered() {
+        // A pre-signing file has only `unlocked` and no `sig`: keep it, don't punish it.
+        let (_d, path) = temp_ledger();
+        std::fs::write(&path, r#"{"unlocked":{"sans":"2020-01-01T00:00:00Z"}}"#).unwrap();
+        let back = Achievements::load_from(&path).unwrap();
+        assert!(!back.tampered(), "genuine legacy file is trusted");
+        assert!(back.is_unlocked("sans"), "hard-won legacy unlock is kept");
     }
 }

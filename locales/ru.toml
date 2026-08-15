@@ -455,6 +455,10 @@ unlocked = "Достижение получено  {icon}  {title}"
 header = "Достижения  {earned}/{total}"
 hidden = "Продолжай пользоваться JII, чтобы открыть это."
 
+[achieve.tamper]
+line1 = "* значит, правил ledger руками. это читерство, а читерам — ничего."
+line2 = "* твои достижения сброшены. заработай их честно."
+
 [achieve.first-install]
 title = "Just Installed It"
 desc = "Установил первый пакет через JII."
@@ -462,6 +466,46 @@ desc = "Установил первый пакет через JII."
 [achieve.doctor]
 title = "Врач на дом"
 desc = "Запустил jii doctor, чтобы проверить систему."
+
+[achieve.explorer]
+title = "Любопытство"
+desc = "Впервые выполнил поиск через jii search."
+
+[achieve.cleaner]
+title = "Чистюля"
+desc = "Удалил пакет через JII."
+
+[achieve.fresh]
+title = "Свежесть"
+desc = "Запустил обновление."
+
+[achieve.self-made]
+title = "Сам себя"
+desc = "Обновил сам JII через jii update jii."
+
+[achieve.bootstrapper]
+title = "С нуля"
+desc = "Дал JII доустановить менеджер пакетов, которого не было."
+
+[achieve.night-owl]
+title = "Полуночник"
+desc = "Установил что-то между полуночью и 4 утра."
+
+[achieve.polyglot]
+title = "Полиглот"
+desc = "Установил из пяти разных источников."
+
+[achieve.centurion]
+title = "Центурион"
+desc = "Установил 100 пакетов через JII."
+
+[achieve.millennium]
+title = "Пятьсот"
+desc = "Установил 500 пакетов через JII. Ты в порядке?"
+
+[achieve.completionist]
+title = "Коллекционер"
+desc = "Открыл все остальные достижения."
 
 [achieve.sans]
 title = "Я сделаю что угодно, лишь бы установить JII"

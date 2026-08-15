@@ -2860,3 +2860,62 @@ the `secret` branch is a thin delivery vehicle (installer + bundle). Verified en
 (server/token/claim/shutdown, sentinel drop, the no-TTY fallback) and in a real browser (game boots
 to MainMenu, audio decodes with no console errors, the poller detects an injected "you win" on the
 live runtime). Not tested: an actual human playthrough — that's the owner's to run.
+
+---
+
+## ADR-0074 — Achievement expansion + anti-tamper signing
+
+**Status.** Accepted, implemented post-v0.1.11-beta (batch 12). Builds on ADR-0072
+(achievements ledger) and ADR-0073 (secret Sans installer).
+
+**Context.** Two owner asks. (1) The v0.1.11 catalog had only three entries
+(first-install, doctor, secret sans); the owner wanted a fuller set — everyday
+badges you stumble into, several you must hunt for, and two extreme grinds. (2) The
+ledger is plain JSON the user owns, so the secret 💀 (and anything else) could be
+forged by hand-editing `achievements.json` or dropping the `secret-install` sentinel.
+The owner wanted tampering to be caught and mocked, not silently rewarded — while
+accepting that a local file can never be truly tamper-proof.
+
+**Decision — catalog.** Ten new entries join the three, ordered easy→hard in `CATALOG`
+(the display order): everyday (explorer/cleaner/fresh), hunt-for
+(self-made/bootstrapper/night-owl/polyglot/centurion), extreme
+(millennium/completionist), plus the existing secret `sans`. Counter-based badges need
+persisted state, so the ledger grew a `counters` map (`installs` total) and a `sources`
+set (distinct source ids ever installed from); `polyglot` = 5 distinct sources,
+`centurion`/`millennium` = 100/500 installs, `night-owl` = an install in 00:00–04:00
+local, `completionist` = every **non-secret** badge (so the secret is never required to
+finish). Hooks live at each command's success point in `cli/mod.rs`
+(`record_install` for the install-driven ones, `grant_achievement` for the rest); the
+core still never branches on a source **for behaviour** — recording a source id in a
+cosmetic ledger isn't a ranking decision (ADR-0004 intact).
+
+**Decision — anti-tamper.** Every `save` writes an **HMAC-SHA256** over the ledger's
+canonical JSON (stable `BTreeMap`/`BTreeSet` order), keyed by a constant baked in the
+binary and bound to this host's `/etc/machine-id`. On `load`: a present-but-wrong
+signature, or a v2-shaped file (`counters`/`sources` present) with its `sig` stripped,
+is **tampering** → the ledger is wiped in memory and flagged; `run()` reacts once, in a
+Sans-flavoured line, and persists the clean re-signed ledger (so it doesn't nag every
+command). A pre-signing legacy file (only `unlocked`, no `sig`) is **grandfathered** in
+once and re-signed — so honestly-earned v0.1.11 badges (the owner's hard-won 💀)
+survive the upgrade. HMAC is hand-rolled on the existing `sha2` dep (no new crate).
+
+**This is deterrence, not security — stated plainly.** The user owns the machine and the
+binary; the key is extractable by reverse-engineering, so a determined cheater can forge
+a valid signature. The design only has to defeat a text editor: a casual hand-edit
+(the overwhelming case) leaves the stale signature in place and trips instantly, and
+stripping the signature also trips. The residual hole (extract key → recompute) is
+accepted by the owner as out of scope for an easter-egg ledger.
+
+**Alternatives.** (a) Leave it forgeable — rejected: the owner explicitly wanted a
+reaction. (b) Server-side verification — rejected: JII is offline-first; no backend. (c)
+Encrypt the ledger — rejected: the key is still in the binary, and an opaque blob is
+worse UX (users can't read their own progress) for no real gain over a signature. (d) A
+separate `hmac` crate — rejected: HMAC-SHA256 is ~15 lines on the `sha2` we already ship.
+
+**Consequences.** 13 achievements; the ledger is signed and machine-bound; casual
+cheating is caught and mocked; legacy ledgers migrate cleanly. Unit-tested end to end
+(round-trip verifies, hand-edit flagged+wiped, stripped-sig flagged, legacy
+grandfathered) and checked live (fresh list renders 0/13 with 💀 hidden; a forged
+ledger is scolded, wiped and re-signed on the next command). `counters`/`sources` are a
+ledger-format change, back-compatible via the grandfather path; no registry impact.
+ADR-0004/0006 unaffected.

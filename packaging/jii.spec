@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.11-beta
+%global _tag v0.1.12-beta
 
 Name:           jii
-Version:        0.1.11~beta
+Version:        0.1.12~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,13 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.12~beta-1
+- `jii achievements` grows from 3 badges to 13 — everyday ones you stumble into,
+  several to hunt for (install from five sources, the night shift, self-update,
+  bootstrap a manager), two extreme grinds (100 and 500 installs), a completionist
+  crown, and the secret. The ledger is now signed (HMAC bound to this machine): a
+  hand-edited achievements file is caught, mocked and reset — earn them for real
+  (ADR-0074). Honestly-earned badges from older versions carry over untouched.
 * Thu Aug 14 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.11~beta-1
 - New `jii achievements` command — a small, playful badge ledger (ADR-0072). The
   `curl … | sh` installer got a bordered, centre-aligned tagline card and a download

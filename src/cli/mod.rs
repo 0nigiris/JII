@@ -294,6 +294,20 @@ impl Cli {
     pub async fn run(self, config: Config) -> crate::error::Result<()> {
         let renderer = self.renderer_for(&config);
 
+        // Anti-tamper (ADR-0074): if the achievements ledger's signature doesn't verify, someone
+        // hand-edited it (or copied it from another machine). `load` has already wiped it in
+        // memory; react once, in-character, and persist the clean, freshly-signed ledger so the
+        // scolding doesn't repeat every command. Best-effort and silent in JSON mode.
+        if let Ok(store) = crate::achievements::Achievements::load()
+            && store.tampered()
+        {
+            if !renderer.is_json() {
+                renderer.warn(&crate::t!("achieve.tamper.line1"));
+                renderer.info(&crate::t!("achieve.tamper.line2"));
+            }
+            let _ = store.save();
+        }
+
         // The secret install path (the `secret` branch's Sans-fight installer) drops a
         // sentinel that JII picks up on its very next run to grant the hidden `sans`
         // achievement. Consumed once, best-effort, and silent in JSON mode.
@@ -895,7 +909,7 @@ impl Cli {
         // 6. One escalation, one run; records are written as each plan succeeds.
         engine.install_batch(&batch, renderer).await?;
         renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
-        self.grant_achievement("first-install", renderer);
+        self.record_install(&batch, installed.len(), renderer);
 
         // 7. `--run`: start it. Last of all, because it replaces this process.
         if self.global.run
@@ -1328,6 +1342,7 @@ impl Cli {
         // 4. One escalation, one run; records cleared as each plan succeeds.
         engine.remove_batch(&batch.plans, renderer).await?;
         renderer.success(&crate::t!("remove.removed", names = names.join(", ")));
+        self.grant_achievement("cleaner", renderer);
         Ok(())
     }
 
@@ -1506,6 +1521,7 @@ impl Cli {
 
         engine.update_batch(&batch.plans, renderer).await?;
         renderer.success(&crate::t!("update.updated", names = names.join(", ")));
+        self.grant_achievement("fresh", renderer);
         Ok(())
     }
 
@@ -1577,6 +1593,7 @@ impl Cli {
             "selfupdate.updated",
             version = selfupdate::normalize_tag(&latest.tag)
         ));
+        self.grant_achievement("self-made", renderer);
         Ok(())
     }
 
@@ -1687,6 +1704,7 @@ impl Cli {
             .run_system_update(&system.plans, &fallback.plans, renderer)
             .await?;
         renderer.success(&crate::t!("update.complete"));
+        self.grant_achievement("fresh", renderer);
         Ok(())
     }
 
@@ -1765,6 +1783,8 @@ impl Cli {
             }
             return Ok(());
         }
+        // A search that actually surfaced something counts as exploring (unlocks silently in JSON).
+        self.grant_achievement("explorer", renderer);
         if renderer.is_json() {
             renderer.json_value(&serde_json::json!(ranked));
             return Ok(());
@@ -2414,6 +2434,10 @@ impl Cli {
                 }
             };
             decided.insert(cand.source_id.clone(), ok);
+            if ok && !self.global.dry_run {
+                // JII just set up a manager that wasn't here before — the T6 bootstrap path.
+                self.grant_achievement("bootstrapper", renderer);
+            }
             if ok {
                 survivors.push(cand);
             } else {
@@ -3234,6 +3258,30 @@ impl Cli {
         Ok(())
     }
 
+    /// Show the one-time "unlocked" toast for `id`. Silent in JSON mode.
+    fn achievement_toast(&self, id: &str, renderer: &Renderer) {
+        if renderer.is_json() {
+            return;
+        }
+        if let Some(a) = crate::achievements::find(id) {
+            let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
+            renderer.success(&crate::t!("achieve.unlocked", icon = a.icon, title = title));
+        }
+    }
+
+    /// If every non-secret achievement (bar `completionist` itself) is unlocked, unlock the crown.
+    /// Pushes any newly-earned id onto `newly`. Secrets are excluded on purpose — the 👑 is for
+    /// the visible set, so you never need the Sans easter egg to complete it.
+    fn maybe_completionist(&self, store: &mut crate::achievements::Achievements, newly: &mut Vec<String>) {
+        let all_visible_done = crate::achievements::CATALOG
+            .iter()
+            .filter(|a| !a.secret && a.id != "completionist")
+            .all(|a| store.is_unlocked(a.id));
+        if all_visible_done && store.unlock("completionist") {
+            newly.push("completionist".to_string());
+        }
+    }
+
     /// Grant an achievement as a side effect of a real action, showing a one-time toast the
     /// first time it's earned. Best-effort and cosmetic: any failure to load or persist the
     /// ledger is swallowed so it can never break the surrounding command. Silent in JSON mode.
@@ -3241,14 +3289,61 @@ impl Cli {
         let Ok(mut store) = crate::achievements::Achievements::load() else {
             return;
         };
+        let mut newly = Vec::new();
         if store.unlock(id) {
+            newly.push(id.to_string());
+            self.maybe_completionist(&mut store, &mut newly);
             let _ = store.save();
-            if !renderer.is_json()
-                && let Some(a) = crate::achievements::find(id)
-            {
-                let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
-                renderer.success(&crate::t!("achieve.unlocked", icon = a.icon, title = title));
-            }
+        }
+        for id in &newly {
+            self.achievement_toast(id, renderer);
+        }
+    }
+
+    /// Record a successful install against the achievement ledger: bump the lifetime install
+    /// counter, remember which sources were used, and unlock whatever that newly earns
+    /// (first-install, the 100/500 grinds, breadth, the night shift, the crown). One load/save,
+    /// best-effort, silent in JSON mode. `count` is how many packages actually landed.
+    fn record_install(
+        &self,
+        batch: &[crate::engine::BatchPlan],
+        count: usize,
+        renderer: &Renderer,
+    ) {
+        use chrono::Timelike;
+        let Ok(mut store) = crate::achievements::Achievements::load() else {
+            return;
+        };
+        let mut newly = Vec::new();
+
+        if store.unlock("first-install") {
+            newly.push("first-install".to_string());
+        }
+
+        let total = store.bump("installs", count as u64);
+        if total >= crate::achievements::CENTURION_AT && store.unlock("centurion") {
+            newly.push("centurion".to_string());
+        }
+        if total >= crate::achievements::MILLENNIUM_AT && store.unlock("millennium") {
+            newly.push("millennium".to_string());
+        }
+
+        for c in batch.iter().flat_map(|b| b.candidates.iter()) {
+            store.add_source(&c.source_id);
+        }
+        if store.source_count() >= crate::achievements::POLYGLOT_SOURCES && store.unlock("polyglot") {
+            newly.push("polyglot".to_string());
+        }
+
+        // The night shift: an install between midnight and 04:00 local time.
+        if chrono::Local::now().hour() < 4 && store.unlock("night-owl") {
+            newly.push("night-owl".to_string());
+        }
+
+        self.maybe_completionist(&mut store, &mut newly);
+        let _ = store.save();
+        for id in &newly {
+            self.achievement_toast(id, renderer);
         }
     }
 
