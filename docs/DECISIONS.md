@@ -3054,3 +3054,51 @@ same badge; the ending text still says which way it went.
 table row. Linux-x86_64 only (the exports), with the usual honest fallback to a normal
 install. The kill/spare branches are verified in the games' own source, and `jii_marker.gd`
 is runtime-tested, but a real playthrough of each ending remains the owner's to run.
+
+---
+
+## ADR-0078 — One badge per boss ending + a revealed-goal tier
+
+**Status.** Accepted (2026-08-16).
+
+**Context.** Owner ask: "a badge for every boss *and* every way of beating them, and add more
+besides". Beating a boss had granted exactly one badge, with the *description* rewritten to
+name the ending you got (ADR-0076/0077) — so playing both ways showed nothing new, and the
+second run felt unrewarded. The obvious fix (a badge per ending) collides with how secrets are
+displayed: every locked secret is a `???` row, so six new ending badges would have added six
+anonymous rows to `jii achievements`, spoiling that fights exist while telling nobody anything.
+
+**Decision.** Two changes, one to the model and one to the display.
+
+*Model.* `Achievement` gains `revealed_by: Option<&'static str>`, and `achievements::visible()`
+filters the catalog by it. An entry with `revealed_by: Some(boss)` is **omitted from the list
+entirely** — not even a `???` — until that boss's badge is unlocked; from then on it shows with
+its real title and description, unlocked or not. So the endings you haven't played read as
+*named goals* ("Sweet Dreams — put Jevil to sleep instead of cutting him down"), which is the
+only place in the ledger where a locked entry is legible. `earned`/`total` count the visible set,
+so the total doesn't leak hidden rows. The friendly view and `--json` follow the same rule.
+
+*Grants.* `grant_boss` now awards up to three badges at once: the boss's own, the one for that
+ending (`<boss>-<ending>`), and `<boss>-both` once every ending in `ENDINGS` has been seen (the
+existing `<boss>-<ending>` counters already recorded this). `maybe_completionist` additionally
+grants `boss-slayer` when every id in `BOSSES` is unlocked. The per-ending `desc-spare`/`desc-kill`
+locale keys are dropped: the base badge is neutral again, and each ending speaks for itself.
+
+*More badges.* Eight everyday ones, each hooked to an existing command with no new plumbing:
+`wizard` (finish setup), `paper-trail` (`jii how`), `dry-runner` (`--dry-run`), `auditor`
+(`jii list --audit`), `sniper` (an explicit `name:source`), `haul` (`HAUL_AT = 5` packages in
+one command), `translator` (`jii lang <code>`), `early-bird` (install 05:00–07:59, the mirror of
+`night-owl`). Catalog: 15 → 30.
+
+**Alternatives.** (a) Keep one badge per boss and vary only the text — rejected: that's what
+prompted the ask. (b) Show ending badges as `???` like other secrets — rejected: six anonymous
+rows is noise that spoils *that* there are secrets without being a goal anyone can act on.
+(c) Reveal them from the start — rejected: it spoils the fights outright. (d) Make the endings
+non-secret — rejected: `completionist` would then require beating every boss both ways, and the
+crown is deliberately earnable without the easter eggs.
+
+**Consequences.** 30 achievements, 10 secret, of which 6 are revealed-goal entries. The crown
+now needs eight more everyday badges — all reachable from ordinary commands. Adding a fight
+still costs one row in `BOSSES` plus its catalog/locale entries; adding an *ending* costs one
+entry in `ENDINGS` and per-boss catalog rows. A ledger from an older version keeps everything it
+had: nothing is renamed, only added.

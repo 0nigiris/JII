@@ -719,6 +719,15 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   Linux binaries. `vgb_install.sh` (→ same 🃏, `chaos-game` release) and the orphan **`spamton`**
                   branch + `spamton-game` release (→ 🎭). Both releases also carry the complete modified sources
                   (GPL-3.0 §6). 309 tests, clippy clean. Playthroughs of each ending are the owner's to run.
+            - [x] **Owner feedback round #8 (2026-08-16, → v0.1.15-beta): a badge per boss *and* per
+                  ending, plus more everyday ones** (ADR-0078). Catalog 15 → 30 (10 secret). `grant_boss`
+                  grants the boss badge + the ending badge + `<boss>-both`; `boss-slayer` 👺 lands when every
+                  id in `BOSSES` is unlocked. New display tier `revealed_by`: an ending badge is absent from
+                  the list until its fight is won, then shows as a *named goal* (friendly view and `--json`
+                  agree); `earned`/`total` count visible entries only. Eight new everyday badges hooked to
+                  existing commands (`wizard`, `paper-trail`, `dry-runner`, `auditor`, `sniper`, `haul`,
+                  `translator`, `early-bird`) — the crown now needs all of them. 311 tests, clippy clean,
+                  verified live with fake sentinels for every path.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

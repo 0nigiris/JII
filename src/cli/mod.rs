@@ -884,6 +884,7 @@ impl Cli {
 
         if self.global.dry_run {
             renderer.info(&crate::t!("common.dry_run_not_installed"));
+            self.grant_achievement("dry-runner", renderer);
             return Ok(());
         }
 
@@ -921,7 +922,8 @@ impl Cli {
         // 6. One escalation, one run; records are written as each plan succeeds.
         engine.install_batch(&batch, renderer).await?;
         renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
-        self.record_install(&batch, installed.len(), renderer);
+        let pinned = specs.iter().any(|s| s.source.is_some());
+        self.record_install(&batch, installed.len(), pinned, renderer);
 
         // 7. `--run`: start it. Last of all, because it replaces this process.
         if self.global.run
@@ -2607,6 +2609,7 @@ impl Cli {
                 // The active language is fixed for this process, so confirm in the language
                 // just chosen (it takes effect for real on the next run).
                 renderer.success(&crate::i18n::tr_in(&c, "lang.set", &[("lang", c.clone())]));
+                self.grant_achievement("translator", renderer);
             }
         }
         Ok(())
@@ -2711,6 +2714,9 @@ impl Cli {
 
         renderer.info("");
         renderer.success(&crate::t!("setup.complete"));
+        // Only a wizard run carried through to the end earns the hat — declining at the first
+        // question returns above, before this point.
+        self.grant_achievement("wizard", renderer);
         Ok(())
     }
 
@@ -2789,6 +2795,7 @@ impl Cli {
             renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
             renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
         }
+        self.grant_achievement("paper-trail", renderer);
         Ok(())
     }
 
@@ -2798,7 +2805,9 @@ impl Cli {
         // `jii list --audit` is the security view (#5): the same ledger, but with trust,
         // verification, and concerns per install. Folded in from the former `jii audit`.
         if audit {
-            return self.audit_view(&engine, renderer);
+            let out = self.audit_view(&engine, renderer);
+            self.grant_achievement("auditor", renderer);
+            return out;
         }
         let items = engine.registry().installed();
 
@@ -3292,6 +3301,11 @@ impl Cli {
         if all_visible_done && store.unlock("completionist") {
             newly.push("completionist".to_string());
         }
+        // Beating every boss is its own (secret) badge, so it never gates the crown.
+        let all_bosses_down = crate::achievements::BOSSES.iter().all(|b| store.is_unlocked(b));
+        if all_bosses_down && store.unlock("boss-slayer") {
+            newly.push("boss-slayer".to_string());
+        }
     }
 
     /// Grant an achievement as a side effect of a real action, showing a one-time toast the
@@ -3312,41 +3326,48 @@ impl Cli {
         }
     }
 
-    /// Grant a secret boss achievement (`id`) after winning that fight, remembering whether you
-    /// spared or killed them (`variant`) so `jii achievements` can show the path. The unlock toast
-    /// carries a flavour line for that ending. Best-effort and cosmetic; silent in JSON mode.
+    /// Grant the badges for winning a boss fight (`id`) with a given ending (`variant`). Three
+    /// things can land at once: the boss's own badge, the badge for *that ending*, and — once
+    /// you've seen every ending — the boss's "both ways" badge. Beating every boss additionally
+    /// earns `boss-slayer` (via `maybe_completionist`). The toast carries a flavour line for the
+    /// ending. Best-effort and cosmetic; silent in JSON mode.
     fn grant_boss(&self, id: &str, variant: &str, renderer: &Renderer) {
         let Ok(mut store) = crate::achievements::Achievements::load() else {
             return;
         };
-        let newly = store.unlock(id);
-        // Remember the path taken (spare/kill) so the ledger can show which ending you got.
+        let mut newly = Vec::new();
+        let boss_is_new = store.unlock(id);
+        if boss_is_new {
+            newly.push(id.to_string());
+        }
+        // Remember the path taken, and award the badge for it.
         store.bump(&format!("{id}-{variant}"), 1);
-        let mut extra = Vec::new();
-        self.maybe_completionist(&mut store, &mut extra);
+        let ending_id = format!("{id}-{variant}");
+        if store.unlock(&ending_id) {
+            newly.push(ending_id);
+        }
+        // Every ending seen at least once → the "both ways" badge.
+        let all_endings = crate::achievements::ENDINGS
+            .iter()
+            .all(|e| store.counter(&format!("{id}-{e}")) > 0);
+        let both_id = format!("{id}-both");
+        if all_endings && store.unlock(&both_id) {
+            newly.push(both_id);
+        }
+        self.maybe_completionist(&mut store, &mut newly);
         let _ = store.save();
-        if newly && !renderer.is_json() {
-            self.achievement_toast(id, renderer);
+        if renderer.is_json() {
+            return;
+        }
+        for new_id in &newly {
+            self.achievement_toast(new_id, renderer);
+        }
+        // The flavour line belongs to the fight, not to any one badge — show it whenever the
+        // ending itself was new, even if the boss badge was already earned.
+        if newly.iter().any(|n| n == &format!("{id}-{variant}")) {
             let line = crate::i18n::tr(&format!("achieve.{id}.toast-{variant}"));
             renderer.info(&renderer.palette().dim(&line));
         }
-        for extra_id in &extra {
-            self.achievement_toast(extra_id, renderer);
-        }
-    }
-
-    /// The locale key for an achievement's description. The boss secrets are special: once earned
-    /// they show the ending you actually got (spared vs killed), falling back to the neutral line.
-    fn achievement_desc_key(id: &str, store: &crate::achievements::Achievements) -> String {
-        if id == "jevil" || id == "spamton" {
-            if store.counter(&format!("{id}-kill")) > 0 {
-                return format!("achieve.{id}.desc-kill");
-            }
-            if store.counter(&format!("{id}-spare")) > 0 {
-                return format!("achieve.{id}.desc-spare");
-            }
-        }
-        format!("achieve.{id}.desc")
     }
 
     /// Record a successful install against the achievement ledger: bump the lifetime install
@@ -3357,6 +3378,7 @@ impl Cli {
         &self,
         batch: &[crate::engine::BatchPlan],
         count: usize,
+        pinned: bool,
         renderer: &Renderer,
     ) {
         use chrono::Timelike;
@@ -3384,9 +3406,23 @@ impl Cli {
             newly.push("polyglot".to_string());
         }
 
-        // The night shift: an install between midnight and 04:00 local time.
-        if chrono::Local::now().hour() < 4 && store.unlock("night-owl") {
+        // A whole shopping list in one command.
+        if count >= crate::achievements::HAUL_AT && store.unlock("haul") {
+            newly.push("haul".to_string());
+        }
+
+        // An explicit `name:source` — you told JII exactly where to get it.
+        if pinned && store.unlock("sniper") {
+            newly.push("sniper".to_string());
+        }
+
+        // The two ends of the night: 00:00–03:59 and 05:00–07:59 local time.
+        let hour = chrono::Local::now().hour();
+        if hour < 4 && store.unlock("night-owl") {
             newly.push("night-owl".to_string());
+        }
+        if (5..8).contains(&hour) && store.unlock("early-bird") {
+            newly.push("early-bird".to_string());
         }
 
         self.maybe_completionist(&mut store, &mut newly);
@@ -3403,12 +3439,13 @@ impl Cli {
         let store = crate::achievements::Achievements::load()?;
 
         if renderer.is_json() {
-            let rows: Vec<_> = crate::achievements::CATALOG
-                .iter()
+            let rows: Vec<_> = crate::achievements::visible(&store)
                 .map(|a| {
                     let unlocked = store.is_unlocked(a.id);
-                    // A secret, still-locked achievement is not spoiled even in JSON.
-                    let reveal = unlocked || !a.secret;
+                    // A secret, still-locked achievement is not spoiled even in JSON — except
+                    // an ending badge, which is only listed at all once its fight is won and
+                    // is a named goal from then on (same rule as the friendly view).
+                    let reveal = unlocked || !a.secret || a.revealed_by.is_some();
                     serde_json::json!({
                         "id": a.id,
                         "unlocked": unlocked,
@@ -3416,7 +3453,7 @@ impl Cli {
                         "secret": a.secret,
                         "title": reveal.then(|| crate::i18n::tr(&format!("achieve.{}.title", a.id))),
                         "description": reveal
-                            .then(|| crate::i18n::tr(&Self::achievement_desc_key(a.id, &store))),
+                            .then(|| crate::i18n::tr(&format!("achieve.{}.desc", a.id))),
                     })
                 })
                 .collect();
@@ -3425,9 +3462,10 @@ impl Cli {
         }
 
         let palette = renderer.palette();
-        let total = crate::achievements::CATALOG.len();
-        let earned = crate::achievements::CATALOG
-            .iter()
+        // Count only what's on show: an ending badge you can't see yet must not make the
+        // total jump around (or hint that something is missing).
+        let total = crate::achievements::visible(&store).count();
+        let earned = crate::achievements::visible(&store)
             .filter(|a| store.is_unlocked(a.id))
             .count();
         renderer.info(&palette.heading(&crate::t!(
@@ -3437,17 +3475,19 @@ impl Cli {
         )));
         renderer.info("");
 
-        for a in crate::achievements::CATALOG {
+        for a in crate::achievements::visible(&store) {
             let unlocked = store.is_unlocked(a.id);
             // Keep a secret hidden until earned: show `???` and a teaser, not the real text.
-            if a.secret && !unlocked {
+            // An ending badge is exempt — it only appears once its fight is won, and then it
+            // is a named goal ("now try sparing him"), not another anonymous row.
+            if a.secret && !unlocked && a.revealed_by.is_none() {
                 let title = palette.dim("???");
                 renderer.info(&format!("  {}  {}", a.icon, title));
                 renderer.info(&format!("      {}", palette.dim(&crate::t!("achieve.hidden"))));
                 continue;
             }
             let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
-            let desc = crate::i18n::tr(&Self::achievement_desc_key(a.id, &store));
+            let desc = crate::i18n::tr(&format!("achieve.{}.desc", a.id));
             let mark = if unlocked { palette.good(a.icon) } else { palette.dim(a.icon) };
             let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
             renderer.info(&format!("  {mark}  {title}"));

@@ -12,7 +12,31 @@ _Last updated: 2026-08-15_
 
 ---
 
-## Most recent work (2026-08-15, batch 14) — read this first
+## Most recent work (2026-08-16, batch 15) — read this first
+
+**Owner ask: "a badge for every boss and every way of beating them, and add more besides."
+Done in v0.1.15-beta; recorded as ADR-0078.** Catalog 15 → **30** (10 secret).
+
+- **A badge per ending.** `grant_boss` now grants up to three at once: the boss's badge, the
+  badge for *that* ending (`<boss>-<ending>`), and `<boss>-both` once every ending in `ENDINGS`
+  has been seen. `maybe_completionist` also grants **`boss-slayer` 👺** when every id in `BOSSES`
+  (`sans`, `jevil`, `spamton`) is unlocked. New: 😴 `jevil-spare`, ⚔️ `jevil-kill`, ♠️ `jevil-both`,
+  🧵 `spamton-spare`, 💥 `spamton-kill`, 📞 `spamton-both`.
+- **New display tier: `revealed_by`.** `Achievement.revealed_by: Option<&'static str>` +
+  `achievements::visible(&store)`. An ending badge is **absent from the list entirely** (not even
+  a `???`) until its boss is beaten; after that it shows with real title/desc whether or not it's
+  unlocked — i.e. it becomes a *named goal*. `earned`/`total` count only visible entries, and
+  `--json` follows the same rule (`reveal = unlocked || !secret || revealed_by.is_some()`).
+  The per-ending `desc-spare`/`desc-kill` locale keys are gone; the base badge is neutral again.
+- **Eight new everyday badges**, each hooked to an existing command: 🧙 `wizard` (finish setup),
+  🔮 `paper-trail` (`jii how`), 🧾 `dry-runner` (`--dry-run`), 🛡️ `auditor` (`jii list --audit`),
+  🎯 `sniper` (explicit `name:source` — `record_install` takes a new `pinned` arg), 📦 `haul`
+  (`HAUL_AT = 5` in one command), 🌍 `translator` (`jii lang <code>`), 🦉 `early-bird` (install
+  05:00–07:59). **The crown now requires all of these** — all reachable from ordinary commands.
+- 311 tests, clippy clean; verified live end-to-end with fake sentinels (spare → 🃏+😴 with ⚔️/♠️
+  appearing as goals; kill → ⚔️+♠️; all three bosses → 👺).
+
+## Previous work (2026-08-15, batch 14)
 
 **Owner ask: ship the Jevil fight and add the remaining bosses. Chaos Simulator is LIVE; the two
 Godot "VGB" fights are built and their JII half is in v0.1.14-beta. ADR-0077.**

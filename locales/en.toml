@@ -509,6 +509,38 @@ desc = "Installed 500 packages with JII. Are you okay?"
 title = "Completionist"
 desc = "Unlocked every other achievement."
 
+[achieve.wizard]
+title = "Wizard's Hat"
+desc = "Went through the setup wizard from start to finish."
+
+[achieve.paper-trail]
+title = "Paper Trail"
+desc = "Asked JII how something of yours got installed."
+
+[achieve.dry-runner]
+title = "Dress Rehearsal"
+desc = "Previewed a whole install with --dry-run and changed nothing."
+
+[achieve.auditor]
+title = "Auditor"
+desc = "Checked where your software came from with jii list --audit."
+
+[achieve.sniper]
+title = "Sniper"
+desc = "Named the source yourself, like htop:flatpak."
+
+[achieve.haul]
+title = "The Haul"
+desc = "Installed five packages in a single command."
+
+[achieve.translator]
+title = "Translator"
+desc = "Switched JII to another language."
+
+[achieve.early-bird]
+title = "Early Bird"
+desc = "Installed something between 5am and 8am."
+
 [achieve.sans]
 title = "I can do everything to install JII"
 desc = "Downloaded JII via the secret method."
@@ -516,15 +548,39 @@ desc = "Downloaded JII via the secret method."
 [achieve.jevil]
 title = "Chaos, Chaos!"
 desc = "Installed JII by beating Jevil."
-desc-spare = "Spared Jevil, had a laugh together — and installed JII anyway."
-desc-kill = "Struck Jevil down — and installed JII all the same."
 toast-spare = "* You spared him. Chaos, chaos — and JII installs either way."
 toast-kill = "* You struck him down. Chaos, chaos — and JII installs either way."
 
 [achieve.spamton]
 title = "[BIG SHOT]"
 desc = "Installed JII by beating Spamton NEO."
-desc-spare = "Cut the strings, set him free — and installed JII on the way out."
-desc-kill = "Blew Spamton NEO apart — and installed JII on the way out."
 toast-spare = "* You cut his strings. A real boy at last — and JII is yours."
 toast-kill = "* You blew him away. [HYPERLINK BLOCKED] — and JII is yours."
+
+[achieve.jevil-spare]
+title = "Sweet Dreams"
+desc = "Put Jevil to sleep instead of cutting him down."
+
+[achieve.jevil-kill]
+title = "Devilsknife"
+desc = "Cut Jevil down."
+
+[achieve.jevil-both]
+title = "Both Ways"
+desc = "Beat Jevil both ways — spared once, slain once."
+
+[achieve.spamton-spare]
+title = "No Strings Attached"
+desc = "Cut Spamton NEO free instead of destroying him."
+
+[achieve.spamton-kill]
+title = "[BIG SHOT] DOWN"
+desc = "Blew Spamton NEO apart."
+
+[achieve.spamton-both]
+title = "Every Deal Taken"
+desc = "Beat Spamton NEO both ways — freed once, destroyed once."
+
+[achieve.boss-slayer]
+title = "Nobody Left"
+desc = "Beat every secret boss JII hides."

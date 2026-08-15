@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.14-beta
+%global _tag v0.1.15-beta
 
 Name:           jii
-Version:        0.1.14~beta
+Version:        0.1.15~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,14 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.15~beta-1
+- Achievements: 15 → 30. Every boss ending is now its own badge (spare and kill
+  each count, plus a "both ways" badge for seeing them all, plus one for beating
+  every boss). Ending badges stay out of the list entirely until you've won that
+  fight, then appear as named goals instead of another `???`.
+- Eight new everyday ones: finish the setup wizard, ask `jii how`, preview with
+  `--dry-run`, run `jii list --audit`, pin a source (`htop:flatpak`), install five
+  packages at once, switch language, and install between 5am and 8am (ADR-0078).
 * Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.14~beta-1
 - A third secret achievement: 🎭 `spamton`, earned by beating Spamton NEO in the
   matching install path (the `spamton` branch). Like 🃏 it remembers the ending —

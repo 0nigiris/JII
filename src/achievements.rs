@@ -42,6 +42,11 @@ pub struct Achievement {
     pub icon: &'static str,
     /// Secret achievements show as `???` (hidden title + description) until unlocked.
     pub secret: bool,
+    /// When set, this entry stays **out of the list entirely** until the named achievement is
+    /// unlocked. Used for the per-ending boss badges: you shouldn't see "spare Jevil" as a goal
+    /// before you know Jevil exists — but once you've beaten him, both endings become named
+    /// targets instead of another anonymous `???`.
+    pub revealed_by: Option<&'static str>,
 }
 
 /// The full set JII knows about. The order here is the display order in `jii achievements`:
@@ -49,25 +54,51 @@ pub struct Achievement {
 /// extreme grinds, and finally the secret.
 pub const CATALOG: &[Achievement] = &[
     // Everyday — you bump into these just by using JII.
-    Achievement { id: "first-install", icon: "🌱", secret: false },
-    Achievement { id: "doctor", icon: "🩺", secret: false },
-    Achievement { id: "explorer", icon: "🔍", secret: false },
-    Achievement { id: "cleaner", icon: "🧹", secret: false },
-    Achievement { id: "fresh", icon: "🔄", secret: false },
+    Achievement { id: "first-install", icon: "🌱", secret: false, revealed_by: None },
+    Achievement { id: "doctor", icon: "🩺", secret: false, revealed_by: None },
+    Achievement { id: "explorer", icon: "🔍", secret: false, revealed_by: None },
+    Achievement { id: "cleaner", icon: "🧹", secret: false, revealed_by: None },
+    Achievement { id: "fresh", icon: "🔄", secret: false, revealed_by: None },
+    Achievement { id: "wizard", icon: "🧙", secret: false, revealed_by: None },
+    Achievement { id: "paper-trail", icon: "🔮", secret: false, revealed_by: None },
     // Have to hunt for these.
-    Achievement { id: "self-made", icon: "🧬", secret: false },
-    Achievement { id: "bootstrapper", icon: "🔧", secret: false },
-    Achievement { id: "night-owl", icon: "🌙", secret: false },
-    Achievement { id: "polyglot", icon: "🗺️", secret: false },
-    Achievement { id: "centurion", icon: "🏆", secret: false },
+    Achievement { id: "dry-runner", icon: "🧾", secret: false, revealed_by: None },
+    Achievement { id: "auditor", icon: "🛡️", secret: false, revealed_by: None },
+    Achievement { id: "sniper", icon: "🎯", secret: false, revealed_by: None },
+    Achievement { id: "haul", icon: "📦", secret: false, revealed_by: None },
+    Achievement { id: "translator", icon: "🌍", secret: false, revealed_by: None },
+    Achievement { id: "self-made", icon: "🧬", secret: false, revealed_by: None },
+    Achievement { id: "bootstrapper", icon: "🔧", secret: false, revealed_by: None },
+    Achievement { id: "night-owl", icon: "🌙", secret: false, revealed_by: None },
+    Achievement { id: "early-bird", icon: "🦉", secret: false, revealed_by: None },
+    Achievement { id: "polyglot", icon: "🗺️", secret: false, revealed_by: None },
+    Achievement { id: "centurion", icon: "🏆", secret: false, revealed_by: None },
     // Extreme grinds.
-    Achievement { id: "millennium", icon: "💯", secret: false },
-    Achievement { id: "completionist", icon: "👑", secret: false },
-    // Secret.
-    Achievement { id: "sans", icon: "💀", secret: true },
-    Achievement { id: "jevil", icon: "🃏", secret: true },
-    Achievement { id: "spamton", icon: "🎭", secret: true },
+    Achievement { id: "millennium", icon: "💯", secret: false, revealed_by: None },
+    Achievement { id: "completionist", icon: "👑", secret: false, revealed_by: None },
+    // Secret — the boss fights. Each fight's endings hang off its badge and only appear
+    // once you've won it at least once.
+    Achievement { id: "sans", icon: "💀", secret: true, revealed_by: None },
+    Achievement { id: "jevil", icon: "🃏", secret: true, revealed_by: None },
+    Achievement { id: "jevil-spare", icon: "😴", secret: true, revealed_by: Some("jevil") },
+    Achievement { id: "jevil-kill", icon: "⚔️", secret: true, revealed_by: Some("jevil") },
+    Achievement { id: "jevil-both", icon: "♠️", secret: true, revealed_by: Some("jevil") },
+    Achievement { id: "spamton", icon: "🎭", secret: true, revealed_by: None },
+    Achievement { id: "spamton-spare", icon: "🧵", secret: true, revealed_by: Some("spamton") },
+    Achievement { id: "spamton-kill", icon: "💥", secret: true, revealed_by: Some("spamton") },
+    Achievement { id: "spamton-both", icon: "📞", secret: true, revealed_by: Some("spamton") },
+    Achievement { id: "boss-slayer", icon: "👺", secret: true, revealed_by: None },
 ];
+
+/// Every boss badge, in fight order. `boss-slayer` is earned by unlocking all of them.
+pub const BOSSES: &[&str] = &["sans", "jevil", "spamton"];
+
+/// The endings a boss fight can have. Each one has its own `<boss>-<ending>` achievement, and
+/// getting all of them earns `<boss>-both`.
+pub const ENDINGS: &[&str] = &["spare", "kill"];
+
+/// How many packages must land in a single command to earn `haul`.
+pub const HAUL_AT: usize = 5;
 
 /// Sentinel file names a boss-fight installer drops beside the ledger. Both Jevil fights (the
 /// Chaos Simulator and the handheld-style VGB one) share `chaos-install` because they share the
@@ -84,6 +115,15 @@ pub const POLYGLOT_SOURCES: usize = 5;
 /// Look up a catalog entry by id.
 pub fn find(id: &str) -> Option<&'static Achievement> {
     CATALOG.iter().find(|a| a.id == id)
+}
+
+/// The entries `jii achievements` should show at all, in catalog order. An entry gated behind
+/// `revealed_by` is omitted until that achievement is unlocked — it isn't even a `???` row, so
+/// the list never hints at a fight you haven't found.
+pub fn visible(store: &Achievements) -> impl Iterator<Item = &'static Achievement> + use<'_> {
+    CATALOG
+        .iter()
+        .filter(|a| a.revealed_by.is_none_or(|parent| store.is_unlocked(parent)))
 }
 
 /// The signed content of the ledger — everything an HMAC must cover. Split out so we can
@@ -390,6 +430,36 @@ mod tests {
             let a = find(id).unwrap_or_else(|| panic!("{id} missing from catalog"));
             assert!(a.secret, "{id} must be secret");
         }
+    }
+
+    #[test]
+    fn every_boss_has_a_badge_per_ending_plus_both() {
+        for boss in BOSSES {
+            assert!(find(boss).is_some(), "{boss} missing from catalog");
+            // Sans has a single path — only the multi-ending fights carry ending badges.
+            if find(&format!("{boss}-both")).is_none() {
+                continue;
+            }
+            for ending in ENDINGS {
+                let id = format!("{boss}-{ending}");
+                let a = find(&id).unwrap_or_else(|| panic!("{id} missing from catalog"));
+                assert!(a.secret, "{id} must be secret");
+                assert_eq!(a.revealed_by, Some(*boss), "{id} must hang off its boss");
+            }
+        }
+    }
+
+    #[test]
+    fn ending_badges_stay_hidden_until_the_boss_is_beaten() {
+        let mut store = Achievements::default();
+        let hidden_at_first = visible(&store).any(|a| a.id == "jevil-spare");
+        assert!(!hidden_at_first, "an ending badge must not show before the fight is found");
+
+        store.unlock("jevil");
+        let shown_now = visible(&store).any(|a| a.id == "jevil-spare");
+        assert!(shown_now, "beating the boss reveals its endings as named goals");
+        // A different boss's endings stay hidden.
+        assert!(!visible(&store).any(|a| a.id == "spamton-kill"));
     }
 
     #[test]
