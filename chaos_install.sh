@@ -98,10 +98,12 @@ if ! tar -xzf "$TARBALL" -C "$WORK/game" 2>/dev/null; then
   run_normal_install; exit $?
 fi
 
-# Find the app entry point (the extracted tree may or may not have a top dir).
+# Find the app entry point (the extracted tree may or may not have a top dir). Note the
+# `-f` test: the bundle's top directory is *also* called `chaos-simulator`, and `-x` alone
+# is true for any directory you can enter — which picked the folder, not the binary.
 APP=""
-for cand in "$WORK/game/chaos-simulator" "$WORK/game"/*/chaos-simulator; do
-  [ -x "$cand" ] && { APP="$cand"; break; }
+for cand in "$WORK/game"/*/chaos-simulator "$WORK/game/chaos-simulator"; do
+  if [ -f "$cand" ] && [ -x "$cand" ]; then APP="$cand"; break; fi
 done
 if [ -z "$APP" ]; then
   warn "Couldn't find the game inside the bundle — installing JII normally instead."
@@ -114,11 +116,19 @@ info "Opening the fight… good luck."
 info ""
 # --no-sandbox: the bundled chrome-sandbox needs a root-owned SUID helper that a
 # user-space download won't have; this is a local, trusted game, so it's fine.
-"$APP" --no-sandbox >/dev/null 2>&1 || true
+GAMELOG="$WORK/game.log"
+"$APP" --no-sandbox >"$GAMELOG" 2>&1 || true
 
 # --- outcome ---------------------------------------------------------------
 if [ ! -f "$MARKER" ]; then
   warn "The fight ended without a win — nothing was installed."
+  # If the game never even opened, say so and show why, instead of blaming the player.
+  if [ -s "$GAMELOG" ]; then
+    warn "The game printed this:"
+    tail -n 5 "$GAMELOG" >&2
+    warn "If it never opened a window, install JII normally:"
+    warn "  curl -fsSL $INSTALL_URL | sh"
+  fi
   exit 1
 fi
 ENDING=$(cat "$MARKER" 2>/dev/null || echo spare)
