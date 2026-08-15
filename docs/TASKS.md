@@ -701,6 +701,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   (`curl -fsSL https://sudonit.com/install.sh | sh`) across README/install.sh/TESTING/
                   SUPPORTED_SYSTEMS/JII_EXPLAINED, GitHub raw kept as fallback; binaries still from Releases.
                   Deployed + verified live (both 200). Keep the two `install.sh` copies in sync.
+            - [~] **Owner feedback round #6 (2026-08-15, → v0.1.13-beta): the Jevil "Chaos Simulator"
+                  installer** (ADR-0076). **Done (v0.1.13):** second secret achievement 🃏 `jevil` +
+                  `chaos-install` sentinel (`take_chaos_sentinel` → `grant_jevil`, remembers spare/kill via a
+                  counter, shows the matching desc; `completionist` excludes secrets). 309 tests, clippy clean,
+                  verified live (14 achievements). **Still open:** the `chaos` orphan branch — `chaos_install.sh`
+                  + the modified Electron bundle (found at `~/Downloads/chaos-simulator`, TurboWarp/Scratch in
+                  Electron): renderer watches the Scratch VM for spare (`battler.spare`/`joker.spare`) or kill
+                  (`battler.health%`→0), `preload` bridge + `ipcMain` writes the sentinel then quits; bundle as a
+                  GitHub Release asset (242 MB); honest fallbacks. Owner also found the game source
+                  `CherrySodaPop/Jevil-VGB` (maybe a lighter rebuild later). A human playthrough is the owner's.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

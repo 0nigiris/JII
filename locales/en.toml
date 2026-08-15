@@ -512,3 +512,11 @@ desc = "Unlocked every other achievement."
 [achieve.sans]
 title = "I can do everything to install JII"
 desc = "Downloaded JII via the secret method."
+
+[achieve.jevil]
+title = "Chaos, Chaos!"
+desc = "Installed JII by beating Jevil in the Chaos Simulator."
+desc-spare = "Spared Jevil, had a laugh together — and installed JII anyway."
+desc-kill = "Struck Jevil down — and installed JII all the same."
+toast-spare = "* You spared him. Chaos, chaos — and JII installs either way."
+toast-kill = "* You struck him down. Chaos, chaos — and JII installs either way."

@@ -1,6 +1,6 @@
 [package]
 name = "jii"
-version = "0.1.12-beta"
+version = "0.1.13-beta"
 edition = "2024"
 description = "Just Install It — a smart universal package installer for Linux"
 license = "GPL-3.0-or-later"

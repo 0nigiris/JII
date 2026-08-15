@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.12-beta
+%global _tag v0.1.13-beta
 
 Name:           jii
-Version:        0.1.12~beta
+Version:        0.1.13~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,12 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.13~beta-1
+- A second secret achievement: 🃏 `jevil`, earned by beating Jevil in the
+  Chaos-Simulator install path (the `chaos` branch, coming next). It remembers
+  whether you spared or struck him down and shows that ending. This release
+  carries the in-binary half (the `chaos-install` sentinel + the achievement);
+  the fight installer follows (ADR-0076).
 * Fri Aug 15 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.12~beta-1
 - `jii achievements` grows from 3 badges to 13 — everyday ones you stumble into,
   several to hunt for (install from five sources, the night shift, self-update,

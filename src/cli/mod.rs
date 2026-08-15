@@ -315,6 +315,12 @@ impl Cli {
             self.grant_achievement("sans", &renderer);
         }
 
+        // The `chaos` branch's Jevil-fight installer drops its own sentinel whose contents record
+        // how the fight ended (`spare`/`kill`) — JII grants the hidden `jevil` and shows the path.
+        if let Some(variant) = crate::achievements::Achievements::take_chaos_sentinel() {
+            self.grant_jevil(&variant, &renderer);
+        }
+
         // First-run onboarding for *any* task (not just bare `jii`): the very first time JII is
         // used on an interactive terminal, run the setup wizard first, then continue with the
         // original invocation. The user is told up-front which command will run after the
@@ -3300,6 +3306,43 @@ impl Cli {
         }
     }
 
+    /// Grant the secret `jevil` after a Jevil-fight install, remembering whether you spared or
+    /// killed him (`variant`) so `jii achievements` can show the path. The unlock toast carries a
+    /// flavour line for that ending. Best-effort and cosmetic; silent in JSON mode.
+    fn grant_jevil(&self, variant: &str, renderer: &Renderer) {
+        let Ok(mut store) = crate::achievements::Achievements::load() else {
+            return;
+        };
+        let newly = store.unlock("jevil");
+        // Remember the path taken (spare/kill) so the ledger can show which ending you got.
+        store.bump(&format!("jevil-{variant}"), 1);
+        let mut extra = Vec::new();
+        self.maybe_completionist(&mut store, &mut extra);
+        let _ = store.save();
+        if newly && !renderer.is_json() {
+            self.achievement_toast("jevil", renderer);
+            let line = crate::i18n::tr(&format!("achieve.jevil.toast-{variant}"));
+            renderer.info(&renderer.palette().dim(&line));
+        }
+        for id in &extra {
+            self.achievement_toast(id, renderer);
+        }
+    }
+
+    /// The locale key for an achievement's description. `jevil` is special: once earned it shows
+    /// the ending you actually got (spared vs killed), falling back to the neutral line.
+    fn achievement_desc_key(id: &str, store: &crate::achievements::Achievements) -> String {
+        if id == "jevil" {
+            if store.counter("jevil-kill") > 0 {
+                return "achieve.jevil.desc-kill".to_string();
+            }
+            if store.counter("jevil-spare") > 0 {
+                return "achieve.jevil.desc-spare".to_string();
+            }
+        }
+        format!("achieve.{id}.desc")
+    }
+
     /// Record a successful install against the achievement ledger: bump the lifetime install
     /// counter, remember which sources were used, and unlock whatever that newly earns
     /// (first-install, the 100/500 grinds, breadth, the night shift, the crown). One load/save,
@@ -3367,7 +3410,7 @@ impl Cli {
                         "secret": a.secret,
                         "title": reveal.then(|| crate::i18n::tr(&format!("achieve.{}.title", a.id))),
                         "description": reveal
-                            .then(|| crate::i18n::tr(&format!("achieve.{}.desc", a.id))),
+                            .then(|| crate::i18n::tr(&Self::achievement_desc_key(a.id, &store))),
                     })
                 })
                 .collect();
@@ -3398,7 +3441,7 @@ impl Cli {
                 continue;
             }
             let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
-            let desc = crate::i18n::tr(&format!("achieve.{}.desc", a.id));
+            let desc = crate::i18n::tr(&Self::achievement_desc_key(a.id, &store));
             let mark = if unlocked { palette.good(a.icon) } else { palette.dim(a.icon) };
             let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
             renderer.info(&format!("  {mark}  {title}"));

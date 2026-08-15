@@ -65,6 +65,7 @@ pub const CATALOG: &[Achievement] = &[
     Achievement { id: "completionist", icon: "👑", secret: false },
     // Secret.
     Achievement { id: "sans", icon: "💀", secret: true },
+    Achievement { id: "jevil", icon: "🃏", secret: true },
 ];
 
 /// Install-count milestones (the `installs` counter).
@@ -144,6 +145,15 @@ impl Achievements {
         let dirs = directories::ProjectDirs::from("", "", "jii")?;
         let base = dirs.state_dir().unwrap_or_else(|| dirs.data_dir());
         Some(base.join("secret-install"))
+    }
+
+    /// The sentinel the *chaos* installer drops (`$XDG_STATE_HOME/jii/chaos-install`) to grant the
+    /// secret `jevil` on JII's next run. Its contents record how the fight ended — `spare` or
+    /// `kill` — so the achievement can show which path you took.
+    pub fn chaos_sentinel_path() -> Option<PathBuf> {
+        let dirs = directories::ProjectDirs::from("", "", "jii")?;
+        let base = dirs.state_dir().unwrap_or_else(|| dirs.data_dir());
+        Some(base.join("chaos-install"))
     }
 
     /// This machine's stable id, so a valid ledger can't simply be copied to another machine.
@@ -291,6 +301,11 @@ impl Achievements {
         true
     }
 
+    /// The current value of a named counter (0 if never bumped).
+    pub fn counter(&self, key: &str) -> u64 {
+        self.ledger.counters.get(key).copied().unwrap_or(0)
+    }
+
     /// Add `by` to a named counter and return its new value (saturating).
     pub fn bump(&mut self, key: &str, by: u64) -> u64 {
         let e = self.ledger.counters.entry(key.to_string()).or_insert(0);
@@ -306,6 +321,20 @@ impl Achievements {
     /// How many distinct sources we've ever installed from.
     pub fn source_count(&self) -> usize {
         self.ledger.sources.len()
+    }
+
+    /// If the chaos-install sentinel exists, delete it and return how the fight ended:
+    /// `"spare"` or `"kill"` (anything else — or empty — is normalized to `"spare"`). Returns
+    /// `None` when there's no sentinel. The caller unlocks `jevil` and remembers the path.
+    pub fn take_chaos_sentinel() -> Option<String> {
+        let path = Self::chaos_sentinel_path()?;
+        let body = std::fs::read_to_string(&path).ok()?;
+        let _ = std::fs::remove_file(&path);
+        let variant = match body.trim().to_ascii_lowercase().as_str() {
+            "kill" => "kill",
+            _ => "spare",
+        };
+        Some(variant.to_string())
     }
 
     /// If the secret-install sentinel exists, delete it and return `true` (the caller then
@@ -346,6 +375,14 @@ mod tests {
         let mut a = Achievements::default();
         assert!(!a.unlock("not-a-real-achievement"));
         assert!(!a.is_unlocked("not-a-real-achievement"));
+    }
+
+    #[test]
+    fn secret_achievements_are_marked_secret() {
+        for id in ["sans", "jevil"] {
+            let a = find(id).unwrap_or_else(|| panic!("{id} missing from catalog"));
+            assert!(a.secret, "{id} must be secret");
+        }
     }
 
     #[test]

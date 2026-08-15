@@ -12,7 +12,30 @@ _Last updated: 2026-08-15_
 
 ---
 
-## Most recent work (2026-08-15, batch 12) — read this first
+## Most recent work (2026-08-15, batch 13) — read this first
+
+**Owner ask: a second secret installer — beat *Jevil* (Deltarune) in the "Chaos Simulator", and
+JII installs whether you spare or kill him. In progress; recorded as ADR-0076.** The found game is
+a **TurboWarp/Scratch project packaged as Electron** (`~/Downloads/chaos-simulator`,
+`resources/app/` unpacked, ~242 MB) — already a native window, with a built-in `ipcMain`+`preload`
+bridge, so the fight can signal the shell directly (no local HTTP server like Sans). Owner also
+found the game's source (`CherrySodaPop/Jevil-VGB`) — not yet used.
+
+- **v0.1.13-beta ships the in-binary half (done, releasing).** New secret achievement **`jevil` 🃏**
+  (`CATALOG`); JII consumes a `chaos-install` sentinel (contents `spare`|`kill`) on its next run via
+  `Achievements::take_chaos_sentinel()` → `grant_jevil()` unlocks it, records the ending in a
+  `jevil-spare`/`jevil-kill` counter, and `achievement_desc_key()` shows the matching description.
+  `completionist` still excludes secrets. 309 tests, clippy clean; verified live (kill/spare markers
+  each unlock 🃏 with the right text; catalog now 14).
+- **Still to build (on a new orphan `chaos` branch, next):** `chaos_install.sh` + the *modified*
+  Electron bundle — renderer watches the Scratch VM for the fight's end (spare = `battler.spare`/
+  `joker.spare` broadcasts; kill = `battler.health%` → 0; player death via `CutScene.GameOver.*` is
+  NOT a win), `preload` exposes a one-way channel, `electron-main.js` `ipcMain` writes the
+  `chaos-install` sentinel then quits; the shell runs `install.sh`. Bundle hosted as a **GitHub
+  Release asset** (>100 MB can't go in git). Honest fallbacks (no `$DISPLAY`/GUI/x86_64-Linux →
+  normal install). See ADR-0076.
+
+## Previous work (2026-08-15, batch 12)
 
 **Owner ask: expand achievements + make the ledger tamper-resistant. DONE in code; cutting
 `v0.1.12-beta`.** Builds on ADR-0072/0073; recorded as **ADR-0074**.

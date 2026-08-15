@@ -2954,3 +2954,50 @@ site's `public/install.sh` is a synced copy) — they must be kept in step on an
 change. The canonical command is brandable and the install path is resilient (site down →
 GitHub fallback still documented). Verified live: `https://sudonit.com/install.sh` and
 `/jii/` both return 200 and serve the real script/page.
+
+---
+
+## ADR-0076 — The Jevil "Chaos Simulator" installer + the `jevil` achievement
+
+**Status.** Accepted; in progress (batch 12/13). The in-binary half (the `jevil`
+achievement + the `chaos-install` sentinel) ships in **v0.1.13-beta**; the fight
+installer lives on a new orphan **`chaos`** branch (like ADR-0073's `secret`). Sibling
+of ADR-0072/0073 (the Sans secret installer).
+
+**Context.** After the Sans-fight installer (ADR-0073) the owner wanted a second, even
+better one: beat **Jevil** (Deltarune) in the "Chaos Simulator", and JII installs whether
+you **spare or kill** him. The found build is a **TurboWarp/Scratch project packaged as an
+Electron app** (`resources/app/` unpacked: `electron-main.js` + `preload` + the Scratch
+runtime + `project.json`), ~242 MB. Unlike the browser-based Sans game, this is already a
+native desktop window — the owner explicitly wanted it launched "as an application".
+
+**Decision.** Reuse the sentinel pattern, but drop the whole local-HTTP-server/token dance
+(ADR-0073) — Electron's main process is Node, so it writes the marker directly. The flow:
+`chaos_install.sh` (on `chaos`) downloads the **modified Electron bundle** (hosted as a
+**GitHub Release asset** — a >100 MB file can't live in git), launches `./chaos-simulator`
+as a window, and waits. The app is patched in three small places: the renderer watches the
+Scratch VM for the end of the fight (spare = the `battler.spare`/`joker.spare` broadcasts;
+kill = `battler.health%` reaching 0; the player dying via `CutScene.GameOver.*` is **not**
+a win), `preload` exposes a one-way `contextBridge` channel, and `electron-main.js` adds an
+`ipcMain` handler that writes `$XDG_STATE_HOME/jii/chaos-install` (contents `spare`|`kill`)
+then quits. The shell then drops nothing else — JII consumes that sentinel on its next run
+via `Achievements::take_chaos_sentinel()` → unlocks the secret **`jevil`** 🃏 and records the
+ending (a `jevil-spare`/`jevil-kill` counter drives the shown description; `completionist`
+excludes secrets, so `jevil` is never required to finish). Mandatory honest fallbacks (no
+`$DISPLAY` / no GUI libs / non-x86_64-Linux / download fails → a normal install, no fight,
+no achievement). The Deltarune fan-game assets are redistributed per the owner's standing
+grey-zone decision (ADR-0073).
+
+**Alternatives.** (a) The Sans HTTP-server bridge — rejected: Electron's Node main is a
+direct, simpler channel. (b) Bundle the 242 MB in git / on the `chaos` branch — rejected:
+GitHub blocks >100 MB files; a Release asset (≤2 GB) is the right home. (c) A cross-platform
+web build like Sans — considered; the owner also found the game's source
+(`CherrySodaPop/Jevil-VGB`), so a lighter rebuild may be possible later, but the ready-made
+Electron bundle ships first. (d) Reuse the `sans` achievement — rejected: Jevil earns his
+own 🃏 (the "second easter egg" slot noted in ADR-0074).
+
+**Consequences.** JII now has 14 achievements, two of them secret. The `jevil` plumbing is
+live and unit-verified (kill/spare markers each unlock it with the matching ending text);
+the fight installer + the modified bundle + the Release asset are the remaining `chaos`-branch
+work. Linux-x86_64 only (the Electron build) — acceptable for a secret path, with a normal
+install everywhere else. A real human playthrough (spare and kill) is the owner's to run.
