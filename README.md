@@ -140,8 +140,11 @@ runtime deps**, runs on every Linux distro (glibc or musl, old or new). No compi
 ### One-liner (recommended)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
+curl -fsSL https://sudonit.com/install.sh | sh
 ```
+
+<sub>Prefer GitHub, or the site is down? The same installer lives at
+`https://raw.githubusercontent.com/0nigiris/JII/master/install.sh`.</sub>
 
 It auto-detects your CPU, downloads the matching binary from the latest release, and verifies
 its sha256. On an interactive terminal, if it finds a supported package manager

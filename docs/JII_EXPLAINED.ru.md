@@ -347,7 +347,7 @@ JII **никогда не работает целиком под root**. Тол�
 
 ## 10. Дистрибуция JII
 
-- **Однострочник:** `curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh`
+- **Однострочник:** `curl -fsSL https://sudonit.com/install.sh | sh` (запасной адрес — `raw.githubusercontent.com/0nigiris/JII/master/install.sh`)
 - **Релизы GitHub:** статический musl (x86_64 + aarch64) — работает на любом glibc/musl
   дистрибутиве; tarball + `.rpm` + `.deb` + sha256, собирается CI по тегу.
 - **Рецепты** в `packaging/`: COPR spec, AUR PKGBUILD, brew formula, nix, alpine,

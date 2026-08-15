@@ -1,7 +1,8 @@
 #!/bin/sh
 # JII installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
+#   curl -fsSL https://sudonit.com/install.sh | sh
+#   (fallback: https://raw.githubusercontent.com/0nigiris/JII/master/install.sh)
 #
 # Two ways to install (see JII_METHOD below):
 #   • native   — the system package (.rpm/.deb) via dnf/apt/zypper. Integrated: man page,

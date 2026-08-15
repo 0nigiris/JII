@@ -39,7 +39,8 @@ bad round too.
 
 - A fresh VM of the distro you're testing (Fedora, Ubuntu/Debian, Arch, openSUSE, Void…).
 - Install JII the way a user would:
-  `curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh`
+  `curl -fsSL https://sudonit.com/install.sh | sh`
+  (fallback: `raw.githubusercontent.com/0nigiris/JII/master/install.sh`)
 - A user account with sudo (the install steps escalate through your system manager and
   will show the exact command first).
 - Internet access (searches hit the live registries).

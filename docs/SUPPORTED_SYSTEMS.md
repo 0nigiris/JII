@@ -50,7 +50,7 @@ old/new distros all work.
 
 ```sh
 # A. Portable one-liner — no root, any distro (installs to ~/.local/bin)
-curl -fsSL https://raw.githubusercontent.com/0nigiris/JII/master/install.sh | sh
+curl -fsSL https://sudonit.com/install.sh | sh   # fallback: raw.githubusercontent.com/0nigiris/JII/master/install.sh
 
 # B. Native package (system-integrated: man page, completions, removable via the pkg mgr)
 sudo dnf install ./jii-*.rpm          # Fedora / RHEL / openSUSE-rpm
