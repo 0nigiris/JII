@@ -98,11 +98,19 @@ chmod +x "$APP" 2>/dev/null || true
 info "Opening the fight… good luck."
 note "Arrows to choose, Z/Enter to confirm. Close the window when you're done."
 info ""
-"$APP" >/dev/null 2>&1 || true
+GAMELOG="$WORK/game.log"
+"$APP" >"$GAMELOG" 2>&1 || true
 
 # --- outcome ---------------------------------------------------------------
 if [ ! -f "$MARKER" ]; then
   warn "The fight ended without a win — nothing was installed."
+  # If the game never even opened, say so and show why, instead of blaming the player.
+  if [ -s "$GAMELOG" ]; then
+    warn "The game printed this:"
+    tail -n 5 "$GAMELOG" >&2
+    warn "If it never opened a window, install JII normally:"
+    warn "  curl -fsSL $INSTALL_URL | sh"
+  fi
   exit 1
 fi
 ENDING=$(cat "$MARKER" 2>/dev/null || echo spare)
