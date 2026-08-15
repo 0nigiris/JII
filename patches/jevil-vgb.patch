@@ -1,0 +1,65 @@
+diff --git a/sourcecode/jii_marker.gd b/sourcecode/jii_marker.gd
+new file mode 100644
+index 0000000..bced381
+--- /dev/null
++++ b/sourcecode/jii_marker.gd
+@@ -0,0 +1,24 @@
++# JII integration — not part of the original game.
++#
++# When a boss fight is won, drop a marker file where JII looks for it
++# ($XDG_STATE_HOME/jii, else ~/.local/state/jii). Its contents record how the fight
++# ended ("spare" or "kill"); JII reads it once on its next run and unlocks the matching
++# secret achievement. Best-effort: any failure is silent and changes nothing in the game.
++extends Reference
++
++static func write(file_name: String, ending: String) -> void:
++	var base := OS.get_environment("XDG_STATE_HOME")
++	if base == "":
++		var home := OS.get_environment("HOME")
++		if home == "":
++			return
++		base = home + "/.local/state"
++	var dir_path := base + "/jii"
++	var dir := Directory.new()
++	if not dir.dir_exists(dir_path):
++		if dir.make_dir_recursive(dir_path) != OK:
++			return
++	var f := File.new()
++	if f.open(dir_path + "/" + file_name, File.WRITE) == OK:
++		f.store_string(ending)
++		f.close()
+diff --git a/sourcecode/rooms/jevilFight/jevilFight.gd b/sourcecode/rooms/jevilFight/jevilFight.gd
+index ab42e70..c2fabb2 100644
+--- a/sourcecode/rooms/jevilFight/jevilFight.gd
++++ b/sourcecode/rooms/jevilFight/jevilFight.gd
+@@ -1,5 +1,15 @@
+ extends Node2D
+ 
++# JII integration — not part of the original game. Records the ending the first time the
++# fight is won so the installer can pick it up. See jii_marker.gd.
++const JiiMarker = preload("res://jii_marker.gd");
++var jiiRecorded:bool = false;
++
++func JiiWin(ending:String):
++	if (jiiRecorded): return;
++	jiiRecorded = true;
++	JiiMarker.write("chaos-install", ending);
++
+ var lifeTimer:float = 0.0;
+ 
+ var battleDamage:int = 125;
+@@ -72,11 +82,13 @@ func HandleBattle(delta):
+ 		battleReady = false;
+ 		battleShowHud = false;
+ 		$joker.playing = false;
+-	
++		JiiWin("kill"); # JII
++
+ 	if ($enemy_jevil.sleepHealth <= 0):
+ 		battleReady = false;
+ 		battleShowHud = false;
+ 		$joker.playing = false;
++		JiiWin("spare"); # JII
+ 	
+ 	#HandleBattleHud(delta);
+ 	
