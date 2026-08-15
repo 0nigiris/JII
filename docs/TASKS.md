@@ -693,10 +693,14 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   **HMAC-SHA256** signing keyed in the binary + bound to `/etc/machine-id`: a hand-edited or
                   sig-stripped ledger is caught, mocked (Sans-flavoured, en+ru) and wiped; legacy unsigned files
                   grandfathered so honest badges survive. Deterrence not security (stated). 308 tests, clippy
-                  clean, verified live. **Still open from this session:** put JII on `sudonit.com` (Astro site at
-                  `/home/oni/V1` — project page ru/en/es + rich landing + home surface + download block) and
-                  switch the canonical `curl` command to `https://sudonit.com/install.sh` (GitHub raw kept as
-                  fallback); ship the site serving the file *before* flipping the URL in README/docs.
+                  clean, verified live. **Site + curl flip: DONE (ADR-0075).** JII now has a dedicated
+                  trilingual page on `sudonit.com` (`0nigiris/sudonit` — `projects` entry → `/jii` /en /es,
+                  custom `JiiPage.astro` terminal install set-piece, bespoke `JiiCardVisual` on the home grid
+                  via a new `VerbCard` `visual` slot, `color-scheme: dark` for Dark Reader). `install.sh` is
+                  served from the site's `public/` and is now the canonical one-liner
+                  (`curl -fsSL https://sudonit.com/install.sh | sh`) across README/install.sh/TESTING/
+                  SUPPORTED_SYSTEMS/JII_EXPLAINED, GitHub raw kept as fallback; binaries still from Releases.
+                  Deployed + verified live (both 200). Keep the two `install.sh` copies in sync.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

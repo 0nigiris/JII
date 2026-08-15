@@ -36,13 +36,18 @@ _Last updated: 2026-08-15_
   security — the key is extractable; it defeats a text editor, not a reverse-engineer.**
 - **308 tests, clippy clean.** Verified live: fresh list renders `0/13` with 💀 hidden; a forged
   ledger is scolded, wiped and re-signed on the next command; second run silent.
-- **Owner's other asks this session (NOT in this release, next up):** (1) put JII on the
-  `sudonit.com` site (`/home/oni/V1`, Astro/GitHub-Pages, tri-lingual) — owner wants the full
-  treatment: a `projects` collection entry (ru/en/es → `/jii`) + a rich landing + surfaced on home +
-  a download/install block. (2) Switch the canonical `curl` command to
-  `https://sudonit.com/install.sh` (file served from the site's `public/`) with the GitHub raw URL
-  kept as a working fallback. Order: ship the site serving `install.sh` first, *then* flip the URL in
-  JII's README/docs — otherwise the new command 404s.
+- **JII is now on sudonit.com + the curl command is flipped — DONE (ADR-0075).** The site
+  (`0nigiris/sudonit`, Astro/GitHub-Pages, `/home/oni/V1`) got a dedicated trilingual JII project
+  page (`projects` entry → `/jii`, `/en/jii`, `/es/jii`; custom `JiiPage.astro` with a terminal
+  install set-piece + copy button, feature cards, how-it-works, other-ways, FAQ), a bespoke
+  token-based terminal card on the home Projects grid (new `visual` slot on `VerbCard` +
+  `JiiCardVisual.astro` — no photo placeholder), and `color-scheme: dark` on `<html>` so the
+  already-dark site behaves under Dark Reader. `install.sh` is copied to the site's `public/` and
+  served at `https://sudonit.com/install.sh`; that is now the canonical one-liner across JII's
+  README/install.sh header/TESTING/SUPPORTED_SYSTEMS/JII_EXPLAINED, with the `raw.githubusercontent`
+  URL kept as an explicit fallback. Binaries still come from GitHub Releases. **Deployed and verified
+  live** (`sudonit.com/install.sh` and `/jii/` both 200). Two `install.sh` copies now exist (JII repo
+  = source of truth; site `public/` = synced copy) — keep them in step on any installer change.
 
 - **Secret Sans-fight installer (ADR-0073) — DONE, on the orphan `secret` branch.** `curl …/secret/
   secret_install.sh | sh` downloads a self-hosted fork of the Bad Time Simulator (`game.tar.gz`,

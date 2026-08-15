@@ -2919,3 +2919,38 @@ grandfathered) and checked live (fresh list renders 0/13 with 💀 hidden; a for
 ledger is scolded, wiped and re-signed on the next command). `counters`/`sources` are a
 ledger-format change, back-compatible via the grandfather path; no registry impact.
 ADR-0004/0006 unaffected.
+
+---
+
+## ADR-0075 — Install one-liner served from sudonit.com (site-hosted installer)
+
+**Status.** Accepted, implemented 2026-08-15 (batch 12, owner directive). Cross-repo:
+the site lives in `0nigiris/sudonit` (Astro, GitHub Pages, domain `sudonit.com`).
+
+**Context.** The owner wanted JII presented on their personal site and the canonical
+`curl … | sh` command to point at their own domain rather than a raw GitHub URL — a
+cleaner, brandable install line — without giving up GitHub's reliability.
+
+**Decision.** The installer `install.sh` is copied into the site's `public/` so GitHub
+Pages serves it verbatim at `https://sudonit.com/install.sh`. The canonical one-liner
+becomes `curl -fsSL https://sudonit.com/install.sh | sh`; the
+`raw.githubusercontent.com/0nigiris/JII/master/install.sh` URL is kept working and named
+as an explicit **fallback** in every doc (README, install.sh header, TESTING,
+SUPPORTED_SYSTEMS, JII_EXPLAINED). The script is unchanged — it still downloads the
+**binaries from GitHub Releases** — so only the *entry-point* moved; the heavy artifacts
+stay on GitHub's CDN. JII itself also gained a dedicated page on the site (a `projects`
+collection entry → `/jii`, `/en/jii`, `/es/jii`, trilingual) with a terminal install
+set-piece; that's site-repo work, not core JII.
+
+**Alternatives.** (a) Hard-switch to sudonit.com only — rejected: a single point of
+failure (Pages/DNS outage would block installs); the fallback costs nothing. (b) Host
+the binaries on the site too — rejected: large per-arch artifacts belong on Releases'
+CDN, and Pages has size/bandwidth limits. (c) A redirect from sudonit.com to the raw URL
+— rejected: Pages is static (no server redirects without a meta/JS hop that `curl` won't
+follow); serving the file directly is simpler and honest.
+
+**Consequences.** Two copies of `install.sh` now exist (JII repo = source of truth; the
+site's `public/install.sh` is a synced copy) — they must be kept in step on any installer
+change. The canonical command is brandable and the install path is resilient (site down →
+GitHub fallback still documented). Verified live: `https://sudonit.com/install.sh` and
+`/jii/` both return 200 and serve the real script/page.
