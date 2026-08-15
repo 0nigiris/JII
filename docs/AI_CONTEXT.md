@@ -27,6 +27,13 @@ found the game's source (`CherrySodaPop/Jevil-VGB`) — not yet used.
   `jevil-spare`/`jevil-kill` counter, and `achievement_desc_key()` shows the matching description.
   `completionist` still excludes secrets. 309 tests, clippy clean; verified live (kill/spare markers
   each unlock 🃏 with the right text; catalog now 14).
+- **Secret-boss roster (owner decision 2026-08-15).** 💀 `sans` — done/live (secret branch). 🃏 `jevil`
+  — achievement shipped (v0.1.13); **two** Jevil games both unlock it: (1) the **Chaos Simulator**
+  (Electron, built locally, pending owner playtest — below) and (2) **Jevil-VGB**
+  (`CherrySodaPop/Jevil-VGB`, a Game-Boy-styled Godot fight with an **HTML5/web export** + open
+  GDScript source → the easy browser-bridge path like Sans; not built yet). 🎭 **Spamton**
+  (`~/Downloads/SURVEY_PROGRAM.x86_64`, **native Godot 3.6** binary, compiled `.gdc`, no readable win
+  signal, no RE tooling) — **deferred as hard**; no achievement/marker yet.
 - **Still to build (on a new orphan `chaos` branch, next):** `chaos_install.sh` + the *modified*
   Electron bundle — renderer watches the Scratch VM for the fight's end (spare = `battler.spare`/
   `joker.spare` broadcasts; kill = `battler.health%` → 0; player death via `CutScene.GameOver.*` is
