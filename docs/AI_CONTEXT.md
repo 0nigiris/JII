@@ -8,11 +8,39 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-15_
+_Last updated: 2026-08-16_
 
 ---
 
-## Most recent work (2026-08-16, batch 15) — read this first
+## Most recent work (2026-08-16, batch 16) — read this first
+
+**Owner ask: "after `jii update jii`, tell me what changed — and let me read that changelog per
+version with `jii changelog`." Done in v0.1.16-beta; recorded as ADR-0079.**
+
+- **`data/changelog.toml` + `src/changelog.rs`.** Notes are embedded with `include_str!` (like
+  the locales), so `jii changelog` works offline. One entry per release: `version`, ISO `date`,
+  `en` bullets (source of truth) and `ru` bullets (fallback: `en`). API: `releases()` (newest
+  first), `find(v)` (accepts `v0.1.15-beta`, `0.1.15-beta`, bare `0.1.15`), `since(v)`,
+  `current()`. All 16 shipped releases (0.1.0 – 0.1.16) are filled in, reconstructed from the
+  spec `%changelog` and the git tags.
+- **The command.** `jii changelog` (alias `whatsnew`) — bare: the running version; `<version>`:
+  that release; `--all`: everything; `--since <v>`: everything newer. `--json` gives
+  `{version, date, current, notes}` rows. An unknown version isn't a dead end: it lists the
+  versions that *do* have notes.
+- **After self-update.** `self_update` ends with `show_update_changelog`, which runs
+  `<exe> changelog --since <the version we were>` on the **new** binary (`Install::exe()` is
+  new) — the old one can't know its successor's notes. `--no-color`/`--lang` are forwarded;
+  suppressed under `--json`; falls back to a one-line hint if the child can't run.
+- **`i18n::lang()`** is new (the active code), because the changelog carries its own
+  translations rather than living in `locales/*.toml` — a deliberate, narrow exception to
+  ADR-0050, argued in ADR-0079.
+- **Release discipline is now a test.** `this_build_has_release_notes_at_the_top` asserts the
+  first entry equals `CARGO_PKG_VERSION`: **bumping the version without writing its notes fails
+  `cargo test`.** Sibling tests check descending order, en+ru presence and ISO dates.
+- 317 tests, clippy clean; verified live in both languages (bare / by version / `--all` /
+  `--since` / `--json` / unknown version).
+
+## Previous work (2026-08-16, batch 15)
 
 **Owner ask: "a badge for every boss and every way of beating them, and add more besides."
 Done in v0.1.15-beta; recorded as ADR-0078.** Catalog 15 → **30** (10 secret).
@@ -1334,7 +1362,7 @@ None.
 
 ## Test status
 
-`cargo test` — **297 passing, 0 failing** (see the batch sections above for what the newer tests
+`cargo test` — **317 passing, 0 failing** (see the batch sections above for what the newer tests
 cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`

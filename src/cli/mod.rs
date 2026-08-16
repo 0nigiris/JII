@@ -152,6 +152,19 @@ pub enum Commands {
     /// (secret ones show as `???` until earned).
     #[command(alias = "achievement")]
     Achievements,
+    /// Show what changed in JII: this version by default, any past version by name
+    /// (`jii changelog 0.1.12`), or the whole history with `--all`. Works offline.
+    #[command(alias = "whatsnew")]
+    Changelog {
+        /// Version to show, e.g. `0.1.14-beta` (the `-beta` suffix is optional).
+        version: Option<String>,
+        /// Show every release JII knows about, newest first.
+        #[arg(long, conflicts_with_all = ["version", "since"])]
+        all: bool,
+        /// Show every release newer than this one — what an update from it brought you.
+        #[arg(long, value_name = "VERSION", conflicts_with = "version")]
+        since: Option<String>,
+    },
     /// List installation sources and whether each is usable here (native managers for other
     /// distros are hidden by default; `--all` shows all). Ecosystem managers (Flatpak, Snap,
     /// cargo, npm, AUR helpers…) are annotated with how to add or remove them.
@@ -285,6 +298,7 @@ impl Cli {
             }
             Some(Commands::History) => Some("jii history".to_string()),
             Some(Commands::Achievements) => None,
+            Some(Commands::Changelog { .. }) => None,
             Some(Commands::Sources { .. }) => None,
             None => (!self.packages.is_empty()).then(|| format!("jii {}", self.packages.join(" "))),
         }
@@ -388,6 +402,9 @@ impl Cli {
             Some(Commands::List { audit }) => self.list(*audit, config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
             Some(Commands::Achievements) => self.achievements(&renderer),
+            Some(Commands::Changelog { version, all, since }) => {
+                self.changelog(version.as_deref(), *all, since.as_deref(), &renderer)
+            }
 
             Some(Commands::Doctor { fix: _ }) => self.doctor(config, &renderer).await,
 
@@ -1608,7 +1625,42 @@ impl Cli {
             version = selfupdate::normalize_tag(&latest.tag)
         ));
         self.grant_achievement("self-made", renderer);
+        // "Updated" alone doesn't tell you what you got — show the release notes (ADR-0079).
+        self.show_update_changelog(install.exe(), selfupdate::current_version(), renderer)
+            .await;
         Ok(())
+    }
+
+    /// After a successful self-update, print what the new version actually brought.
+    ///
+    /// The running binary only carries notes up to *its own* release, so it cannot describe
+    /// the version it just installed. The new binary can — it is already on disk at the same
+    /// path — so we ask it: `jii changelog --since <the version we were>`. Best-effort: if it
+    /// can't be run, point at the command rather than ending on a bare "updated".
+    async fn show_update_changelog(
+        &self,
+        exe: &std::path::Path,
+        from: &str,
+        renderer: &Renderer,
+    ) {
+        // JSON consumers get one document per command; a second one from a child process
+        // would corrupt it.
+        if renderer.is_json() {
+            return;
+        }
+        let mut cmd = tokio::process::Command::new(exe);
+        cmd.arg("changelog").arg("--since").arg(from);
+        if self.global.no_color {
+            cmd.arg("--no-color");
+        }
+        if let Some(lang) = &self.global.lang {
+            cmd.arg("--lang").arg(lang);
+        }
+        renderer.info("");
+        let shown = matches!(cmd.status().await, Ok(status) if status.success());
+        if !shown {
+            renderer.info(&crate::t!("changelog.after_update_hint"));
+        }
     }
 
     /// `jii uninstall` / `jii remove jii` — remove JII itself: delete the user-space binary,
@@ -3492,6 +3544,87 @@ impl Cli {
             let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
             renderer.info(&format!("  {mark}  {title}"));
             renderer.info(&format!("      {}", palette.dim(&desc)));
+        }
+        Ok(())
+    }
+
+    /// `jii changelog` — what changed, in plain language (ADR-0079). The notes are embedded in
+    /// the binary, so this works with no network: bare shows the running version, a version
+    /// argument shows that release, `--all` the whole history, and `--since <ver>` everything
+    /// newer than it (which is what `jii update jii` runs for you after an update).
+    fn changelog(
+        &self,
+        version: Option<&str>,
+        all: bool,
+        since: Option<&str>,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let running = crate::selfupdate::current_version();
+        let picked: Vec<&crate::changelog::Release> = if all {
+            crate::changelog::releases().iter().collect()
+        } else if let Some(from) = since {
+            crate::changelog::since(from)
+        } else {
+            let wanted = version.unwrap_or(running);
+            let found = match version {
+                Some(v) => crate::changelog::find(v),
+                None => crate::changelog::current(),
+            };
+            match found {
+                Some(r) => vec![r],
+                None => {
+                    // Never a dead end: say which versions we do have notes for.
+                    let known: Vec<&str> = crate::changelog::releases()
+                        .iter()
+                        .map(|r| r.version.as_str())
+                        .collect();
+                    renderer.error(&crate::t!("changelog.unknown", version = wanted));
+                    renderer.info(&crate::t!("changelog.known", list = known.join(", ")));
+                    return Ok(());
+                }
+            }
+        };
+
+        if renderer.is_json() {
+            let rows: Vec<_> = picked
+                .iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "version": r.version,
+                        "date": r.date,
+                        "current": r.version == running,
+                        "notes": r.notes(),
+                    })
+                })
+                .collect();
+            renderer.json_value(&serde_json::json!(rows));
+            return Ok(());
+        }
+
+        // `--since` after an update legitimately finds nothing (you were already current, or
+        // this build's notes predate the file); say so in one line instead of printing nothing.
+        if picked.is_empty() {
+            renderer.info(&crate::t!("changelog.none"));
+            return Ok(());
+        }
+
+        let palette = renderer.palette();
+        renderer.info(&palette.heading(&crate::t!("changelog.header")));
+        for r in &picked {
+            renderer.info("");
+            let mut head = format!("{} · {}", r.version, r.date);
+            if r.version == running {
+                head.push_str(&format!(" {}", crate::t!("changelog.this_one")));
+            }
+            renderer.info(&format!("  {}", palette.heading(&head)));
+            for note in r.notes() {
+                renderer.info(&format!("    • {note}"));
+            }
+        }
+        // Only hint at more when there *is* more to see.
+        if !all && crate::changelog::releases().len() > picked.len() {
+            renderer.info("");
+            renderer.info(&palette.dim(&crate::t!("changelog.hint_all")));
         }
         Ok(())
     }

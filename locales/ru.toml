@@ -450,6 +450,15 @@ available = "Доступные: {list}"
 set = "Язык переключён на {lang}."
 unknown = "Неизвестный язык «{code}». Доступные: {list}"
 
+[changelog]
+header = "Что нового в JII"
+this_one = "(эта версия у вас сейчас)"
+none = "Новее этой версии записей нет."
+unknown = "Для версии «{version}» записей нет."
+known = "Версии, для которых есть записи: {list}"
+hint_all = "jii changelog --all покажет все релизы; jii changelog <версия> — один."
+after_update_hint = "Выполните `jii changelog`, чтобы посмотреть, что изменилось."
+
 [achieve]
 unlocked = "Достижение получено  {icon}  {title}"
 header = "Достижения  {earned}/{total}"

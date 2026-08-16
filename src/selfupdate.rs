@@ -47,6 +47,18 @@ pub enum Install {
     Package { manager: Manager, exe: PathBuf },
 }
 
+impl Install {
+    /// Where the jii binary lives. After an update the *new* binary sits at this same path,
+    /// which is how `jii update jii` can show release notes this build doesn't carry: it asks
+    /// the freshly installed binary (`jii changelog --since <old>`), see ADR-0079.
+    pub fn exe(&self) -> &Path {
+        match self {
+            Install::UserBinary(path) => path,
+            Install::Package { exe, .. } => exe,
+        }
+    }
+}
+
 /// The version this binary was built as (`jii --version`).
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")

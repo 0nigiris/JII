@@ -23,8 +23,9 @@ use std::sync::OnceLock;
 const EN: &str = include_str!("../locales/en.toml");
 const RU: &str = include_str!("../locales/ru.toml");
 
-/// The resolved active language's lookup tables (primary + English fallback).
+/// The resolved active language's code and lookup tables (primary + English fallback).
 struct Active {
+    lang: &'static str,
     primary: HashMap<String, String>,
     english: HashMap<String, String>,
 }
@@ -39,15 +40,21 @@ pub fn init(flag: Option<&str>, config_locale: &str) {
         "ru" => flatten(RU),
         _ => flatten(EN),
     };
-    let _ = ACTIVE.set(Active { primary, english: flatten(EN) });
+    let _ = ACTIVE.set(Active { lang, primary, english: flatten(EN) });
 }
 
 /// The active tables, defaulting to English if [`init`] was never called (e.g. in tests).
 fn active() -> &'static Active {
     ACTIVE.get_or_init(|| {
         let english = flatten(EN);
-        Active { primary: english.clone(), english }
+        Active { lang: "en", primary: english.clone(), english }
     })
+}
+
+/// The active language code (`"en"` / `"ru"`). For content that carries its own
+/// translations rather than living in `locales/*.toml` — see [`crate::changelog`].
+pub fn lang() -> &'static str {
+    active().lang
 }
 
 /// Look up a key: active language → English fallback → the key itself (never panics).

@@ -1,0 +1,231 @@
+# JII's release notes — the data behind `jii changelog` (and the summary printed after
+# `jii update jii`). Embedded in the binary at build time, so it works offline.
+#
+# ## Rules
+#
+# * **Newest first.** A test asserts the file is in descending version order and that the
+#   version this binary was built as (`CARGO_PKG_VERSION`) is the *first* entry — so a
+#   release that forgets its notes fails `cargo test`, not the user.
+# * **Write for the user, not the committer.** What changed for someone using JII, in plain
+#   language: no ADR numbers, no module names, no commit hashes.
+# * `en` is the source of truth; `ru` is the translation. A missing `ru` degrades to `en`
+#   (the same rule as `locales/*.toml`) — but both are expected, and a test checks it.
+# * `date` is the release date, ISO `YYYY-MM-DD`.
+
+[[release]]
+version = "0.1.16-beta"
+date = "2026-08-16"
+en = [
+  "New `jii changelog`: what changed in JII, in plain language. Bare shows the version you're running, `jii changelog 0.1.12` any past release, and `jii changelog --all` the whole history — all of it offline, straight from the binary.",
+  "`jii update jii` no longer stops at \"updated\": it finishes by printing everything the new version brought you, including any releases you skipped along the way.",
+]
+ru = [
+  "Новая команда `jii changelog`: что изменилось в JII, человеческим языком. Без аргументов — про версию, которая у вас стоит, `jii changelog 0.1.12` — про любую прошлую, `jii changelog --all` — вся история. Всё офлайн, прямо из бинарника.",
+  "`jii update jii` больше не заканчивается словом «обновлено»: в конце он печатает всё, что принесла новая версия, включая релизы, которые вы пропустили.",
+]
+
+[[release]]
+version = "0.1.15-beta"
+date = "2026-08-16"
+en = [
+  "Achievements grew from 15 to 30. Every boss ending is now its own badge — sparing and striking down each count separately, plus one for seeing both endings and one for beating every boss.",
+  "Ending badges stay out of the list entirely until you've won that fight, then appear as named goals instead of another `???`.",
+  "Eight new everyday badges: finish the setup wizard, ask `jii how`, preview with `--dry-run`, run `jii list --audit`, pin a source (`htop:flatpak`), install five packages at once, switch language, and install between 5 and 8 in the morning.",
+]
+ru = [
+  "Достижений стало 30 вместо 15. У каждой концовки боя теперь свой значок — пощадить и добить считаются отдельно, плюс значок за обе концовки и значок за победу над всеми боссами.",
+  "Значки за концовки не показываются в списке вообще, пока бой не выигран, — а потом появляются с настоящим названием, а не очередным `???`.",
+  "Восемь новых обычных значков: пройти мастер настройки, спросить `jii how`, посмотреть план через `--dry-run`, запустить `jii list --audit`, указать источник вручную (`htop:flatpak`), поставить пять пакетов одной командой, сменить язык и установить что-нибудь между 5 и 8 утра.",
+]
+
+[[release]]
+version = "0.1.14-beta"
+date = "2026-08-15"
+en = [
+  "A third secret achievement, earned in a matching install path. Like the second one it remembers how the fight ended.",
+  "Boss fights now share one mechanism inside JII, so adding another one costs almost nothing.",
+]
+ru = [
+  "Третье секретное достижение, которое даётся за особый путь установки. Как и второе, оно помнит, чем закончился бой.",
+  "Бои с боссами внутри JII теперь работают через один общий механизм, так что добавить следующий почти ничего не стоит.",
+]
+
+[[release]]
+version = "0.1.13-beta"
+date = "2026-08-15"
+en = [
+  "A second secret achievement, hidden behind an install path of its own. It remembers which ending you got.",
+]
+ru = [
+  "Второе секретное достижение, спрятанное за отдельным путём установки. Оно запоминает, какую концовку вы получили.",
+]
+
+[[release]]
+version = "0.1.12-beta"
+date = "2026-08-15"
+en = [
+  "`jii achievements` grew from 3 badges to 13: everyday ones you stumble into, several to hunt for (install from five sources, the night shift, self-update, bootstrap a manager), two extreme grinds (100 and 500 installs), a completionist crown, and the secret one.",
+  "The ledger is now signed and bound to this machine: a hand-edited achievements file is caught and reset — earn them for real. Badges honestly earned in older versions carry over untouched.",
+]
+ru = [
+  "В `jii achievements` стало 13 значков вместо 3: обычные, на которые натыкаешься сам; несколько, за которыми надо поохотиться (установка из пяти источников, ночная смена, самообновление, установка недостающего менеджера); два очень долгих (100 и 500 установок); корона перфекциониста и секретный.",
+  "Журнал достижений теперь подписан и привязан к этой машине: отредактированный вручную файл распознаётся и сбрасывается — значки надо заработать честно. Честно полученные в старых версиях значки сохраняются.",
+]
+
+[[release]]
+version = "0.1.11-beta"
+date = "2026-08-14"
+en = [
+  "New `jii achievements` — a small, playful badge ledger.",
+  "The `curl … | sh` installer got a bordered tagline card and a download spinner.",
+  "The search chooser never marks an untrusted match as \"recommended\".",
+  "The live progress bar now stretches to the terminal width.",
+]
+ru = [
+  "Новая команда `jii achievements` — небольшой игровой журнал значков.",
+  "У установщика `curl … | sh` появилась карточка с рамкой и спиннер загрузки.",
+  "В выборе результатов поиска недоверенный вариант больше никогда не помечается как «рекомендуемый».",
+  "Полоса прогресса теперь растягивается на всю ширину терминала.",
+]
+
+[[release]]
+version = "0.1.10-beta"
+date = "2026-07-25"
+en = [
+  "Installs, updates and downloads show a live progress bar with a real percentage read from the source's own output (dnf/apt's step counter, a download's byte percentage) instead of a bare spinner.",
+  "`jii update` now updates *every* Flatpak — including the system-wide apps a desktop store installed, not just per-user ones (fixes \"update said done but the store still lists updates\").",
+]
+ru = [
+  "Установка, обновление и загрузка показывают полосу прогресса с настоящими процентами, взятыми из вывода самого источника (счётчик шагов dnf/apt, проценты байтов при загрузке), а не просто спиннер.",
+  "`jii update` теперь обновляет *все* Flatpak-приложения — включая системные, установленные магазином приложений, а не только пользовательские (исправляет «обновление прошло, но магазин всё ещё показывает обновления»).",
+]
+
+[[release]]
+version = "0.1.9-beta"
+date = "2026-07-17"
+en = [
+  "Full audit round: GitHub sources resolve repos that publish only prereleases; update and self-update now fail loudly instead of quietly doing nothing.",
+  "Name-squatting packages in npm/crates/PyPI are demoted to untrusted with a warning, and self-update warns before an apparent downgrade.",
+  "Flatpak plans add the user-scope Flathub remote; Russian y/n keys work; the chooser scrolls on short terminals; `jii how` lists every copy of a name.",
+]
+ru = [
+  "Большой аудит: источник GitHub находит репозитории, у которых есть только предрелизы; обновление и самообновление теперь честно сообщают об ошибке, а не молча ничего не делают.",
+  "Пакеты-«захватчики имён» в npm/crates/PyPI понижаются до недоверенных с предупреждением, а самообновление предупреждает о похожем на откат назад.",
+  "Планы Flatpak добавляют пользовательский репозиторий Flathub; работают русские клавиши «д/н»; список прокручивается на низких терминалах; `jii how` показывает все копии имени.",
+]
+
+[[release]]
+version = "0.1.8-beta"
+date = "2026-07-15"
+en = [
+  "A missing manager is set up only through a source that actually works here (no more \"install pipx via pipx\"); Homebrew and Nix offer to run their own installer script instead of refusing.",
+  "Live progress while installing, removing and updating, with the number of packages actually updated.",
+  "New `--run` starts a package once it's installed; `jii sources` lists sources you disabled and how to re-enable them; `jii man` formats through man(1).",
+]
+ru = [
+  "Недостающий менеджер ставится только через источник, который здесь действительно работает (больше никаких «поставить pipx через pipx»); Homebrew и Nix предлагают запустить свой установочный скрипт, а не отказываются.",
+  "Живой прогресс при установке, удалении и обновлении, с числом реально обновлённых пакетов.",
+  "Новый флаг `--run` запускает программу сразу после установки; `jii sources` показывает отключённые источники и как их вернуть; `jii man` открывается через man(1).",
+]
+
+[[release]]
+version = "0.1.7-beta"
+date = "2026-07-13"
+en = [
+  "`jii doctor` shows only sources relevant to this host and refreshes metadata after enabling a repository (fixes codecs reported as \"not found\" right after being enabled).",
+  "A total miss offers browse links instead of a dead end; `--help` shows the config path.",
+  "A manager you don't have yet (Flatpak, Snap, cargo…) is offered for setup before JII falls back to GitHub.",
+]
+ru = [
+  "`jii doctor` показывает только источники, относящиеся к этой системе, и обновляет метаданные после включения репозитория (исправляет «кодеки не найдены» сразу после включения).",
+  "Полное отсутствие результатов даёт ссылки для поиска, а не тупик; `--help` показывает путь к конфигу.",
+  "Если нужного менеджера (Flatpak, Snap, cargo…) нет, JII предложит его поставить, прежде чем откатываться к GitHub.",
+]
+
+[[release]]
+version = "0.1.6-beta"
+date = "2026-07-13"
+en = [
+  "AUR support with yay/paru, on Arch-family systems only.",
+  "`jii sources` merges the source list with adding and removing ecosystem managers.",
+  "A quiet per-source summary for `jii update`, plus typo recovery in the middle of a word.",
+]
+ru = [
+  "Поддержка AUR через yay/paru — только на системах семейства Arch.",
+  "`jii sources` объединяет список источников с добавлением и удалением менеджеров экосистем.",
+  "Короткая сводка по источникам для `jii update` и исправление опечаток в середине слова.",
+]
+
+[[release]]
+version = "0.1.5-beta"
+date = "2026-07-10"
+en = [
+  "Nix support, a Gentoo source, and a fix to the order in which `jii doctor` enables repositories.",
+  "An install preference you can set, so JII leans toward the kind of package you like.",
+]
+ru = [
+  "Поддержка Nix, источник для Gentoo и исправление порядка, в котором `jii doctor` включает репозитории.",
+  "Настраиваемое предпочтение при установке, чтобы JII склонялся к тому типу пакетов, который вам нравится.",
+]
+
+[[release]]
+version = "0.1.4-beta"
+date = "2026-07-10"
+en = [
+  "JII speaks Russian: the whole interface is translated, and `jii lang ru` makes it stick.",
+  "The first run walks you through a short setup before running the command you asked for.",
+  "Menus you can drive with the arrow keys **or** the mouse, and a colour scheme that means something.",
+  "GitHub search finds repositories by name, with a picker and tolerance for typos.",
+]
+ru = [
+  "JII говорит по-русски: интерфейс переведён полностью, а `jii lang ru` запоминает выбор.",
+  "Первый запуск проводит через короткую настройку, а потом выполняет ту команду, которую вы просили.",
+  "Меню управляются стрелками **и** мышью, а цвета в выводе стали осмысленными.",
+  "Поиск на GitHub находит репозитории по имени, со списком выбора и терпимостью к опечаткам.",
+]
+
+[[release]]
+version = "0.1.3-beta"
+date = "2026-07-09"
+en = [
+  "Self-update works again when the newest release is a prerelease (it was looking in the wrong place and finding nothing).",
+]
+ru = [
+  "Самообновление снова работает, когда свежий релиз помечен как предрелиз (раньше JII искал не там и ничего не находил).",
+]
+
+[[release]]
+version = "0.1.2-beta"
+date = "2026-07-09"
+en = [
+  "`jii doctor` became an interactive questionnaire: each suggestion is a yes/no question, applied only on \"yes\".",
+  "Smarter search: exact matches first, broadening only when nothing matches.",
+  "JII is now licensed under the GNU GPL v3 or later.",
+]
+ru = [
+  "`jii doctor` стал интерактивным опросником: каждое предложение — вопрос «да/нет», и применяется только по «да».",
+  "Умнее поиск: сначала точные совпадения, расширение — только если ничего не нашлось.",
+  "JII теперь распространяется под GNU GPL v3 или новее.",
+]
+
+[[release]]
+version = "0.1.1-beta"
+date = "2026-07-09"
+en = [
+  "JII can update and remove itself: `jii update jii` and `jii uninstall`.",
+  "A bare `jii update` also checks JII itself, not just your packages.",
+]
+ru = [
+  "JII умеет обновлять и удалять себя: `jii update jii` и `jii uninstall`.",
+  "Простой `jii update` заодно проверяет и сам JII, а не только ваши пакеты.",
+]
+
+[[release]]
+version = "0.1.0-beta"
+date = "2026-07-09"
+en = [
+  "First public Beta: search every source you already have, rank the results, install the best one, and explain why.",
+]
+ru = [
+  "Первая публичная бета: поиск по всем источникам, которые у вас уже есть, ранжирование результатов, установка лучшего варианта и объяснение почему.",
+]

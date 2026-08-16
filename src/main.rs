@@ -5,6 +5,7 @@
 
 mod achievements;
 mod cache;
+mod changelog;
 mod cli;
 mod config;
 mod devtest;

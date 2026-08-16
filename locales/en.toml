@@ -452,6 +452,15 @@ available = "Available: {list}"
 set = "Language set to {lang}."
 unknown = "Unknown language '{code}'. Available: {list}"
 
+[changelog]
+header = "What's new in JII"
+this_one = "(you're on this one)"
+none = "No release notes newer than that."
+unknown = "No release notes for version '{version}'."
+known = "Versions with notes: {list}"
+hint_all = "jii changelog --all shows every release; jii changelog <version> shows one."
+after_update_hint = "Run `jii changelog` to see what changed."
+
 [achieve]
 unlocked = "Achievement unlocked  {icon}  {title}"
 header = "Achievements  {earned}/{total}"

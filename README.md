@@ -116,7 +116,8 @@ fully as root.
 - **🧠 Remembers** — `jii remove discord` uses whatever installed it; `jii update` updates each
   package with the correct manager, and can upgrade your whole system in one go.
 - **♻️ Updates itself** — `jii update jii` (or a bare `jii update`) pulls the newest release from
-  GitHub and swaps itself in place — no root for a user-space install.
+  GitHub and swaps itself in place — no root for a user-space install — and then tells you what
+  the new version changed. `jii changelog` shows those notes again, for any version, offline.
 - **🧰 Bootstraps what's missing** — want a Flatpak app on a box without Flatpak? JII offers to set
   the manager up first (through a source that actually works there), then installs the app.
 - **🚫 Spots name-squatters** — a registry package that merely shares a name with a famous tool
@@ -263,6 +264,7 @@ jii doctor           diagnose sources + host, then interactively set up what's m
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
 jii history          installation history
 jii achievements     playful badges you've unlocked using JII (some are secret…)
+jii changelog        what changed in JII — this version, any past one, or --all (offline)
 jii lang [en|ru]     show or set the interface language (auto = follow the system)
 jii cache [clear]    show the search-cache path, or delete it
 jii setup            re-run the first-run wizard (output mode, optional doctor)

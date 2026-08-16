@@ -728,6 +728,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   existing commands (`wizard`, `paper-trail`, `dry-runner`, `auditor`, `sniper`, `haul`,
                   `translator`, `early-bird`) — the crown now needs all of them. 311 tests, clippy clean,
                   verified live with fake sentinels for every path.
+            - [x] **Owner feedback round #9 (2026-08-16, → v0.1.16-beta): release notes in the binary**
+                  (ADR-0079). New `data/changelog.toml` (embedded, `en` + `ru` per release, all 16 shipped
+                  versions filled in) + `src/changelog.rs` (`releases`/`find`/`since`/`current`) + the
+                  `jii changelog` command (bare = the running version, `<version>` = any past one, `--all`,
+                  `--since <v>`, `--json`, alias `whatsnew`) — works offline. `jii update jii` now ends by
+                  printing what the new version brought: it re-invokes the **freshly installed** binary
+                  (`<exe> changelog --since <old>`, new `Install::exe()`), because the old one can't know its
+                  successor's notes. New `i18n::lang()`. A test asserts the first changelog entry equals
+                  `CARGO_PKG_VERSION`, so a version bump without notes fails `cargo test`. 317 tests,
+                  clippy clean, verified live in both languages.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

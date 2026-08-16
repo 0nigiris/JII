@@ -493,6 +493,7 @@ locale = "auto"
 | `jii list [--audit]` | what JII installed (from the registry); `--audit` is the security view: signatures, sha256, GPG, sigstore, source, trust, concerns (#5, folded-in former `jii audit`) |
 | `jii providers [add <name>]` | show the ecosystem managers (npm, cargo, brew, Flatpak…) and which are installed; `add` bootstraps a missing one via `Provider::ecosystem` metadata + the normal install path — script-installed managers (brew, nix) are shown, never run (ADR-0036) |
 | `jii config <get\|set\|edit>` | manage configuration |
+| `jii changelog [<version>]` | release notes in plain language, embedded in the binary (`data/changelog.toml`): the running version by default, any past one by name, `--all` for the history, `--since <v>` for everything newer — which is what self-update runs on the *new* binary to say what an update brought (ADR-0079) |
 
 Global flags: `-y/--yes`, `-n/--no`, `--auto`, `--source <id>`, `--profile <p>`,
 `--dry-run`, `-v/--verbose`, `--json`, `--no-color`.

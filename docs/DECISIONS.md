@@ -3102,3 +3102,56 @@ now needs eight more everyday badges — all reachable from ordinary commands. A
 still costs one row in `BOSSES` plus its catalog/locale entries; adding an *ending* costs one
 entry in `ENDINGS` and per-boss catalog rows. A ledger from an older version keeps everything it
 had: nothing is renamed, only added.
+
+---
+
+## ADR-0079 — Release notes in the binary: `jii changelog` + a post-update summary
+
+**Status.** Accepted (2026-08-16).
+
+**Context.** Owner ask: "`jii update jii` should end by saying what changed, and the same
+notes should be readable per version via `jii changelog`". Until now the only user-facing
+record of a release was the GitHub release page (auto-generated commit lists) and the RPM
+`%changelog` — neither reachable from the terminal, both written for packagers rather than
+users. Self-update ended on a bare "updated to v0.1.16-beta", which says nothing about what
+the user actually got.
+
+**Decision.** A new `data/changelog.toml`, embedded with `include_str!` like the locales, and
+a thin `changelog.rs` over it (`releases()` / `find()` / `since()` / `current()`). Each entry
+is `version`, ISO `date`, and the bullets in both shipped languages. `jii changelog` prints
+the running version; `jii changelog <version>` any past one (a bare `0.1.12` matches
+`0.1.12-beta`); `--all` the history; `--since <version>` everything newer. `--json` emits
+`{version, date, current, notes}` rows.
+
+*Notes live with the version, not in `locales/*.toml`.* This is a deliberate, narrow
+exception to ADR-0050: a per-bullet locale key would mean inventing
+`changelog.0-1-15.line3` for every bullet of every release forever, in two files, with the
+text divorced from the version it describes. The command's own chrome (header, hints,
+errors) is localized normally.
+
+*The post-update summary re-invokes the new binary.* The running binary only carries notes up
+to its own release, so it cannot describe the version it just installed. After a successful
+self-update JII runs `<exe> changelog --since <the version we were>` — the new binary is
+already at that path, and it knows notes this one never could. Best-effort: if the child
+can't run, JII prints "run `jii changelog`" rather than ending on "updated". Suppressed under
+`--json` (a second document would corrupt the first).
+
+*The release checklist is enforced by a test.* `this_build_has_release_notes_at_the_top`
+asserts the first entry equals `CARGO_PKG_VERSION`, so shipping a version whose notes nobody
+wrote fails `cargo test` instead of printing an empty changelog to a user. Companion tests
+check descending order, en+ru presence, and ISO dates.
+
+**Alternatives.** (a) Fetch release bodies from the GitHub API — rejected: needs network for
+something that must work offline, is rate-limited and unauthenticated, and the auto-generated
+bodies are commit lists, not user-facing notes. (b) Ship `CHANGELOG.md` and parse Markdown —
+rejected: a parser for prose we control anyway, and no place for translations. (c) Have the
+*old* binary print notes for the new version — impossible without a network fetch; the
+re-invocation is what makes it work offline. (d) Generate the notes from git history —
+rejected: commit subjects are written for maintainers ("refactor: Forge abstraction"), which
+is exactly the register the owner asked us to leave behind.
+
+**Consequences.** Every release now has two obligations instead of one: bump the version *and*
+add its notes (the test enforces both). The RPM `%changelog` stays as-is for packagers — it is
+allowed to say more technical things. Adding a language means adding a key per entry, with an
+English fallback if it is missed. Notes for versions older than this file's creation were
+reconstructed from the spec changelog and git tags (0.1.0 – 0.1.15).
