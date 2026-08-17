@@ -612,10 +612,43 @@ impl Engine {
         renderer: &Renderer,
         label: &str,
     ) -> Result<()> {
-        if renderer.is_friendly() {
+        let outcome = if renderer.is_friendly() {
             crate::exec::run_actions_quiet(plan, &self.privilege, renderer, label).await
         } else {
             crate::exec::run_actions(plan, &self.privilege, renderer).await
+        };
+        if let Err(e) = &outcome {
+            self.report_step_failure(&plan.source_id, e, renderer);
+        }
+        outcome
+    }
+
+    /// Report a failed plan step. The failing command is always named; *what it means* is asked
+    /// of the source that produced the plan first ([`crate::provider::Provider::explain_failure`]),
+    /// and only when it has nothing to say does the manager's own output tail get printed. So a
+    /// recognized failure reads as one sentence plus a way forward instead of a wall of text —
+    /// and the engine still never branches on a source id (ADR-0004).
+    fn report_step_failure(&self, source_id: &str, error: &JiiError, renderer: &Renderer) {
+        let JiiError::StepFailed { command, output } = error else {
+            return; // not a captured command failure — reported by whoever raised it
+        };
+        renderer.error(&crate::t!("exec.step_failed", command = command.clone()));
+        let note = self
+            .providers
+            .get(source_id)
+            .and_then(|p| p.explain_failure(output));
+        match note {
+            Some(note) => {
+                renderer.info(&note.message);
+                for hint in note.hints {
+                    renderer.info(&renderer.palette().dim(&format!("  {hint}")));
+                }
+            }
+            None => {
+                for line in crate::exec::tail(output, 12) {
+                    renderer.info(&renderer.palette().dim(&format!("  {line}")));
+                }
+            }
         }
     }
 
@@ -754,6 +787,33 @@ impl Engine {
             }
         }
         Ok((ok, combined))
+    }
+
+    /// The finishing steps a manager needs to become usable, without running them — so
+    /// `--dry-run` can preview the whole of "set up Snap", not just the package install.
+    pub async fn post_bootstrap_plan(&self, source_id: &str) -> Result<Option<InstallPlan>> {
+        match self.providers.get(source_id) {
+            Some(provider) => provider.plan_post_bootstrap().await,
+            None => Ok(None),
+        }
+    }
+
+    /// Finish setting up a manager JII just installed: run whatever steps it declares in
+    /// [`crate::provider::Provider::plan_post_bootstrap`] (Flatpak's default remote, snapd's
+    /// socket and `/snap` link). Same executor and privilege layer as any plan — the commands
+    /// are printed as they run and root steps escalate normally. Returns whether anything ran;
+    /// a failure is reported and swallowed, because the manager itself is installed either way
+    /// and the caller's own "is it usable?" check is the real verdict.
+    pub async fn finish_bootstrap(&self, source_id: &str, renderer: &Renderer) -> Result<bool> {
+        let Some(plan) = self.post_bootstrap_plan(source_id).await? else {
+            return Ok(false);
+        };
+        crate::exec::prime_for(&[&plan], &self.privilege).await?;
+        if let Err(e) = crate::exec::run_actions(&plan, &self.privilege, renderer).await {
+            self.report_step_failure(source_id, &e, renderer);
+            return Ok(false);
+        }
+        Ok(true)
     }
 
     /// Run a single self-management plan (jii updating or removing **itself**) through the

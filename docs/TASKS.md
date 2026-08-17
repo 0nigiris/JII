@@ -738,6 +738,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   successor's notes. New `i18n::lang()`. A test asserts the first changelog entry equals
                   `CARGO_PKG_VERSION`, so a version bump without notes fails `cargo test`. 317 tests,
                   clippy clean, verified live in both languages.
+            - [x] **Owner feedback round #10 (2026-08-17, → v0.1.16-beta): a bootstrap that finishes**
+                  (ADR-0080). From the cross-distro test notes: `jii sources add brew` left the user pasting
+                  three commands, `jii snap` left snapd unusable (socket off, no `/snap`), and
+                  `jii affinity` dumped pipx's raw rejection. Three source-agnostic trait methods:
+                  `plan_post_bootstrap` (snapd socket + `/snap`, Flatpak's remote — replaces the
+                  `if source_id == "flatpak"` hack, runs on both bootstrap paths, previewable),
+                  `Bootstrap::Script { cmd, shell }` + `homebrew::brew_bin()` + new `src/shellrc.rs`
+                  (JII drives brew by absolute path at once and offers to add its line to `.zshrc`), and
+                  `explain_failure` + `JiiError::StepFailed` (pipx: "that's a Python library, not a program"
+                  with real next steps). Also: `jii sources add` grants 🔧 `bootstrapper`, `jii achievements`
+                  marks earned rows with ✓ (not colour alone), `jii doctor` checks brew has a compiler,
+                  and `untrusted` displays as "unverified". 321 tests, clippy clean, verified live.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

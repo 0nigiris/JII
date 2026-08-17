@@ -3155,3 +3155,73 @@ add its notes (the test enforces both). The RPM `%changelog` stays as-is for pac
 allowed to say more technical things. Adding a language means adding a key per entry, with an
 English fallback if it is missed. Notes for versions older than this file's creation were
 reconstructed from the spec changelog and git tags (0.1.0 – 0.1.15).
+
+---
+
+## ADR-0080 — A bootstrap that finishes, and failures a source can explain
+
+**Status.** Accepted (2026-08-17, v0.1.16-beta).
+
+**Context.** Owner feedback from the cross-distro test round exposed three variants of the same
+flaw: JII stops one step short and hands the rest to the user, which is exactly the dead end
+CLAUDE.md's UX rules forbid.
+
+1. `jii sources add brew` ran Homebrew's installer, then reported "installed, but isn't on this
+   shell's PATH — follow the installer's last instructions". The user's verdict: *"why do I,
+   as a user, still have to read and type commands myself?"* They then pasted the three lines
+   Homebrew prints (two `.zshrc` edits and `dnf group install development-tools`) by hand.
+2. `jii snap` installed `snapd` and called it done, leaving a socket that ships disabled outside
+   Ubuntu and no `/snap` symlink — a manager that then refuses every install.
+3. `pipx install affinity` failed with pipx's own "No apps associated with package affinity. Try
+   again with `--include-deps`… Dependent package 'numpy' contains 2 apps", printed raw under a
+   ✗. Accurate, useless, and its only actionable suggestion is a trap (installing numpy's
+   `f2py`). ADR-0023 knowingly accepts these rejections — PyPI exposes no entry-point data — but
+   promised "a clear message", which was never delivered.
+
+Also: `Achievements` only awarded `bootstrapper` on the T6 install path, so setting a manager up
+through `jii sources add` earned nothing.
+
+**Decision.** Three source-agnostic trait methods, so the core keeps knowing nothing about any
+particular manager (ADR-0004), plus the plumbing to use them.
+
+*`Provider::plan_post_bootstrap`* returns the steps that make a just-installed manager **usable**,
+as a normal previewable `InstallPlan`: Flatpak adds the Flathub remote (this replaces the
+`if source_id == "flatpak"` special case in the CLI), Snap enables `snapd.socket` and links
+`/snap` when absent. Root steps escalate through `privilege.rs` and are printed like any other,
+and `--dry-run` previews them under "Then, to make Snap usable:". Both bootstrap paths (T6 and
+`jii sources add`) run it, and both now grant `bootstrapper`.
+
+*`Bootstrap::Script` carries an optional `ShellSetup`* (`bins`, `rc_line`). Homebrew declares its
+two standard prefixes and `eval "$({bin} shellenv)"`. Two things follow: the provider resolves
+`brew` by absolute path when it isn't on PATH (`homebrew::brew_bin()`, deliberately uncached —
+brew may be installed *during* this run), so JII keeps working immediately; and JII offers to
+append the shell line to the user's rc itself (new `shellrc.rs`: `$SHELL` → `.zshrc`/`.bashrc`/
+`.kshrc`, `None` for fish, whose syntax differs; idempotent, append-only, shown before writing,
+explicit yes required). Declining prints the line to paste — never a dead end. `jii doctor` gained
+a Homebrew-only compiler check (`Fix::Install("gcc")`), so the build-tools half of Homebrew's
+closing notes is something JII offers to do rather than something the user reads.
+
+*`Provider::explain_failure`* turns a failed command's captured output into a `FailureNote`
+(message + hints). `exec.rs` no longer prints the failure itself: it returns the new
+`JiiError::StepFailed { command, output }`, and `Engine::report_step_failure` asks the plan's own
+source first, falling back to the raw 12-line tail when it has nothing to say. pipx recognizes
+"No apps associated with package X" and answers: *X is a Python library, not a program*, plus
+`pip install X` (in a venv) and `jii search X`. `main.rs` no longer re-prints a `StepFailed`,
+which would repeat the command in English under a second ✗.
+
+**Alternatives.** (a) Mutate the process `PATH` after a script bootstrap — rejected: `set_var` is
+`unsafe` in edition 2024 for good reason (a data race against any concurrent `getenv` in the
+tokio pool), and resolving the binary in the provider is both safe and more honest. (b) Write the
+shell line without asking — rejected: JII doesn't own that file. (c) Match failure text in
+`exec.rs` — rejected: that is the core branching on a source id. (d) Pre-filter PyPI libraries
+out of search — still rejected for ADR-0023's original reason (no reliable signal); explaining
+the rejection is the half we owed.
+
+**Consequences.** Adding a manager that needs finishing steps, or a source that can explain its
+own failures, is now an override rather than a patch to the CLI. `exec::run_actions_quiet` no
+longer renders errors, so any future caller must report `StepFailed` (the two engine paths do).
+`shellrc.rs` deliberately supports only shells whose rc syntax matches the line the manager
+prints; fish users get the line to paste. The `untrusted` trust level is now *displayed* as
+"unverified" / «без проверки» (owner: "untrusted sounds very scary") — the machine label,
+ranking and auto-mode rule are unchanged, and README now states plainly that JII does not vouch
+for third-party software.

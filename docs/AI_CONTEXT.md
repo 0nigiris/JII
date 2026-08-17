@@ -8,11 +8,42 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-16_
+_Last updated: 2026-08-17_
 
 ---
 
-## Most recent work (2026-08-16, batch 16) — read this first
+## Most recent work (2026-08-17, batch 17) — read this first
+
+**Owner feedback from the cross-distro test round (`~/Documents/suka/Список проверенных систем.md`)
+plus the `jii affinity` failure. Landed in the not-yet-released v0.1.16-beta; recorded as
+ADR-0080.** Everything below is one theme: *stop handing the last step to the user.*
+
+- **`Provider::plan_post_bootstrap`** — the steps that make a just-installed manager usable, as a
+  normal previewable plan. Snap: `systemctl enable --now snapd.socket` + `ln -s /var/lib/snapd/snap
+  /snap` (only when absent). Flatpak: the flathub remote — this **replaced** the
+  `if source_id == "flatpak"` special case in `set_up_manager`. Run from *both* bootstrap paths
+  (T6 and `jii sources add`), previewed under "Then, to make X usable:" in `--dry-run`.
+- **`Bootstrap::Script` is now `{ cmd, shell: Option<ShellSetup> }`.** Homebrew declares its
+  prefixes + `eval "$({bin} shellenv)"`. `homebrew::brew_bin()` resolves brew by absolute path
+  when it's off PATH (uncached on purpose — brew may be installed mid-run), so JII works
+  immediately; new **`src/shellrc.rs`** offers to append the line to `.zshrc`/`.bashrc`/`.kshrc`
+  (`None` for fish → print the line). Never writes without an explicit yes; idempotent.
+- **`Provider::explain_failure` + `JiiError::StepFailed { command, output }`.** `exec.rs` no
+  longer prints failures; `Engine::report_step_failure` asks the plan's source first and falls
+  back to the 12-line tail. pipx recognizes "No apps associated with package X" → "X is a Python
+  library, not a program" + `pip install X` / `jii search X`. `main.rs` skips re-printing
+  `StepFailed`.
+- **Smaller fixes from the same list.** `jii sources add <manager>` now grants 🔧 `bootstrapper`
+  (it only ever fired on the T6 path). `jii achievements` prints `✓`/`·` per row — earned-vs-not
+  was carried by colour alone, invisible in a pasted log or `--no-color`. `jii doctor` gained a
+  Homebrew-only compiler check (`Fix::Install("gcc")`). Trust level `untrusted` now **displays**
+  as "unverified" / «без проверки» (machine `label()` unchanged), and README states plainly that
+  JII doesn't vouch for third-party software.
+- 321 tests, `cargo build`/`clippy --all-targets` clean. Verified live: `jii affinity` (RU),
+  `jii snap --dry-run` (shows the socket + symlink steps), `jii doctor`, `jii achievements`,
+  `jii sources`.
+
+## Previous work (2026-08-16, batch 16)
 
 **Owner ask: "after `jii update jii`, tell me what changed — and let me read that changelog per
 version with `jii changelog`." Done in v0.1.16-beta; recorded as ADR-0079.**
@@ -37,10 +68,10 @@ version with `jii changelog`." Done in v0.1.16-beta; recorded as ADR-0079.**
 - **Release discipline is now a test.** `this_build_has_release_notes_at_the_top` asserts the
   first entry equals `CARGO_PKG_VERSION`: **bumping the version without writing its notes fails
   `cargo test`.** Sibling tests check descending order, en+ru presence and ISO dates.
-- 317 tests, clippy clean; verified live in both languages (bare / by version / `--all` /
+- 317 tests at the time, clippy clean; verified live in both languages (bare / by version / `--all` /
   `--since` / `--json` / unknown version).
 
-## Previous work (2026-08-16, batch 15)
+## Earlier work (2026-08-16, batch 15)
 
 **Owner ask: "a badge for every boss and every way of beating them, and add more besides."
 Done in v0.1.15-beta; recorded as ADR-0078.** Catalog 15 → **30** (10 secret).
@@ -1362,7 +1393,7 @@ None.
 
 ## Test status
 
-`cargo test` — **317 passing, 0 failing** (see the batch sections above for what the newer tests
+`cargo test` — **321 passing, 0 failing** (see the batch sections above for what the newer tests
 cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`

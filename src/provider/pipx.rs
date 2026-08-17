@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, which};
+use super::{Bootstrap, Ecosystem, FailureNote, Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
     InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
@@ -71,6 +71,21 @@ impl Provider for Pipx {
         Some(Ecosystem {
             label: "Python (pipx)",
             bootstrap: Bootstrap::Packages(&["pipx"]),
+        })
+    }
+
+    /// The other half of the ADR-0023 bargain: since pipx cannot pre-filter libraries out, it
+    /// must at least explain the rejection it causes. `pipx install <lib>` fails with "No apps
+    /// associated with package X", which is accurate but tells a user nothing — turn it into
+    /// plain language plus the two real ways forward.
+    fn explain_failure(&self, output: &str) -> Option<FailureNote> {
+        let name = library_rejection(output)?;
+        Some(FailureNote {
+            message: crate::t!("library.pypi", name = name.clone()),
+            hints: vec![
+                crate::t!("library.pypi_pip", name = name.clone()),
+                crate::t!("library.pypi_search", name = name),
+            ],
         })
     }
 
@@ -217,6 +232,21 @@ fn candidate(resp: &PypiResponse) -> PackageCandidate {
     }
 }
 
+/// The package name in pipx's "this is a library" rejection, if that is what `output` says.
+/// pipx phrases it as `No apps associated with package <name>.` — the sole reliable marker;
+/// the rest of its message (the `--include-deps` suggestion, the dependency app list) is noise
+/// that would send the user off installing numpy's `f2py`.
+fn library_rejection(output: &str) -> Option<String> {
+    const MARKER: &str = "No apps associated with package ";
+    let rest = output.split(MARKER).nth(1)?;
+    let name = rest
+        .split([' ', '.', '\n', '\r', ','])
+        .next()
+        .unwrap_or("")
+        .trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
 /// A single unprivileged `pipx <verb> <name>` plan (install/uninstall/upgrade).
 fn pipx_plan(name: &str, verb: &str, reasons: Vec<String>) -> InstallPlan {
     let argv = vec![BIN.to_string(), verb.to_string(), name.to_string()];
@@ -320,6 +350,22 @@ mod tests {
         let dateless =
             response(r#"{"info":{"name":"x","version":"1.0"},"urls":[{}]}"#);
         assert!(!is_stale(&dateless));
+    }
+
+    #[test]
+    fn library_rejection_is_recognised_and_explained() {
+        // The real pipx wording, dependency-app noise and all.
+        let out = "creating virtual environment...\ninstalling affinity...\nNo apps associated with package affinity. Try again with '--include-deps' to\ninclude apps of dependent packages, which are listed above.\nNote: Dependent package 'numpy' contains 2 apps\n  - f2py\n";
+        assert_eq!(library_rejection(out).as_deref(), Some("affinity"));
+
+        let note = Pipx::new().explain_failure(out).expect("a library failure explains itself");
+        assert!(note.message.contains("affinity"), "names the package: {}", note.message);
+        // Never a dead end: an explanation always comes with somewhere to go.
+        assert_eq!(note.hints.len(), 2);
+
+        // An unrelated failure is left alone for the raw tail to show.
+        assert!(library_rejection("error: network unreachable").is_none());
+        assert!(Pipx::new().explain_failure("error: network unreachable").is_none());
     }
 
     #[test]

@@ -2018,7 +2018,7 @@ impl Cli {
             .ecosystem_catalog()
             .await
             .into_iter()
-            .map(|e| (e.id, matches!(e.bootstrap, crate::provider::Bootstrap::Script(_))))
+            .map(|e| (e.id, matches!(e.bootstrap, crate::provider::Bootstrap::Script { .. })))
             .collect();
         let hidden = full.iter().filter(|e| !e.relevant).count();
         let shown: Vec<&crate::engine::SourceEntry> =
@@ -2229,7 +2229,7 @@ impl Cli {
         }
         let names = match eco.bootstrap {
             // A script-installed manager (brew/nix/AUR): JII can't cleanly uninstall it.
-            crate::provider::Bootstrap::Script(_) => {
+            crate::provider::Bootstrap::Script { .. } => {
                 renderer.info(&crate::t!("sources.remove_script", label = eco.label));
                 return Ok(());
             }
@@ -2401,7 +2401,29 @@ impl Cli {
                     // id — routing it would loop. Box::pin breaks the async recursion cycle.
                     Some((pkg, source)) => {
                         let spec = format!("{pkg}:{source}");
-                        Box::pin(self.install_inner(&[spec], config, renderer, false, false)).await
+                        Box::pin(self.install_inner(&[spec], config, renderer, false, false))
+                            .await?;
+                        if self.global.dry_run {
+                            // Everything is previewable: show the finishing steps too, since
+                            // they are part of what `jii sources add` would really do.
+                            if let Some(plan) = engine.post_bootstrap_plan(eco.id).await? {
+                                renderer.info(&crate::t!("providers.then_setup", label = label));
+                                self.preview_self_plan(&plan, renderer);
+                            }
+                            return Ok(());
+                        }
+                        // Installing the package is not the same as having the manager (a
+                        // Flatpak with no remote, a snapd whose socket is off) — finish the job
+                        // (ADR-0080). If the user declined the install, say what that means
+                        // instead of ending on a bare "Aborted."
+                        if engine.source_available(eco.id).await {
+                            engine.finish_bootstrap(eco.id, renderer).await?;
+                            renderer.success(&crate::t!("install.bootstrap_ready", manager = label));
+                            self.grant_achievement("bootstrapper", renderer);
+                        } else {
+                            renderer.info(&crate::t!("providers.not_set_up", label = label, id = eco.id));
+                        }
+                        Ok(())
                     }
                     None => {
                         renderer.error(&crate::t!("providers.not_found", label = label));
@@ -2412,8 +2434,10 @@ impl Cli {
             }
             // No distro package exists for this one — its own upstream script is the install
             // path. Shown in full, run only on an explicit answer (ADR-0066).
-            Bootstrap::Script(cmd) => {
-                self.offer_script_bootstrap(engine, eco.id, label, cmd, renderer).await;
+            Bootstrap::Script { cmd, shell } => {
+                if self.offer_script_bootstrap(engine, eco.id, label, cmd, shell, renderer).await {
+                    self.grant_achievement("bootstrapper", renderer);
+                }
                 Ok(())
             }
         }
@@ -2481,8 +2505,8 @@ impl Cli {
             let ok = match status.bootstrap {
                 // brew/nix: no distro package exists, so their own upstream script *is* the
                 // install path. Shown in full and run only on an explicit answer (ADR-0066).
-                Bootstrap::Script(cmd) => {
-                    self.offer_script_bootstrap(engine, &cand.source_id, manager, cmd, renderer)
+                Bootstrap::Script { cmd, shell } => {
+                    self.offer_script_bootstrap(engine, &cand.source_id, manager, cmd, shell, renderer)
                         .await
                 }
                 // flatpak/snap/cargo/…: install the manager's OS package, then wire up any default
@@ -2530,6 +2554,7 @@ impl Cli {
         source_id: &str,
         manager: &str,
         cmd: &str,
+        shell: Option<crate::provider::ShellSetup>,
         renderer: &Renderer,
     ) -> bool {
         renderer.info(&crate::t!("install.script_intro", manager = manager));
@@ -2567,7 +2592,62 @@ impl Cli {
             return false;
         }
         renderer.success(&crate::t!("install.bootstrap_ready", manager = manager));
+        // JII can drive the manager by its absolute path, but the *user's* shell still can't
+        // see it — Homebrew ends by printing a line for them to paste. Offer to add it for
+        // them instead of leaving homework behind (ADR-0080).
+        if let Some(setup) = shell {
+            self.offer_shell_line(manager, setup, renderer);
+        }
         true
+    }
+
+    /// Offer to append a manager's shell line (`eval "$(brew shellenv)"`) to the user's shell
+    /// rc, so `brew` works in their terminal too — not just inside JII. Shown in full first and
+    /// written only on an explicit yes: this edits a file JII doesn't own. Silent when the line
+    /// is already there, when the binary can't be located, or in a non-interactive session
+    /// (where the line is printed to paste instead — never a dead end).
+    fn offer_shell_line(
+        &self,
+        manager: &str,
+        setup: crate::provider::ShellSetup,
+        renderer: &Renderer,
+    ) {
+        let Some(bin) = crate::provider::first_existing(setup.bins) else {
+            return;
+        };
+        let line = setup.rc_line.replace("{bin}", &bin);
+        let Some(rc) = crate::shellrc::rc_file() else {
+            // An unsupported shell (fish syntax differs): show the line, don't guess a file.
+            renderer.info(&crate::t!("install.shell_manual", line = line.clone()));
+            return;
+        };
+        if crate::shellrc::already_present(&rc, &line) {
+            return;
+        }
+        renderer.info("");
+        renderer.info(&crate::t!(
+            "install.shell_intro",
+            manager = manager,
+            file = rc.display().to_string()
+        ));
+        renderer.info(&format!("  {line}"));
+        let flags = self.prompt_flags(self.global.auto);
+        if !self.interactive(renderer)
+            || !prompt::confirm(renderer, &crate::t!("install.shell_confirm"), true, &flags)
+        {
+            renderer.info(&crate::t!("install.shell_manual", line = line.clone()));
+            return;
+        }
+        match crate::shellrc::append_line(&rc, manager, &line) {
+            Ok(()) => renderer.success(&crate::t!(
+                "install.shell_added",
+                file = rc.display().to_string()
+            )),
+            Err(e) => {
+                renderer.warn(&crate::t!("install.shell_failed", error = e.to_string()));
+                renderer.info(&crate::t!("install.shell_manual", line = line.clone()));
+            }
+        }
     }
 
     /// Install an ecosystem manager's OS package (the first of `names` that resolves on this host)
@@ -2609,24 +2689,10 @@ impl Cli {
         if !engine.source_available(source_id).await {
             return Ok(false);
         }
-        // Flatpak's install plan targets the `flathub` remote, which a freshly-installed Flatpak
-        // doesn't have yet — add it (idempotent, user-scope, no root) so the app install resolves.
-        // The one manager needing a post-install remote today; localized here like doctor's Flathub
-        // fix rather than pushed into the source-agnostic core.
-        if source_id == "flatpak" {
-            let argv: Vec<String> = [
-                "flatpak",
-                "remote-add",
-                "--user",
-                "--if-not-exists",
-                "flathub",
-                "https://flathub.org/repo/flathub.flatpakrepo",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-            let _ = run_plain_command(&argv).await;
-        }
+        // The package alone rarely *is* the manager: Flatpak has no remote yet, snapd's socket
+        // is off. Each source declares its own finishing steps, so this stays source-agnostic
+        // (ADR-0080) instead of the `if source_id == "flatpak"` special case it replaces.
+        engine.finish_bootstrap(source_id, renderer).await?;
         renderer.success(&crate::t!("install.bootstrap_ready", manager = manager));
         Ok(true)
     }
@@ -3529,21 +3595,29 @@ impl Cli {
 
         for a in crate::achievements::visible(&store) {
             let unlocked = store.is_unlocked(a.id);
+            // Earned vs not is carried by a glyph, not by colour alone: colour is lost in a
+            // pipe, a pasted log, `--no-color` and to plenty of eyes, and "did I get this one?"
+            // is the only question this list answers.
+            let state = if unlocked {
+                palette.good(palette.mark_ok())
+            } else {
+                palette.dim(if renderer.unicode() { "·" } else { "-" })
+            };
             // Keep a secret hidden until earned: show `???` and a teaser, not the real text.
             // An ending badge is exempt — it only appears once its fight is won, and then it
             // is a named goal ("now try sparing him"), not another anonymous row.
             if a.secret && !unlocked && a.revealed_by.is_none() {
                 let title = palette.dim("???");
-                renderer.info(&format!("  {}  {}", a.icon, title));
-                renderer.info(&format!("      {}", palette.dim(&crate::t!("achieve.hidden"))));
+                renderer.info(&format!("  {state} {}  {}", a.icon, title));
+                renderer.info(&format!("        {}", palette.dim(&crate::t!("achieve.hidden"))));
                 continue;
             }
             let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
             let desc = crate::i18n::tr(&format!("achieve.{}.desc", a.id));
             let mark = if unlocked { palette.good(a.icon) } else { palette.dim(a.icon) };
             let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
-            renderer.info(&format!("  {mark}  {title}"));
-            renderer.info(&format!("      {}", palette.dim(&desc)));
+            renderer.info(&format!("  {state} {mark}  {title}"));
+            renderer.info(&format!("        {}", palette.dim(&desc)));
         }
         Ok(())
     }
@@ -4039,6 +4113,11 @@ struct SystemFacts {
     /// Whether Flatpak is installed and, if so, whether the Flathub remote is wired up.
     flatpak: bool,
     flathub: bool,
+    /// Whether Homebrew is present and, if so, whether a compiler is available: brew builds
+    /// from source whenever no bottle matches, and its own installer only *suggests* the
+    /// build tools in its closing notes.
+    brew: bool,
+    build_tools: bool,
     /// The env var that holds a GitHub token, and whether it is set.
     token_env: String,
     token_set: bool,
@@ -4097,6 +4176,21 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
                 crate::t!("check.cargo_path_advice"),
             )
             .fixable(Fix::PathExport { dir: f.cargo_bin.clone() })
+        });
+    }
+
+    // A compiler for Homebrew — only meaningful once brew is installed. Homebrew pours a
+    // prebuilt bottle when it has one and compiles when it doesn't, so a missing toolchain
+    // isn't broken, just a formula away from failing. JII can install it; brew only mentions it.
+    if f.brew {
+        checks.push(if f.build_tools {
+            SystemCheck::pass(crate::t!("check.build_ok"))
+        } else {
+            SystemCheck::warn(
+                crate::t!("check.build_missing"),
+                crate::t!("check.build_advice"),
+            )
+            .fixable(Fix::Install("gcc"))
         });
     }
 
@@ -4163,13 +4257,17 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
     let cargo_bin_on_path = platform.is_on_path(&cargo_bin);
 
     // Independent probes run concurrently.
-    let (internet, git, curl, cargo, flatpak) = tokio::join!(
+    let (internet, git, curl, cargo, flatpak, cc, make) = tokio::join!(
         check_internet(),
         crate::provider::which("git"),
         crate::provider::which("curl"),
         crate::provider::which("cargo"),
         crate::provider::which("flatpak"),
+        crate::provider::which("cc"),
+        crate::provider::which("make"),
     );
+    // brew may live outside PATH right after its own installer ran.
+    let brew = crate::provider::which(&crate::provider::homebrew::brew_bin()).await;
     let flathub = if flatpak { flathub_configured().await } else { false };
     let cargo_bin_relevant = cargo || cargo_bin.exists();
     let token_set = std::env::var(token_env).is_ok_and(|v| !v.is_empty());
@@ -4185,6 +4283,8 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
         curl,
         flatpak,
         flathub,
+        brew,
+        build_tools: cc && make,
         token_env: token_env.to_string(),
         token_set,
     }
@@ -4714,7 +4814,7 @@ mod tests {
     #[test]
     fn unsigned_candidate_omits_signature_reason() {
         let reasons = recommendation_reasons(&candidate(TrustLevel::Untrusted, false, None), vec![]);
-        assert_eq!(reasons, vec!["untrusted source".to_string()]);
+        assert_eq!(reasons, vec!["unverified source".to_string()]);
     }
 
     #[test]
@@ -4788,6 +4888,8 @@ mod tests {
             curl: true,
             flatpak: true,
             flathub: true,
+            brew: true,
+            build_tools: true,
             token_env: "GITHUB_TOKEN".to_string(),
             token_set: true,
         }
@@ -4849,6 +4951,29 @@ mod tests {
         f.flatpak = false;
         let checks = system_checks(&f);
         assert!(!checks.iter().any(|c| c.label.contains("Flathub")));
+    }
+
+    #[test]
+    fn build_tools_are_only_checked_once_brew_is_here_and_are_fixable() {
+        // No Homebrew, no opinion — a compiler isn't JII's business otherwise.
+        let mut f = facts_all_good();
+        f.brew = false;
+        f.build_tools = false;
+        assert!(
+            !system_checks(&f).iter().any(|c| c.label.contains("compiler")),
+            "no brew, no compiler check"
+        );
+
+        // With Homebrew present, a missing compiler is a warning JII can fix itself —
+        // rather than the "install the build tools yourself" note brew signs off with.
+        f.brew = true;
+        let checks = system_checks(&f);
+        let build = checks
+            .iter()
+            .find(|c| c.label.contains("compiler"))
+            .expect("brew hosts get a compiler check");
+        assert!(!build.ok);
+        assert!(matches!(build.fix, Some(Fix::Install("gcc"))));
     }
 
     #[test]

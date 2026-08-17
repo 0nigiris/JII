@@ -278,6 +278,12 @@ impl Renderer {
         self.json
     }
 
+    /// Whether this terminal renders non-ASCII glyphs (for callers building their own
+    /// decorations rather than using the `Palette::mark_*` set).
+    pub fn unicode(&self) -> bool {
+        self.unicode
+    }
+
     /// The semantic colour palette for this renderer (a no-op when colour is off).
     pub fn palette(&self) -> Palette {
         Palette { enabled: self.color, unicode: self.unicode }

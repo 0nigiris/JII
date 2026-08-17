@@ -388,8 +388,12 @@ forces the config edit for one run; `--nix-imperative` forces a plain `nix profi
 
 Safety is a first-class design constraint, not an afterthought.
 
-- **Three trust levels** — `official` › `community` › `untrusted`. They drive both ranking and what
-  auto mode is allowed to do.
+- **Three trust levels** — `official` › `community` › `untrusted` (shown as *unverified*: it means
+  JII cannot confirm who published the thing, not that the thing is malicious). They drive both
+  ranking and what auto mode is allowed to do.
+- **You choose what to install.** JII finds, ranks and explains; the decision — and the software
+  itself — belongs to the source you pick. JII does not review, vouch for, or take responsibility
+  for third-party software, least of all from unverified sources.
 - **Auto mode never installs `untrusted` automatically.** A GitHub release binary is always
   confirmed explicitly — even with `--auto`.
 - **`default_yes` is a *threshold*, not a switch.** `default_yes_max_trust` sets the floor: at or

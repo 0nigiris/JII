@@ -61,12 +61,21 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
-* Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.16~beta-1
+* Mon Aug 17 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.16~beta-1
 - New `jii changelog`: JII's release notes in plain language, embedded in the binary
   and readable offline. Bare shows the running version, `jii changelog 0.1.12` any
   past release, `--all` the whole history, `--since <v>` everything newer.
 - `jii update jii` no longer ends on "updated": it finishes by printing what the new
   version brought, by re-invoking the freshly installed binary (ADR-0079).
+- Bootstrapping a manager now finishes it: snapd's socket and /snap link, Flatpak's
+  remote on every path, and an offer to add Homebrew's line to your shell rc (brew is
+  used by absolute path immediately). `jii doctor` checks brew has a compiler.
+- A source can explain its own failure: `pipx install <library>` now reads as "that's
+  a Python library, not a program" with real next steps instead of pipx's raw output
+  (ADR-0080).
+- `jii achievements` marks earned entries with ✓ (not colour alone), and `jii sources
+  add <manager>` grants Bootstrapper. Trust level `untrusted` now displays as
+  "unverified".
 * Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.15~beta-1
 - Achievements: 15 → 30. Every boss ending is now its own badge (spare and kill
   each count, plus a "both ways" badge for seeing them all, plus one for beating

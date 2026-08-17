@@ -14,14 +14,24 @@
 
 [[release]]
 version = "0.1.16-beta"
-date = "2026-08-16"
+date = "2026-08-17"
 en = [
   "New `jii changelog`: what changed in JII, in plain language. Bare shows the version you're running, `jii changelog 0.1.12` any past release, and `jii changelog --all` the whole history — all of it offline, straight from the binary.",
   "`jii update jii` no longer stops at \"updated\": it finishes by printing everything the new version brought you, including any releases you skipped along the way.",
+  "Setting up a package manager now finishes the job. Snap gets its service started and `/snap` linked (without which snapd refuses every install), Flatpak gets its remote whichever way you set it up, and after Homebrew's installer JII offers to add its line to your `.zshrc` for you — and uses brew straight away either way, no new terminal needed.",
+  "When a source rejects something, it now explains itself. `jii affinity` used to end in pipx's wall of text; it now says that package is a Python library rather than a program, and points at the two things you can actually do about it.",
+  "`jii doctor` checks that Homebrew has a compiler to build with, and offers to install one.",
+  "Achievements show a ✓ next to the ones you've earned, so a copied list still tells you which is which — and setting a manager up with `jii sources add` finally counts for 🔧 Bootstrapper.",
+  "The scariest-looking trust level is now called \"unverified\" instead of \"untrusted\": it always meant \"JII can't confirm who published this\", not \"this is malware\".",
 ]
 ru = [
   "Новая команда `jii changelog`: что изменилось в JII, человеческим языком. Без аргументов — про версию, которая у вас стоит, `jii changelog 0.1.12` — про любую прошлую, `jii changelog --all` — вся история. Всё офлайн, прямо из бинарника.",
   "`jii update jii` больше не заканчивается словом «обновлено»: в конце он печатает всё, что принесла новая версия, включая релизы, которые вы пропустили.",
+  "Установка менеджера пакетов теперь доводится до конца. Snap получает запущенную службу и ссылку `/snap` (без них snapd отказывает в любой установке), Flatpak — свой репозиторий, каким бы способом вы его ни ставили, а после установщика Homebrew JII сам предложит дописать нужную строку в ваш `.zshrc` — и в любом случае начинает пользоваться brew сразу, без нового терминала.",
+  "Если источник чего-то не может, он теперь объясняет. `jii affinity` раньше заканчивался портянкой от pipx; теперь JII говорит, что это библиотека Python, а не программа, и показывает, что с этим реально сделать.",
+  "`jii doctor` проверяет, есть ли у Homebrew чем собирать, и предлагает поставить компилятор.",
+  "В списке достижений рядом с полученными стоит ✓ — теперь и в скопированном тексте видно, что получено, а что нет. И установка менеджера через `jii sources add` наконец засчитывается на 🔧 «С нуля».",
+  "Самый пугающий уровень доверия теперь называется «без проверки», а не «недоверенный»: он всегда значил «JII не может подтвердить, кто это выпустил», а не «это вредонос».",
 ]
 
 [[release]]

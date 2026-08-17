@@ -70,13 +70,15 @@ pub async fn run_actions_quiet(
                     .await;
                 match streamed {
                     Ok((true, _)) => {}
+                    // Reported by the caller, not here: the engine knows which source produced
+                    // this plan and can let it explain the failure in human terms before any
+                    // raw output is shown (`Provider::explain_failure`).
                     Ok((false, out)) => {
                         spinner.stop().await;
-                        renderer.error(&crate::t!("exec.step_failed", command = argv.join(" ")));
-                        for line in tail(&out, 12) {
-                            renderer.info(&renderer.palette().dim(&format!("  {line}")));
-                        }
-                        return Err(JiiError::Other(anyhow::anyhow!("`{}` failed", argv.join(" "))));
+                        return Err(JiiError::StepFailed {
+                            command: argv.join(" "),
+                            output: out,
+                        });
                     }
                     Err(e) => {
                         spinner.stop().await;
@@ -106,7 +108,7 @@ pub async fn run_actions_quiet(
 }
 
 /// The last `n` non-empty lines of a captured stream — where a tool puts its actual error.
-fn tail(output: &str, n: usize) -> Vec<&str> {
+pub fn tail(output: &str, n: usize) -> Vec<&str> {
     let lines: Vec<&str> = output.lines().filter(|l| !l.trim().is_empty()).collect();
     lines[lines.len().saturating_sub(n)..].to_vec()
 }

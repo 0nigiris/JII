@@ -29,6 +29,23 @@ const ID: &str = "brew";
 const BIN: &str = "brew";
 const API: &str = "https://formulae.brew.sh/api/formula";
 
+/// Where Homebrew's own installer puts `brew`, in the order it prefers them. A freshly
+/// installed Homebrew is **not** on the current shell's PATH — its installer only prints
+/// instructions for the user to add it — so JII resolves it here instead of dead-ending on
+/// "open a new shell and try again" (ADR-0080). Public so the bootstrap path can offer to
+/// wire the same binary into the user's shell rc.
+pub const PREFIXES: &[&str] = &["/home/linuxbrew/.linuxbrew/bin/brew", "~/.linuxbrew/bin/brew"];
+
+/// The `brew` to run: the one on PATH when there is one, else the first standard prefix that
+/// exists. Deliberately uncached — Homebrew may be installed *during* this very run (the T6
+/// bootstrap), and a cached "not here" would make the install that follows fail.
+pub fn brew_bin() -> String {
+    if super::on_path(BIN) {
+        return BIN.to_string();
+    }
+    super::first_existing(PREFIXES).unwrap_or_else(|| BIN.to_string())
+}
+
 /// The Homebrew (Linuxbrew) installation source.
 pub struct Homebrew;
 
@@ -56,7 +73,7 @@ impl Provider for Homebrew {
     }
 
     async fn is_available(&self) -> bool {
-        which(BIN).await
+        which(&brew_bin()).await
     }
 
     /// The Homebrew formulae API is a network call — no brew needed to find a match, so a host
@@ -73,9 +90,15 @@ impl Provider for Homebrew {
         Some(Ecosystem {
             label: "Homebrew",
             // Homebrew is not in any distro repo — it bootstraps via its own installer.
-            bootstrap: Bootstrap::Script(
-                "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",
-            ),
+            bootstrap: Bootstrap::Script {
+                cmd: "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"",
+                // Homebrew's installer ends by printing a `brew shellenv` line for the user to
+                // paste. That's the line — JII offers to add it so nobody has to (ADR-0080).
+                shell: Some(super::ShellSetup {
+                    bins: PREFIXES,
+                    rc_line: "eval \"$({bin} shellenv)\"",
+                }),
+            },
         })
     }
 
@@ -131,12 +154,13 @@ impl Provider for Homebrew {
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
         // `brew upgrade` with no names upgrades every outdated formula (D10); user-space.
         let reasons = vec![crate::t!("reason.brew_upgrade_all")];
-        let argv = vec![BIN.to_string(), "upgrade".to_string()];
+        let argv = vec![brew_bin(), "upgrade".to_string()];
         Ok(Some(command_plan(ID, "all formulae", argv, false, reasons)))
     }
 
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
-        let out = run_capture(&[BIN, "list", "--versions"]).await?;
+        let brew = brew_bin();
+        let out = run_capture(&[&brew, "list", "--versions"]).await?;
         Ok(parse_versions(&out, ID))
     }
 }
@@ -185,13 +209,13 @@ fn candidate(formula: &Formula) -> PackageCandidate {
 
 /// A single unprivileged `brew <verb> <name>` plan (install/uninstall/upgrade).
 fn brew_plan(name: &str, verb: &str, reasons: Vec<String>) -> InstallPlan {
-    let argv = vec![BIN.to_string(), verb.to_string(), name.to_string()];
+    let argv = vec![brew_bin(), verb.to_string(), name.to_string()];
     command_plan(ID, name, argv, false, reasons)
 }
 
 /// One `brew <verb> a b c` for a whole group (still no root).
 fn brew_many(verb: &str, names: &[String], reasons: Vec<String>) -> InstallPlan {
-    let mut argv = vec![BIN.to_string(), verb.to_string()];
+    let mut argv = vec![brew_bin(), verb.to_string()];
     argv.extend(names.iter().cloned());
     command_plan(ID, &names.join(", "), argv, false, reasons)
 }

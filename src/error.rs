@@ -27,6 +27,12 @@ pub enum JiiError {
         source: std::io::Error,
     },
 
+    /// A plan step (an external command) exited non-zero. Carries the command and the output
+    /// it produced so the caller can let the *source* explain it in human terms
+    /// ([`crate::provider::Provider::explain_failure`]) before falling back to a raw tail.
+    #[error("`{command}` failed")]
+    StepFailed { command: String, output: String },
+
     /// Any other error, wrapped for convenience.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -68,6 +74,9 @@ impl JiiError {
                 }
                 _ => None,
             },
+            // A failed step is already explained where it happens (the source's own note, or
+            // a tail of its real output), so a generic remedy here would only add noise.
+            JiiError::StepFailed { .. } => None,
             // `Other` wraps opaque text from many call sites; string-sniffing it would be
             // fragile and often wrong, so we don't guess a remedy here.
             JiiError::Other(_) => None,

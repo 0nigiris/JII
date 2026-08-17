@@ -166,6 +166,33 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    /// The steps that make this manager **usable** immediately after it was installed, if it
+    /// needs any: Flatpak's default remote, snapd's socket and `/snap` compatibility symlink.
+    /// A plain [`InstallPlan`], so it is previewable and its privileged steps escalate through
+    /// `privilege.rs` like everything else — never a hidden side effect. Default `None`: most
+    /// managers work the moment their package lands.
+    ///
+    /// Without this, "JII set up Snap for you" leaves a snapd that refuses every install until
+    /// the user finds two `systemctl`/`ln` commands themselves — a bootstrap that stops one
+    /// step short of working (ADR-0080).
+    async fn plan_post_bootstrap(&self) -> Result<Option<InstallPlan>> {
+        Ok(None)
+    }
+
+    /// Explain *this source's own* failure output in human terms, with concrete next steps.
+    ///
+    /// When a plan's command exits non-zero, the executor captures its output; before dumping a
+    /// raw tail of it, the engine offers it to the source that produced the plan. A source that
+    /// recognizes the failure returns a [`FailureNote`] and the user reads "that PyPI package is
+    /// a library, not a program" instead of pipx's wall of text (#9 — never a dead end). Default
+    /// `None`: the raw tail is shown, exactly as before. Pure and synchronous (it only reads the
+    /// text it is given) — the same ADR-0022 optional-method growth as [`Self::explain_miss`],
+    /// and the core still never branches on a source id.
+    fn explain_failure(&self, output: &str) -> Option<FailureNote> {
+        let _ = output;
+        None
+    }
+
     /// Rich human metadata for `jii info`'s **app card** (#4): description, homepage,
     /// repository, license, author. Default `None` — a source that can't cheaply describe a
     /// candidate opts out and the card degrades to the basics it already has (version, trust,
@@ -271,7 +298,26 @@ pub enum Bootstrap {
     Packages(&'static [&'static str]),
     /// Bootstrapped by an upstream installer script JII will **show, never run** — piping
     /// a script into a shell is exactly the trust boundary JII refuses to cross (ADR-0005/0006).
-    Script(&'static str),
+    Script {
+        /// The upstream one-liner, shown in full before anything happens.
+        cmd: &'static str,
+        /// How to reach the manager once the script has run. These installers famously do
+        /// **not** touch the current shell — Homebrew ends by printing three commands for the
+        /// user to paste — so a manager that declares this can be finished by JII instead
+        /// (ADR-0080). `None`: nothing to wire up, or the installer does it itself.
+        shell: Option<ShellSetup>,
+    },
+}
+
+/// Where a script-installed manager ends up, and what a shell needs to see it. Used to finish
+/// a bootstrap: JII drives the manager by its absolute path right away, and offers to add
+/// `rc_line` to the user's shell rc so their own `brew` works too.
+#[derive(Debug, Clone, Copy)]
+pub struct ShellSetup {
+    /// Standard absolute paths to the manager's binary, in preference order (`~/` expanded).
+    pub bins: &'static [&'static str],
+    /// The line to append to the shell rc; `{bin}` is replaced by the resolved binary path.
+    pub rc_line: &'static str,
 }
 
 /// An installable *ecosystem* manager (npm, cargo, brew, flatpak…), surfaced by
@@ -283,6 +329,16 @@ pub struct Ecosystem {
     /// How JII bootstraps it when it is missing (and, for a `Packages` manager, the OS
     /// package(s) `jii sources remove` uninstalls).
     pub bootstrap: Bootstrap,
+}
+
+/// A source's own reading of why one of its commands failed — returned by
+/// [`Provider::explain_failure`] and rendered in place of the raw output tail.
+pub struct FailureNote {
+    /// One plain sentence: what actually went wrong, in the user's terms.
+    pub message: String,
+    /// Concrete things the user can do next. Never empty in practice — an explanation with
+    /// no way forward is the dead end this exists to prevent.
+    pub hints: Vec<String>,
 }
 
 /// A raw health probe of a source (mapped to a `Health` category by the engine).
@@ -531,6 +587,43 @@ pub(crate) async fn which(bin: &str) -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
+/// Whether `bin` is on `$PATH` — a pure filesystem check, so it works in a synchronous plan
+/// builder (unlike [`which`], which runs the tool). Used by managers that may live outside
+/// PATH right after their own installer ran.
+pub(crate) fn on_path(bin: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|dir| is_executable(&dir.join(bin)))
+    })
+}
+
+/// The first of `candidates` that exists and is executable, with a leading `~` expanded.
+/// Candidates are the standard install prefixes of a manager whose installer doesn't touch
+/// this shell's PATH (Homebrew, Nix).
+pub(crate) fn first_existing(candidates: &[&str]) -> Option<String> {
+    candidates.iter().find_map(|raw| {
+        let path = expand_home(raw)?;
+        is_executable(std::path::Path::new(&path)).then_some(path)
+    })
+}
+
+/// Expand a leading `~/` against `$HOME`. Returns `None` when `~` is needed but `$HOME`
+/// isn't set — better no path than a literal `~` directory.
+fn expand_home(raw: &str) -> Option<String> {
+    match raw.strip_prefix("~/") {
+        Some(rest) => {
+            let home = std::env::var_os("HOME")?;
+            Some(std::path::Path::new(&home).join(rest).to_string_lossy().into_owned())
+        }
+        None => Some(raw.to_string()),
+    }
+}
+
+/// Whether `path` is a file the current user can execute.
+fn is_executable(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
 /// Parse tab-separated `name<TAB>version` lines into installed records. Shared by
 /// providers whose "list installed" output has that shape (dnf, flatpak).
 pub(crate) fn parse_installed_records(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
@@ -604,7 +697,9 @@ mod tests {
                 Bootstrap::Packages(names) => {
                     assert!(!names.is_empty(), "{id} declares no bootstrap packages")
                 }
-                Bootstrap::Script(cmd) => assert!(!cmd.is_empty(), "{id} declares an empty script"),
+                Bootstrap::Script { cmd, .. } => {
+                    assert!(!cmd.is_empty(), "{id} declares an empty script")
+                }
             }
         }
     }

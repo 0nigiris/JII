@@ -63,7 +63,12 @@ impl Provider for Nix {
         Some(Ecosystem {
             label: "Nix",
             // Nix bootstraps via its own multi-user installer, not a distro package.
-            bootstrap: Bootstrap::Script("sh <(curl -L https://nixos.org/nix/install) --daemon"),
+            // The daemon installer wires up /etc/profile.d itself, so there is no rc line
+            // for JII to add — a new shell picks Nix up on its own.
+            bootstrap: Bootstrap::Script {
+                cmd: "sh <(curl -L https://nixos.org/nix/install) --daemon",
+                shell: None,
+            },
         })
     }
 

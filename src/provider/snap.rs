@@ -19,7 +19,7 @@ use super::{
 };
 use crate::error::{JiiError, Result};
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
 };
 
 const ID: &str = "snap";
@@ -71,6 +71,40 @@ impl Provider for Snap {
             label: "Snap",
             bootstrap: Bootstrap::Packages(&["snapd"]),
         })
+    }
+
+    /// Installing the `snapd` package is not the same as having Snap: outside Ubuntu the
+    /// socket ships disabled, and `/snap` — which classic snaps hard-code — doesn't exist.
+    /// Both are documented, one-time, root steps, so JII plans them (shown, then escalated
+    /// like any privileged step) instead of leaving the user with a snapd that refuses every
+    /// install. `enable --now` is idempotent; the symlink is only planned when absent, and
+    /// never on the distro that manages `/snap` itself (Ubuntu ships it as a real directory).
+    async fn plan_post_bootstrap(&self) -> Result<Option<InstallPlan>> {
+        let mut actions = vec![Action::RunCommand {
+            argv: ["systemctl", "enable", "--now", "snapd.socket"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+            needs_root: true,
+        }];
+        let mut reasons = vec![crate::t!("reason.snap_socket")];
+        if !std::path::Path::new("/snap").exists() {
+            actions.push(Action::RunCommand {
+                argv: ["ln", "-s", "/var/lib/snapd/snap", "/snap"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+                needs_root: true,
+            });
+            reasons.push(crate::t!("reason.snap_symlink"));
+        }
+        Ok(Some(InstallPlan {
+            candidate_ref: "snapd".to_string(),
+            source_id: ID.to_string(),
+            actions,
+            download_size: None,
+            reasons,
+        }))
     }
 
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>> {

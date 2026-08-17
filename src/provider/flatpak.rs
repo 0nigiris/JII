@@ -14,8 +14,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{
-    Bootstrap, Ecosystem, Provider, nonempty_lines, parse_installed_records, post_json_opt,
-    run_capture, which,
+    Bootstrap, Ecosystem, Provider, command_plan, nonempty_lines, parse_installed_records,
+    post_json_opt, run_capture, which,
 };
 use crate::error::Result;
 use crate::model::{
@@ -64,6 +64,24 @@ impl Provider for Flatpak {
             label: "Flatpak",
             bootstrap: Bootstrap::Packages(&["flatpak"]),
         })
+    }
+
+    /// A freshly installed Flatpak has no remotes, so every install plan (which targets
+    /// `flathub`) would resolve to nothing. Add it — user scope, idempotent, no root.
+    async fn plan_post_bootstrap(&self) -> Result<Option<InstallPlan>> {
+        let argv = [
+            BIN,
+            "remote-add",
+            "--user",
+            "--if-not-exists",
+            "flathub",
+            "https://flathub.org/repo/flathub.flatpakrepo",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let reasons = vec![crate::t!("reason.flatpak_add_flathub")];
+        Ok(Some(command_plan(ID, "flathub", argv, false, reasons)))
     }
 
     /// Flatpak can be searched over the network (Flathub's web API) without the CLI, so a

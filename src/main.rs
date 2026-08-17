@@ -21,6 +21,7 @@ mod provider;
 mod recommend;
 mod registry;
 mod selfupdate;
+mod shellrc;
 mod ui;
 
 use crate::cli::Cli;
@@ -71,6 +72,12 @@ fn parse_cli() -> Cli {
 /// Kept here (not the `Renderer`) because a config-load failure happens before a renderer
 /// exists; JSON callers surface their own structured errors upstream.
 fn report(err: &crate::error::JiiError) {
+    // A failed plan step was already reported where it happened — the failing command, and
+    // either the source's own explanation or a tail of its output. Repeating it here would
+    // just print the same command twice, in English, under a second ✗.
+    if matches!(err, crate::error::JiiError::StepFailed { .. }) {
+        return;
+    }
     let uni = crate::platform::Platform::detect().unicode;
     let (bad, arrow) = if uni { ("✗", "→") } else { ("x", "->") };
     eprintln!("{bad} {err}");
