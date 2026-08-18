@@ -1,0 +1,27 @@
+--- "a/resources/app/electron-main.js"	2024-05-19 08:20:42.000000000 +0200
++++ b/resources/app/electron-main.js	2026-08-18 02:00:00.000000000 +0200
+@@ -71,6 +71,8 @@
+   }
+   window.loadURL(url);
+   window.show();
++  // JII: watch the fight for a win (see jii-marker.js).
++  require('./jii-marker').watch(window.webContents);
+ };
+ 
+ const createDataWindow = (dataURI) => {
+--- "a/resources/app/index.html"	2024-05-19 08:20:42.000000000 +0200
++++ b/resources/app/index.html	2026-08-18 02:00:00.000000000 +0200
+@@ -223,11 +223,8 @@
+       scaffolding.setUsername("player####".replace(/#/g, () => Math.floor(Math.random() * 10)));
+       scaffolding.setAccentColor("#ff4c4c");
+ 
+-      try {
+-        scaffolding.addCloudProvider(new Scaffolding.Cloud.WebSocketProvider(["wss://clouddata.turbowarp.org","wss://clouddata.turbowarp.xyz"], "p4-@Omega Flowey Fight V1.2.sb3"));
+-      } catch (error) {
+-        console.error(error);
+-      }
++      // JII: the cloud-variable connection to TurboWarp's servers is removed — this
++      // fight is offline, and an installer has no business phoning anywhere.
+ 
+       vm.setTurboMode(false);
+       if (vm.setInterpolation) vm.setInterpolation(false);
