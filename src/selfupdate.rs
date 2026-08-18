@@ -199,7 +199,8 @@ fn deb_arch(arch: &str) -> &str {
 /// Uses the **list** endpoint (`/releases`), not `/releases/latest`: the latter 404s on a
 /// repo that has only pre-releases (which JII's beta tags are), because it deliberately
 /// excludes drafts and prereleases. The list is returned newest-first, so we take the first
-/// non-draft — prerelease or not — which is the newest tag a user could install.
+/// non-draft *version* release — prerelease or not — which is the newest tag a user could
+/// install. See [`pick_release`] for why "version" has to be said out loud.
 pub async fn latest_release() -> Result<Latest> {
     let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=20");
     let resp = http_client()?
@@ -213,14 +214,25 @@ pub async fn latest_release() -> Result<Latest> {
         .json()
         .await
         .map_err(|e| JiiError::Other(anyhow::anyhow!("release metadata: {e}")))?;
-    let rel = releases
-        .into_iter()
-        .find(|r| !r.draft)
+    let rel = pick_release(releases)
         .ok_or_else(|| JiiError::Other(anyhow::anyhow!("no published release found")))?;
     Ok(Latest {
         tag: rel.tag_name,
         assets: rel.assets,
     })
+}
+
+/// The newest release a user could actually install, from a newest-first list.
+///
+/// Not simply "the first non-draft": the repo also publishes **non-version releases** that
+/// carry no JII build at all — the boss-fight game bundles (`chaos-game`, `spamton-game`,
+/// `flowey-game`), whose assets are games. One of those published after the last `v*` tag would
+/// otherwise become "the latest JII", and every update would fail looking for a tarball that
+/// isn't there. So a release counts only if its tag starts with `v`.
+fn pick_release(releases: Vec<ReleaseJson>) -> Option<ReleaseJson> {
+    releases
+        .into_iter()
+        .find(|r| !r.draft && r.tag_name.starts_with('v'))
 }
 
 /// Resolve the verification for `asset` — its published sha256 if present, else none.
@@ -384,6 +396,26 @@ mod tests {
             name: name.to_string(),
             browser_download_url: format!("https://example/{name}"),
         }
+    }
+
+    fn release(tag: &str, draft: bool) -> ReleaseJson {
+        ReleaseJson { tag_name: tag.to_string(), draft, assets: vec![] }
+    }
+
+    #[test]
+    fn a_game_bundle_release_is_never_mistaken_for_a_jii_release() {
+        // The repo publishes boss-fight bundles alongside real releases, newest first. Picking
+        // "the first non-draft" would hand `jii update jii` a release with no JII in it.
+        let list = vec![
+            release("flowey-game", false),
+            release("v0.1.16-beta", false),
+            release("v0.1.15-beta", false),
+        ];
+        assert_eq!(pick_release(list).map(|r| r.tag_name).as_deref(), Some("v0.1.16-beta"));
+
+        // Drafts still don't count, and neither does a repo with nothing installable.
+        let list = vec![release("v0.2.0", true), release("spamton-game", false)];
+        assert!(pick_release(list).is_none());
     }
 
     fn latest() -> Latest {

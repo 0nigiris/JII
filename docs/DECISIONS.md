@@ -3284,3 +3284,20 @@ they earned, but the crown moved. The ledger gains `flowey`, `flowey-normal`, `f
 `flowey-both`. The `flowey` orphan branch holds the installer and the patch; the game itself
 ships as a release asset, never in git. `ENDINGS` as a global constant is gone —
 `achievements::boss(id).endings` replaces it.
+
+**Addendum (2026-08-18).** Two things the live fight taught us the same evening.
+
+*Non-version releases are not JII releases.* `flowey-game` is the **fourth** release in this repo
+that carries a game instead of a build. Both update paths took "the newest non-draft release" as
+the newest JII — so a bundle published after the last `v*` tag would have been installed as JII
+and failed looking for a tarball that isn't in it. `install.sh` and `selfupdate::pick_release`
+now require a `v` tag; the shell parse also switched to `grep -o … | head -1`, because the
+previous greedy `sed` would have returned the *oldest* release had GitHub ever answered with
+single-line JSON instead of the pretty-printed body it sends curl.
+
+*The fight must not depend on the keyboard layout.* Scratch matches on the character a key
+produces, not on the key: on a Cyrillic layout `z` arrives as `я`, so the menu moves on the
+arrows and then nothing ever confirms — a dead end at the first prompt. `jii-marker.js` now also
+feeds the runtime the Latin letter the physical key stands for (`event.code` → `KeyZ` → `z`),
+alongside whatever the layout produced. Telling the player to go change their system settings
+would have been exactly the hand-off to the user that ADR-0080 exists to stop.

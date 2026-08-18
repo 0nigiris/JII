@@ -49,11 +49,21 @@ recorded as ADR-0081.**
   the probe reads `[9950,"off"]`; a forced win writes the marker; both sentinels grant correctly
   (🌻+🥀 then 🌼+🌺); the installer's win / loss-n / loss-yes branches all run against a stubbed
   game.
-- **Not done yet, needs the owner:** the `flowey` branch is prepared locally but **not pushed**,
-  and the `flowey-game` release asset (`omega-flowey-linux-x86_64.tar.gz`, 121 MB, built and
-  tested at `scratchpad/flowey/`) is **not uploaded** — the branch README's credits still need
-  the project's author/source link, which only the owner has. `v0.1.16-beta` is also still
-  untagged.
+- **Two fixes the same evening, after the fight went live.** (1) *Any keyboard layout.* Scratch
+  matches on the character a key produces, so on a Cyrillic layout `z` arrives as `я` and nothing
+  ever confirms — `jii-marker.js` now also posts the Latin letter of the physical key
+  (`event.code` → `KeyZ` → `z`). (2) *Non-version releases.* `install.sh` and
+  `selfupdate::pick_release` took the newest non-draft release as the newest JII — but the repo
+  publishes game bundles (`chaos-game`, `spamton-game`, `flowey-game`) as releases too. Both now
+  require a `v` tag, and the shell parse uses `grep -o … | head -1` (the old greedy `sed` would
+  have picked the *oldest* release on a single-line JSON body).
+- **Shipped and public:** `v0.1.16-beta` is tagged and released (its x86_64 job hung ~70 min in
+  `Install nfpm` on a runner network stall — cancelled, re-run, second attempt green), branch
+  [`flowey`](https://github.com/0nigiris/JII/tree/flowey) is pushed, and the game ships as the
+  `flowey-game` release asset.
+- **Still open, needs the owner:** the branch README and the release notes credit only Toby Fox
+  and the TurboWarp Packager — the Scratch project's own author/source link is unknown and only
+  the owner can supply it. Both carry a takedown offer meanwhile.
 
 ## Previous work (2026-08-17, batch 17)
 
@@ -1436,7 +1446,7 @@ None.
 
 ## Test status
 
-`cargo test` — **322 passing, 0 failing** (see the batch sections above for what the newer tests
+`cargo test` — **323 passing, 0 failing** (see the batch sections above for what the newer tests
 cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`

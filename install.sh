@@ -242,13 +242,21 @@ if [ -z "$TAG" ]; then
   bullet "Finding the latest release…"
   # Use the /releases *list*, not /releases/latest: the latter 404s on a repo whose
   # only releases are pre-releases (every JII beta tag is one). The list is newest-first,
-  # so the first tag_name is the newest published release. Parsed without needing jq.
+  # so the first `v*` tag_name is the newest published release. Parsed without needing jq.
+  # It has to be `v*`, not just the first entry: the repo also publishes the boss-fight game
+  # bundles (`chaos-game`, `spamton-game`, `flowey-game`) as releases, and one of those
+  # published after the last version tag would otherwise be installed as "the latest JII".
   # Buffer the whole response first (into a variable), *then* filter — piping curl
   # straight into `grep -m1` closes the pipe early and makes curl print a spurious
   # "curl: (23)" write error.
   RELEASES=$(fetch "https://api.github.com/repos/$REPO/releases?per_page=20") \
     || err "could not reach GitHub to find the latest release; set JII_VERSION=<tag>."
-  TAG=$(printf '%s\n' "$RELEASES" | grep -m1 '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+  # `grep -o` first, so this reads the *first* matching tag whether GitHub sends the array
+  # pretty-printed (as it does to curl) or as one long line (as some proxies do) — a plain
+  # greedy `sed` on a single-line response would silently return the *oldest* release.
+  TAG=$(printf '%s\n' "$RELEASES" \
+    | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"v[^"]*"' \
+    | head -n 1 | sed 's/.*"\(v[^"]*\)"/\1/')
   [ -n "$TAG" ] || err "could not determine the latest release; set JII_VERSION=<tag>."
 fi
 ok "JII $TAG is available"

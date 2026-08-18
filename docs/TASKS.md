@@ -760,8 +760,13 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   The patch adds one file to the game (`jii-marker.js`, 2-line call) which watches the
                   project's own `flowey hp` variable from Electron's main process; the loss branch of
                   `flowey_install.sh` *offers* a plain install instead of exiting. 322 tests, clippy clean.
-                  **Open:** branch `flowey` unpushed and the `flowey-game` asset unuploaded — the README
-                  credits need the project's author/source from the owner.
+                  Shipped: branch `flowey`, the `flowey-game` asset, and `v0.1.16-beta` are all public.
+                  Two same-evening fixes: the fight now works on **any keyboard layout** (Scratch matches
+                  on the character a key produces, so `z` on a Cyrillic layout was `я` and nothing ever
+                  confirmed), and `install.sh` + `selfupdate::pick_release` now require a `v` tag so a
+                  **game-bundle release can never be installed as JII**. 323 tests.
+                  **Open:** the credits name only Toby Fox and the TurboWarp Packager — the Scratch
+                  project's author/source link is still needed from the owner.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
