@@ -44,8 +44,14 @@ sandboxed and unmodified — and writes `normal` or `hard` (the game's own menu 
 It arms only after seeing a health bar above zero, so a game that was never started cannot look
 like a win.
 
-The only other change is that the packaged project's connection to TurboWarp's cloud-variable
-servers is removed: this fight is offline, and an installer has no business phoning anywhere.
+Two other things the patch does. The packaged project's connection to TurboWarp's cloud-variable
+servers is removed: this fight is offline, and an installer has no business phoning anywhere. And
+the fight is made to work on **any keyboard layout**: Scratch matches on the character a key
+produces, not on the key itself, so on a Cyrillic (or Greek, or any non-Latin) layout `z` arrives
+as `я` and nothing ever confirms — the menu moves on the arrows and then dead-ends. JII feeds the
+runtime the Latin letter the physical key stands for, alongside whatever the layout produced.
+
+Controls: arrows to move, **`z`** to confirm. (Enter does nothing — the project never reads it.)
 
 ## Credits & rights
 

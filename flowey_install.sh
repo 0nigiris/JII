@@ -128,7 +128,7 @@ chmod +x "$APP" "$WORK/omega-flowey/chrome_crashpad_handler" 2>/dev/null || true
 
 # --- run the fight (native window) -----------------------------------------
 info "Opening the fight… good luck. You'll need it."
-note "Arrows to move, Z/Enter to confirm. Close the window when you're done."
+note "Arrows to move, Z to confirm. Close the window when you're done."
 info ""
 "$APP" >/dev/null 2>&1 || true
 

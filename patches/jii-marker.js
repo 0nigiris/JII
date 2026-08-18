@@ -35,6 +35,33 @@ const PROBE = `(() => {
   }
 })()`;
 
+// The fight reads letter keys (`z` to confirm, `x`/`c` in dialogue) — and Scratch matches on the
+// *character* a key produces, not on the key itself. On a non-Latin layout (Cyrillic, Greek…)
+// `z` arrives as `я` and the game sees nothing: the menu moves on the arrows but nothing ever
+// confirms. Rather than tell the player to go change their layout, feed the runtime the Latin
+// letter the physical key stands for, alongside whatever the layout produced.
+const LAYOUT_FIX = `(() => {
+  if (window.__jiiLayoutFix) return 'already';
+  const latin = (event) => {
+    const match = /^Key([A-Z])$/.exec(event.code || '');
+    return match ? match[1].toLowerCase() : null;
+  };
+  const forward = (isDown) => (event) => {
+    const key = latin(event);
+    // Nothing to do when the layout already produced that very letter.
+    if (!key || (typeof event.key === 'string' && event.key.toLowerCase() === key)) return;
+    try {
+      window.vm.runtime.ioDevices.keyboard.postData({ key: key, isDown: isDown });
+    } catch (e) {
+      // No VM yet, or a runtime that doesn't take keys — the layout stays the player's problem.
+    }
+  };
+  document.addEventListener('keydown', forward(true), true);
+  document.addEventListener('keyup', forward(false), true);
+  window.__jiiLayoutFix = true;
+  return 'installed';
+})()`;
+
 const markerPath = () => {
   if (process.env.JII_FLOWEY_MARKER) return process.env.JII_FLOWEY_MARKER;
   const state = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
@@ -54,6 +81,15 @@ const writeMarker = (variant) => {
 // Arm only after seeing a health bar above zero: a project that hasn't started yet must never
 // look like a win, however it was launched.
 const watch = (webContents) => {
+  // Re-applied on every load, so a reload doesn't lose it.
+  const installLayoutFix = () => {
+    webContents.executeJavaScript(LAYOUT_FIX, true).then((result) => {
+      if (process.env.JII_FLOWEY_DEBUG) console.log('jii: layout fix ->', result);
+    }).catch(() => {});
+  };
+  webContents.on('dom-ready', installLayoutFix);
+  installLayoutFix();
+
   let armed = false;
   const timer = setInterval(() => {
     if (webContents.isDestroyed()) {
