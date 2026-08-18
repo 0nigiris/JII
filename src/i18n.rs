@@ -188,6 +188,30 @@ mod tests {
     }
 
     #[test]
+    fn every_boss_and_ending_has_its_text() {
+        // Adding a fight means adding a row to BOSSES, badges to the catalog *and* text here.
+        // Miss the text and the badge renders as its own key — so check the whole shape.
+        // The parity test above then guarantees ru has everything en does.
+        let en = flatten(EN);
+        let mut want: Vec<String> = Vec::new();
+        for boss in crate::achievements::BOSSES {
+            want.push(format!("achieve.{}.title", boss.id));
+            want.push(format!("achieve.{}.desc", boss.id));
+            for ending in boss.endings {
+                want.push(format!("achieve.{}.toast-{ending}", boss.id));
+                want.push(format!("achieve.{}-{ending}.title", boss.id));
+                want.push(format!("achieve.{}-{ending}.desc", boss.id));
+            }
+            if !boss.endings.is_empty() {
+                want.push(format!("achieve.{}-both.title", boss.id));
+                want.push(format!("achieve.{}-both.desc", boss.id));
+            }
+        }
+        let missing: Vec<&String> = want.iter().filter(|k| !en.contains_key(*k)).collect();
+        assert!(missing.is_empty(), "locale keys missing for a boss fight: {missing:?}");
+    }
+
+    #[test]
     fn locales_parse_and_flatten_dotted_keys() {
         let en = flatten(EN);
         // A representative migrated key must resolve (guards against a broken TOML shape).

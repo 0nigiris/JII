@@ -87,24 +87,56 @@ pub const CATALOG: &[Achievement] = &[
     Achievement { id: "spamton-spare", icon: "🧵", secret: true, revealed_by: Some("spamton") },
     Achievement { id: "spamton-kill", icon: "💥", secret: true, revealed_by: Some("spamton") },
     Achievement { id: "spamton-both", icon: "📞", secret: true, revealed_by: Some("spamton") },
+    Achievement { id: "flowey", icon: "🌻", secret: true, revealed_by: None },
+    Achievement { id: "flowey-normal", icon: "🌼", secret: true, revealed_by: Some("flowey") },
+    Achievement { id: "flowey-hard", icon: "🥀", secret: true, revealed_by: Some("flowey") },
+    Achievement { id: "flowey-both", icon: "🌺", secret: true, revealed_by: Some("flowey") },
     Achievement { id: "boss-slayer", icon: "👺", secret: true, revealed_by: None },
 ];
 
-/// Every boss badge, in fight order. `boss-slayer` is earned by unlocking all of them.
-pub const BOSSES: &[&str] = &["sans", "jevil", "spamton"];
+/// A boss fight, as the ledger sees it: the badge it grants, the paths it can end on, and the
+/// sentinel file its installer drops beside the ledger for JII to find on its next run.
+///
+/// Adding a fight is adding a row here (plus its badges above and its locale keys) — nothing
+/// else in JII needs to learn the new boss's name.
+pub struct Boss {
+    /// The badge unlocked by winning at all — also the stem of every `<id>-<ending>` badge.
+    pub id: &'static str,
+    /// The paths the fight can end on. Empty for a single-path fight (Sans), which therefore
+    /// has no per-ending badges and no `<id>-both`.
+    pub endings: &'static [&'static str],
+    /// The sentinel this fight's installer writes the ending into. `None` for Sans, whose
+    /// older installer drops a contentless marker handled by [`Achievements::take_sentinel`].
+    pub sentinel: Option<&'static str>,
+}
 
-/// The endings a boss fight can have. Each one has its own `<boss>-<ending>` achievement, and
-/// getting all of them earns `<boss>-both`.
-pub const ENDINGS: &[&str] = &["spare", "kill"];
-
-/// How many packages must land in a single command to earn `haul`.
-pub const HAUL_AT: usize = 5;
+/// The two ways a fight you can *choose* to end: spare the boss, or don't.
+pub const MERCY_ENDINGS: &[&str] = &["spare", "kill"];
+/// Omega Flowey offers no mercy — only a difficulty. Beating him on both counts as both ways.
+pub const FLOWEY_ENDINGS: &[&str] = &["normal", "hard"];
 
 /// Sentinel file names a boss-fight installer drops beside the ledger. Both Jevil fights (the
 /// Chaos Simulator and the handheld-style VGB one) share `chaos-install` because they share the
-/// 🃏 achievement; Spamton NEO has his own.
+/// 🃏 achievement; Spamton NEO and Omega Flowey have their own.
 pub const JEVIL_SENTINEL: &str = "chaos-install";
 pub const SPAMTON_SENTINEL: &str = "spamton-install";
+pub const FLOWEY_SENTINEL: &str = "flowey-install";
+
+/// Every boss, in fight order. `boss-slayer` is earned by unlocking all of them.
+pub const BOSSES: &[Boss] = &[
+    Boss { id: "sans", endings: &[], sentinel: None },
+    Boss { id: "jevil", endings: MERCY_ENDINGS, sentinel: Some(JEVIL_SENTINEL) },
+    Boss { id: "spamton", endings: MERCY_ENDINGS, sentinel: Some(SPAMTON_SENTINEL) },
+    Boss { id: "flowey", endings: FLOWEY_ENDINGS, sentinel: Some(FLOWEY_SENTINEL) },
+];
+
+/// Look up a boss by its badge id.
+pub fn boss(id: &str) -> Option<&'static Boss> {
+    BOSSES.iter().find(|b| b.id == id)
+}
+
+/// How many packages must land in a single command to earn `haul`.
+pub const HAUL_AT: usize = 5;
 
 /// Install-count milestones (the `installs` counter).
 pub const CENTURION_AT: u64 = 100;
@@ -370,17 +402,21 @@ impl Achievements {
         self.ledger.sources.len()
     }
 
-    /// If the named boss sentinel exists, delete it and return how the fight ended: `"spare"`
-    /// or `"kill"` (anything else — or empty — is normalized to `"spare"`). Returns `None` when
-    /// there's no sentinel. The caller unlocks the matching secret and remembers the path.
-    pub fn take_boss_sentinel(file: &str) -> Option<String> {
-        let path = Self::boss_sentinel_path(file)?;
+    /// If this boss's sentinel exists, delete it and return how the fight ended — one of the
+    /// boss's own [`Boss::endings`]. A missing, empty or unrecognized body is normalized to the
+    /// first ending, so a half-written marker still grants the fight rather than nothing.
+    /// Returns `None` when there's no sentinel (or the boss doesn't use one).
+    pub fn take_boss_sentinel(boss: &Boss) -> Option<String> {
+        let path = Self::boss_sentinel_path(boss.sentinel?)?;
         let body = std::fs::read_to_string(&path).ok()?;
         let _ = std::fs::remove_file(&path);
-        let variant = match body.trim().to_ascii_lowercase().as_str() {
-            "kill" => "kill",
-            _ => "spare",
-        };
+        let written = body.trim().to_ascii_lowercase();
+        let variant = boss
+            .endings
+            .iter()
+            .find(|ending| **ending == written)
+            .or_else(|| boss.endings.first())
+            .copied()?;
         Some(variant.to_string())
     }
 
@@ -426,7 +462,7 @@ mod tests {
 
     #[test]
     fn secret_achievements_are_marked_secret() {
-        for id in ["sans", "jevil", "spamton"] {
+        for id in ["sans", "jevil", "spamton", "flowey"] {
             let a = find(id).unwrap_or_else(|| panic!("{id} missing from catalog"));
             assert!(a.secret, "{id} must be secret");
         }
@@ -435,17 +471,24 @@ mod tests {
     #[test]
     fn every_boss_has_a_badge_per_ending_plus_both() {
         for boss in BOSSES {
-            assert!(find(boss).is_some(), "{boss} missing from catalog");
+            assert!(find(boss.id).is_some(), "{} missing from catalog", boss.id);
             // Sans has a single path — only the multi-ending fights carry ending badges.
-            if find(&format!("{boss}-both")).is_none() {
+            if boss.endings.is_empty() {
+                assert!(
+                    find(&format!("{}-both", boss.id)).is_none(),
+                    "{} has no endings, so it must not have a -both badge",
+                    boss.id
+                );
                 continue;
             }
-            for ending in ENDINGS {
-                let id = format!("{boss}-{ending}");
+            for ending in boss.endings {
+                let id = format!("{}-{ending}", boss.id);
                 let a = find(&id).unwrap_or_else(|| panic!("{id} missing from catalog"));
                 assert!(a.secret, "{id} must be secret");
-                assert_eq!(a.revealed_by, Some(*boss), "{id} must hang off its boss");
+                assert_eq!(a.revealed_by, Some(boss.id), "{id} must hang off its boss");
             }
+            let both = format!("{}-both", boss.id);
+            assert!(find(&both).is_some(), "{both} missing from catalog");
         }
     }
 

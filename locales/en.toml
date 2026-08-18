@@ -606,6 +606,24 @@ desc = "Blew Spamton NEO apart."
 title = "Every Deal Taken"
 desc = "Beat Spamton NEO both ways — freed once, destroyed once."
 
+[achieve.flowey]
+title = "You Idiot"
+desc = "Installed JII by beating Omega Flowey."
+toast-normal = "* You beat him. This STUPID scratch project was worthwhile after all — JII is yours."
+toast-hard = "* You beat him the hard way. Nothing left to prove — JII is yours."
+
+[achieve.flowey-normal]
+title = "Six Souls"
+desc = "Brought Omega Flowey down once."
+
+[achieve.flowey-hard]
+title = "Back For More"
+desc = "Brought Omega Flowey down on hard mode."
+
+[achieve.flowey-both]
+title = "Nothing Left"
+desc = "Beat Omega Flowey both ways — normal once, hard once."
+
 [achieve.boss-slayer]
 title = "Nobody Left"
 desc = "Beat every secret boss JII hides."

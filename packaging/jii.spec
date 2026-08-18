@@ -61,7 +61,7 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
-* Mon Aug 17 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.16~beta-1
+* Tue Aug 18 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.16~beta-1
 - New `jii changelog`: JII's release notes in plain language, embedded in the binary
   and readable offline. Bare shows the running version, `jii changelog 0.1.12` any
   past release, `--all` the whole history, `--since <v>` everything newer.
@@ -76,6 +76,8 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 - `jii achievements` marks earned entries with ✓ (not colour alone), and `jii sources
   add <manager>` grants Bootstrapper. Trust level `untrusted` now displays as
   "unverified".
+- A fourth secret install path and its badge, plus the boss table that made it a
+  single row: a fight now declares its own endings and sentinel (ADR-0081).
 * Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.15~beta-1
 - Achievements: 15 → 30. Every boss ending is now its own badge (spare and kill
   each count, plus a "both ways" badge for seeing them all, plus one for beating

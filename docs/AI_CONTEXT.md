@@ -8,11 +8,54 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-17_
+_Last updated: 2026-08-18_
 
 ---
 
-## Most recent work (2026-08-17, batch 17) — read this first
+## Most recent work (2026-08-18, batch 18) — read this first
+
+**Owner handed over a downloaded copy of *Omega Flowey Simulator* — "guess what you're doing
+now". It is the fourth secret install path. Landed in the not-yet-released v0.1.16-beta;
+recorded as ADR-0081.**
+
+- **`BOSSES` is now a table, not a list of ids.** `achievements::Boss { id, endings, sentinel }` —
+  a fight declares its own paths and its own sentinel file. `MERCY_ENDINGS = ["spare","kill"]`
+  (Jevil, Spamton), `FLOWEY_ENDINGS = ["normal","hard"]` (Flowey), empty for Sans (one path, no
+  `-both`, no sentinel — he still uses the older contentless `take_sentinel`). **The global
+  `ENDINGS` constant is gone**; use `achievements::boss(id).endings`.
+  `take_boss_sentinel(&Boss)` normalizes the marker against *that boss's* endings and falls back
+  to the first one. `run()` loops `BOSSES` instead of a literal `(sentinel, id)` table, and
+  `maybe_completionist` reads `b.id`.
+- **🌻 `flowey` + 🌼 `flowey-normal`, 🥀 `flowey-hard`, 🌺 `flowey-both`** (catalog 30 → 34, all
+  four secret; the ending badges hang off `flowey` via `revealed_by` as usual). Sentinel
+  `flowey-install`. 👺 `boss-slayer` now needs **four** fights.
+- **New test `i18n::every_boss_and_ending_has_its_text`** — every boss in the table must have
+  `achieve.<id>.title/desc`, a `toast-<ending>` per ending, `<id>-<ending>.title/desc` and
+  `<id>-both.*`. Adding a fight without its text now fails `cargo test`.
+- **The fight itself** (branch `flowey`, not yet pushed — see below). The game is a Scratch
+  project packaged with the TurboWarp Packager (Electron + `resources/app` unpacked, `window.vm`
+  exposed). JII adds exactly one file, `resources/app/jii-marker.js`, plus a two-line call in
+  `electron-main.js`: from the **main** process it polls `executeJavaScript` for the stage
+  variables `flowey hp` and `hard mode?`, arms once HP ≥ 1, and writes `normal`/`hard` to
+  `$XDG_STATE_HOME/jii/flowey-install` when HP < 1 — the game's own win condition (it broadcasts
+  `flowey death` at the same instant). The page keeps its sandbox and its original code. The
+  TurboWarp cloud-variable connection is removed. `JII_FLOWEY_MARKER` / `JII_FLOWEY_DEBUG` exist
+  for testing.
+- **`flowey_install.sh`** mirrors `spamton_install.sh` (same gates and honest fallbacks) with
+  two additions: a free-space check (~400 MB) that falls back from `$TMPDIR` to `~/.cache`, and —
+  because losing to Omega Flowey is the *expected* outcome — a **"install JII the normal way
+  anyway? [Y/n]"** offer on a loss instead of `exit 1`.
+- 322 tests, `cargo build`/`clippy --all-targets` clean. Verified live: the patched game runs and
+  the probe reads `[9950,"off"]`; a forced win writes the marker; both sentinels grant correctly
+  (🌻+🥀 then 🌼+🌺); the installer's win / loss-n / loss-yes branches all run against a stubbed
+  game.
+- **Not done yet, needs the owner:** the `flowey` branch is prepared locally but **not pushed**,
+  and the `flowey-game` release asset (`omega-flowey-linux-x86_64.tar.gz`, 121 MB, built and
+  tested at `scratchpad/flowey/`) is **not uploaded** — the branch README's credits still need
+  the project's author/source link, which only the owner has. `v0.1.16-beta` is also still
+  untagged.
+
+## Previous work (2026-08-17, batch 17)
 
 **Owner feedback from the cross-distro test round (`~/Documents/suka/Список проверенных систем.md`)
 plus the `jii affinity` failure. Landed in the not-yet-released v0.1.16-beta; recorded as
@@ -1393,7 +1436,7 @@ None.
 
 ## Test status
 
-`cargo test` — **321 passing, 0 failing** (see the batch sections above for what the newer tests
+`cargo test` — **322 passing, 0 failing** (see the batch sections above for what the newer tests
 cover; the notes below describe the older baseline). Packaging coverage: `cli::cli_definition_is_valid`
 (`clap` validates the whole command tree, incl. the new hidden `completions`/`man`). ④ coverage: `dnf::parse_info_takes_first_stanza_and_folds_continuations`
 (folded description, URL/Vendor, first stanza wins over a later one). ③ coverage: `provider::ecosystems_declare_bootstrap_and_base_repos_do_not`

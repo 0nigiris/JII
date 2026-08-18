@@ -332,12 +332,9 @@ impl Cli {
         // The boss-fight installers drop their own sentinels, whose contents record how the fight
         // ended (`spare`/`kill`) — JII grants the matching hidden achievement and shows the path.
         // Both Jevil fights share one sentinel because they share the 🃏 achievement.
-        for (file, id) in [
-            (crate::achievements::JEVIL_SENTINEL, "jevil"),
-            (crate::achievements::SPAMTON_SENTINEL, "spamton"),
-        ] {
-            if let Some(variant) = crate::achievements::Achievements::take_boss_sentinel(file) {
-                self.grant_boss(id, &variant, &renderer);
+        for boss in crate::achievements::BOSSES {
+            if let Some(variant) = crate::achievements::Achievements::take_boss_sentinel(boss) {
+                self.grant_boss(boss.id, &variant, &renderer);
             }
         }
 
@@ -3420,7 +3417,8 @@ impl Cli {
             newly.push("completionist".to_string());
         }
         // Beating every boss is its own (secret) badge, so it never gates the crown.
-        let all_bosses_down = crate::achievements::BOSSES.iter().all(|b| store.is_unlocked(b));
+        let all_bosses_down =
+            crate::achievements::BOSSES.iter().all(|b| store.is_unlocked(b.id));
         if all_bosses_down && store.unlock("boss-slayer") {
             newly.push("boss-slayer".to_string());
         }
@@ -3464,10 +3462,11 @@ impl Cli {
         if store.unlock(&ending_id) {
             newly.push(ending_id);
         }
-        // Every ending seen at least once → the "both ways" badge.
-        let all_endings = crate::achievements::ENDINGS
-            .iter()
-            .all(|e| store.counter(&format!("{id}-{e}")) > 0);
+        // Every ending seen at least once → the "both ways" badge. A fight with a single path
+        // (Sans) has no endings listed and so never earns one.
+        let endings = crate::achievements::boss(id).map(|b| b.endings).unwrap_or(&[]);
+        let all_endings =
+            !endings.is_empty() && endings.iter().all(|e| store.counter(&format!("{id}-{e}")) > 0);
         let both_id = format!("{id}-both");
         if all_endings && store.unlock(&both_id) {
             newly.push(both_id);

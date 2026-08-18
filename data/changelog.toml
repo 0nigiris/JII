@@ -14,7 +14,7 @@
 
 [[release]]
 version = "0.1.16-beta"
-date = "2026-08-17"
+date = "2026-08-18"
 en = [
   "New `jii changelog`: what changed in JII, in plain language. Bare shows the version you're running, `jii changelog 0.1.12` any past release, and `jii changelog --all` the whole history — all of it offline, straight from the binary.",
   "`jii update jii` no longer stops at \"updated\": it finishes by printing everything the new version brought you, including any releases you skipped along the way.",
@@ -23,6 +23,7 @@ en = [
   "`jii doctor` checks that Homebrew has a compiler to build with, and offers to install one.",
   "Achievements show a ✓ next to the ones you've earned, so a copied list still tells you which is which — and setting a manager up with `jii sources add` finally counts for 🔧 Bootstrapper.",
   "The scariest-looking trust level is now called \"unverified\" instead of \"untrusted\": it always meant \"JII can't confirm who published this\", not \"this is malware\".",
+  "A fourth secret achievement, hidden behind an install path of its own — the hardest one yet. It remembers which way you won.",
 ]
 ru = [
   "Новая команда `jii changelog`: что изменилось в JII, человеческим языком. Без аргументов — про версию, которая у вас стоит, `jii changelog 0.1.12` — про любую прошлую, `jii changelog --all` — вся история. Всё офлайн, прямо из бинарника.",
@@ -32,6 +33,7 @@ ru = [
   "`jii doctor` проверяет, есть ли у Homebrew чем собирать, и предлагает поставить компилятор.",
   "В списке достижений рядом с полученными стоит ✓ — теперь и в скопированном тексте видно, что получено, а что нет. И установка менеджера через `jii sources add` наконец засчитывается на 🔧 «С нуля».",
   "Самый пугающий уровень доверия теперь называется «без проверки», а не «недоверенный»: он всегда значил «JII не может подтвердить, кто это выпустил», а не «это вредонос».",
+  "Четвёртое секретное достижение, спрятанное за собственным способом установки — самым сложным на сегодня. Оно помнит, каким путём вы победили.",
 ]
 
 [[release]]

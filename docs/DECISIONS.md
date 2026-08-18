@@ -3225,3 +3225,62 @@ prints; fish users get the line to paste. The `untrusted` trust level is now *di
 "unverified" / «без проверки» (owner: "untrusted sounds very scary") — the machine label,
 ranking and auto-mode rule are unchanged, and README now states plainly that JII does not vouch
 for third-party software.
+
+## ADR-0081 — A fourth boss, and a table that knows what a boss is
+
+**Status.** Accepted (2026-08-18, v0.1.16-beta).
+
+**Context.** The owner handed over a downloaded copy of **Omega Flowey Simulator** — Undertale's
+final neutral-route boss, built as a Scratch project and packaged for the desktop with the
+TurboWarp Packager — to become the fourth secret install path, after 💀 Sans, 🃏 Jevil and
+🎭 Spamton NEO.
+
+Two things stood in the way. First, the boss machinery ADR-0077 generalized was only *half*
+general: `BOSSES` was a list of ids, `ENDINGS` was one global `["spare", "kill"]`, and
+`take_boss_sentinel` hard-coded that same pair when normalizing what an installer wrote. A fight
+whose two paths are *not* mercy and murder had nowhere to say so. Second, this game offers no
+mercy choice at all: you either beat Omega Flowey or you don't. What it does have is a hard mode
+in its own menu.
+
+**Decision.** *Endings belong to the fight, not to the codebase.* `BOSSES` becomes a table of
+`Boss { id, endings, sentinel }`, so a fight declares its own paths (`MERCY_ENDINGS` for Jevil and
+Spamton, `FLOWEY_ENDINGS = ["normal", "hard"]` for Flowey) and its own sentinel file. Sans keeps
+an empty `endings` and no sentinel — he has one path and an older contentless marker.
+`take_boss_sentinel` now takes the `Boss` and normalizes against *its* endings, falling back to
+the first one, so a half-written marker still grants the fight rather than nothing. The CLI's
+`(sentinel, id)` literal and its `ENDINGS`-based "both ways" check both read the table instead.
+Adding the fifth boss is one row, four badges and their locale keys — and a new i18n test fails
+if the text is missing.
+
+*The game reports its own win, and JII trusts nothing else.* The project already knows when the
+fight is over: it sets the stage variable `flowey hp` to 9950 when the battle starts and
+broadcasts `flowey death` the moment it drops below 1. The patch (one added file,
+`jii-marker.js`, plus a two-line call) watches that same variable from Electron's **main**
+process via `executeJavaScript` — the page keeps its sandbox, its context isolation and its
+original code — and writes `normal` or `hard`, read from the game's own `hard mode?` toggle,
+into `$XDG_STATE_HOME/jii/flowey-install`. It arms only after seeing a health bar above zero, so
+a project that never started cannot look like a win. The only other change to the game is that
+its connection to TurboWarp's cloud-variable servers is removed: an installer has no business
+phoning anywhere.
+
+*Losing is not a dead end.* Omega Flowey is the hardest fight JII hides, and most people will
+lose. Where the Spamton installer exits 1 on a loss, this one offers a plain install anyway
+(default yes) — the same rule that governs the rest of JII: never refuse without an offer.
+
+**Alternatives considered.**
+
+* *Ship the game as the web build and open the user's browser* (~48 MB instead of ~121 MB). It
+  is a TurboWarp package, so it runs in a browser as-is — but a browser page cannot write a
+  marker, so it would need a local HTTP server (a Python dependency JII does not otherwise have)
+  to catch the win, and it trades a real window for a tab. Rejected: heavier machinery and a
+  worse fight for a lighter download.
+* *Patch the Scratch project itself* to broadcast into a JS hook. Rejected: editing a 1.6 MB
+  serialized `project.json` is unreviewable, while the variable it already maintains is public.
+* *Give Flowey `spare`/`kill` anyway* by inventing a choice the game doesn't offer. Rejected as
+  a lie about the fight; hard mode is the duality this game actually has.
+
+**Consequences.** 👺 `boss-slayer` now needs four fights instead of three — nobody loses a badge
+they earned, but the crown moved. The ledger gains `flowey`, `flowey-normal`, `flowey-hard` and
+`flowey-both`. The `flowey` orphan branch holds the installer and the patch; the game itself
+ships as a release asset, never in git. `ENDINGS` as a global constant is gone —
+`achievements::boss(id).endings` replaces it.

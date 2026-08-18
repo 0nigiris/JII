@@ -750,6 +750,18 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   with real next steps). Also: `jii sources add` grants 🔧 `bootstrapper`, `jii achievements`
                   marks earned rows with ✓ (not colour alone), `jii doctor` checks brew has a compiler,
                   and `untrusted` displays as "unverified". 321 tests, clippy clean, verified live.
+            - [x] **Fourth boss: 🌻 Omega Flowey (2026-08-18, → v0.1.16-beta)** (ADR-0081). Owner handed over
+                  a downloaded *Omega Flowey Simulator* (a Scratch project packaged with the TurboWarp
+                  Packager). `BOSSES` became a table of `Boss { id, endings, sentinel }` so a fight declares
+                  its own paths — `MERCY_ENDINGS` for Jevil/Spamton, `FLOWEY_ENDINGS = ["normal","hard"]`
+                  for Flowey (this game offers difficulty, not mercy), empty for Sans; the global `ENDINGS`
+                  is gone and `take_boss_sentinel` takes the `Boss`. Four new badges (🌻 🌼 🥀 🌺), sentinel
+                  `flowey-install`, and a new i18n test that fails when a fight's text is missing.
+                  The patch adds one file to the game (`jii-marker.js`, 2-line call) which watches the
+                  project's own `flowey hp` variable from Electron's main process; the loss branch of
+                  `flowey_install.sh` *offers* a plain install instead of exiting. 322 tests, clippy clean.
+                  **Open:** branch `flowey` unpushed and the `flowey-game` asset unuploaded — the README
+                  credits need the project's author/source from the owner.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so
