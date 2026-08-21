@@ -289,7 +289,10 @@ mod tests {
         assert_eq!(plan.actions.len(), 1);
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, needs_root } => {
-                assert_eq!(argv, &["brew", "install", "ripgrep"]);
+                // Not the literal "brew": `brew_bin()` resolves to an absolute prefix path on a
+                // host where Homebrew is installed off PATH (ADR-0080), so asserting the string
+                // would make this test depend on the machine it runs on.
+                assert_eq!(argv, &[brew_bin(), "install".into(), "ripgrep".into()]);
                 assert!(!needs_root);
             }
             other => panic!("expected run, got {other:?}"),
@@ -338,7 +341,10 @@ mod tests {
         assert!(!plan.needs_root());
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, .. } => {
-                assert_eq!(argv, &["brew", "install", "ripgrep", "bat"]);
+                assert_eq!(
+                    argv,
+                    &[brew_bin(), "install".into(), "ripgrep".into(), "bat".into()]
+                );
             }
             other => panic!("expected run, got {other:?}"),
         }
