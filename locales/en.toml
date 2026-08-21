@@ -51,6 +51,12 @@ col_source = "SOURCE"
 
 [how]
 no_record = "'{package}' was not installed by jii (no record). Try `jii {package}`."
+system_owned = "{package} is installed via {source} — by your system, not by jii"
+not_by_jii = "jii has no record of it, so there is no install date. `jii remove {package}` still removes it, and `jii update {package}` still updates it."
+would_install = "{package} is not installed. jii would install it via {source}:"
+would_hint = "Run `jii {package}` to do that, or `jii {package} --dry-run` to see the full plan first."
+nowhere = "{package} is not installed, and none of your sources offer it."
+nowhere_hint = "`jii search {package}` searches every source; `jii sources` shows which ones are live here."
 installed_on = "Installed via {source} on {date}"
 version_line = "Version {version}"
 trust_line = "Source trust: {trust}"

@@ -75,7 +75,11 @@ fn report(err: &crate::error::JiiError) {
     // A failed plan step was already reported where it happened — the failing command, and
     // either the source's own explanation or a tail of its output. Repeating it here would
     // just print the same command twice, in English, under a second ✗.
-    if matches!(err, crate::error::JiiError::StepFailed { .. }) {
+    // Likewise a failure the command already explained: it carries the exit code, not a message.
+    if matches!(
+        err,
+        crate::error::JiiError::StepFailed { .. } | crate::error::JiiError::AlreadyReported
+    ) {
         return;
     }
     let uni = crate::platform::Platform::detect().unicode;

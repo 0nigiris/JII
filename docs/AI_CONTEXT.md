@@ -12,7 +12,38 @@ _Last updated: 2026-08-21_
 
 ---
 
-## Most recent work (2026-08-21, batch 19) — read this first
+## Most recent work (2026-08-21, batch 20) — read this first
+
+**The owner ran `jii yes-I-am-dev-and-want-to-test` on Arch (10 pass / 2 fail) and pasted the log.
+Three real defects, two of them dead ends. Fixed and released as `v0.1.18-beta`; ADR-0082.**
+
+- **A total miss printed nothing and exited 0.** `jii totally-nonexistent-xyz321` produced *no
+  output whatsoever*. The message, the library explanation and the browse links were all still
+  there in step 2 of `install` — ADR-0065's `bootstrap_missing_managers` step sits before it and
+  ended in `if chosen.is_empty() { return Ok(()) }`, which for a run where nothing resolved fires
+  on the way in. That guard is **deleted**; the one `chosen.is_empty()` that ends the run now sits
+  after the misses are reported. **Watch for this shape:** an early return added for one narrow
+  case that also covers a wider one.
+- **`jii how` answered only from JII's ledger.** On a package the distro installed it said "not
+  installed by jii (no record)" while `jii remove` removed it happily. Now async and three-cased:
+  ledger → `resolve_all_installed` (system owner, version, trust, plus "no date, but remove and
+  update still work") → not installed anywhere, so *how JII would install it*. The help had always
+  promised "was **or would be**"; only the first half existed. Seven new locale keys, en+ru.
+- **`JiiError::AlreadyReported`** — an empty error carrying exit status and no message, suppressed
+  by `main::report` like `StepFailed`. A total miss and a rejected spec (`@ref`, unknown `:source`)
+  now exit non-zero instead of printing a red ✗ and reporting success.
+- **`Renderer` flushes stdout before writing to stderr.** `warn`/`error` are `eprintln!`, the rest
+  `println!`; once either stream is redirected, stdout line-buffers and stderr doesn't, so every
+  warning jumped ahead of its own context. In the tester's log `jii doctor`'s advice lines appeared
+  under the wrong checks. Nothing was mis-indexed — it was the streams.
+- **Two devtest expectations were themselves wrong** and were corrected: `jii list` after installing
+  an already-present package correctly shows nothing (the ledger is not an inventory of the
+  machine), and `how`'s expectation now names all three cases.
+- 324 tests, clippy clean, CI green. `v0.1.18-beta` tagged and published.
+- **Still open, needs the owner:** the Scratch project's author/source link (see batch 18); the
+  owner's checklist at `~/Documents/suka/JII — полный чек-лист проверки.md` still says `v0.1.17-beta`.
+
+## Previous work (2026-08-21, batch 19)
 
 **Released `v0.1.17-beta`, fixed a CI that had been red for three commits, and untracked 5 MB
 of tool output that had been committed by accident. No new features.**

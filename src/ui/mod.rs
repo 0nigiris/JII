@@ -334,12 +334,27 @@ impl Renderer {
         }
     }
 
+    /// Flush stdout before writing to stderr.
+    ///
+    /// Warnings and errors go to stderr so a script can separate them; everything else goes to
+    /// stdout. On a terminal both are unbuffered and the order is whatever we printed. The
+    /// moment either is redirected — `jii doctor > log`, `jii doctor 2>&1 | tee`, a tester's
+    /// captured session — Rust line-buffers stdout while stderr stays unbuffered, and every
+    /// warning jumps ahead of the output it belongs under. A doctor report then reads as if the
+    /// advice sat beneath the wrong check. One flush at the boundary keeps the two streams in
+    /// the order they were written, at the cost of nothing a human can measure.
+    fn flush_stdout() {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+    }
+
     /// A warning line.
     pub fn warn(&self, msg: &str) {
         if self.json {
             self.emit_json("warn", msg);
         } else {
             let m = self.palette().mark_warn();
+            Self::flush_stdout();
             if self.color {
                 eprintln!("{} {msg}", m.yellow());
             } else {
@@ -354,6 +369,7 @@ impl Renderer {
             self.emit_json("error", msg);
         } else {
             let m = self.palette().mark_bad();
+            Self::flush_stdout();
             if self.color {
                 eprintln!("{} {msg}", m.red());
             } else {

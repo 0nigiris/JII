@@ -3315,3 +3315,64 @@ extra patch number, which is free. `v0.1.17-beta` was cut instead, carrying that
 history. The same rule does **not** apply to the game-bundle releases (`chaos-game`,
 `spamton-game`, `flowey-game`): they are not versioned, nothing resolves them by number, and
 their assets are re-uploaded with `--clobber` as the fights are fixed.
+
+## ADR-0082 — A miss must speak, `how` must answer for the whole machine, and a failed run must exit non-zero
+
+**Status:** accepted (2026-08-21)
+
+**Context.** A tester round on Arch (`jii yes-I-am-dev-and-want-to-test`, 10 pass / 2 fail) surfaced
+three defects, two of them dead ends of exactly the kind ADR-0080 exists to prevent.
+
+1. `jii totally-nonexistent-xyz321` printed **nothing whatsoever** and exited 0. The "not found"
+   message, the library explanation and the browse links were all still in the code, at step 2 of
+   the install path. ADR-0065 later inserted the manager-bootstrap step *before* it, ending in
+   `if chosen.is_empty() { return Ok(()) }` — a guard written for "every candidate was dropped
+   because its manager was declined". When nothing resolves at all, `chosen` is empty on the way
+   in, so that guard fired immediately and swallowed the report. A silent success is the worst
+   possible answer: the user cannot tell a typo from a crash.
+2. `jii how htop` answered `'htop' was not installed by jii (no record)` for a package that was
+   installed, in the distro's own repository, and which `jii remove htop` then removed without
+   complaint. The command knew only JII's ledger, so it was both a dead end and a contradiction
+   of what the rest of JII could plainly do.
+3. `jii doctor`'s advice lines appeared under the wrong checks in the tester's log. Nothing was
+   mis-indexed: `warn`/`error` write to stderr and everything else to stdout, and the moment
+   either is redirected Rust line-buffers stdout while stderr stays unbuffered.
+
+**Decision.**
+
+- **The misses report is not behind any early return.** The bootstrap guard is removed; the single
+  `chosen.is_empty()` check that ends the run now sits *after* step 2. A report that tells the user
+  their input matched nothing is the most important thing such a run has to say, and must not be
+  reachable only by luck of ordering.
+- **`how` answers in three cases, in order:** JII's ledger (with the install date), else the
+  system's own owner via `resolve_all_installed` (source, version, trust, and an explicit "jii has
+  no record of it, so there is no date — but remove and update still work"), else, for something
+  not installed anywhere, the source JII *would* use. The command's help always promised "how a
+  package was **or would be** installed"; only the first half existed.
+- **A run that printed a red ✗ exits non-zero.** New `JiiError::AlreadyReported`: an empty error
+  that carries status and no message, suppressed by `main::report` the way `StepFailed` is. Used
+  for a total miss and for a rejected spec (`@ref`, an unknown `:source`). Reporting success for a
+  run that refused to do what was asked breaks every script that wraps JII.
+- **The renderer flushes stdout before writing to stderr.** Warnings keep their own stream (scripts
+  separate them), and keep their place in the output.
+
+**Alternatives rejected.**
+
+- *Move the not-found report into the resolution loop, per package.* Rejected: a batch would then
+  interleave misses with the search of the next name, and the "install the rest anyway?" question
+  needs the complete set.
+- *Send warnings to stdout.* Rejected: `jii ... 2>/dev/null` losing its warnings is a real use, and
+  the ordering problem is solved without giving that up.
+- *Give `AlreadyReported` a message.* Rejected: the point is that the command already said it, in
+  the user's language and with its own context. A second, English, generic line under it is the
+  duplicate `StepFailed` was suppressed to avoid.
+- *Leave `how` registry-only and say "not by jii, try `jii list`".* Rejected: a truthful refusal is
+  still a refusal. The information was one `resolve_all_installed` away — the same call `remove`
+  has always made.
+
+**Consequences.** `how` is now async and does a provider fan-out on a ledger miss, so it is slower
+in that case (it was instant because it answered nothing). Exit codes change for two paths that
+previously returned 0 while printing an error; this is a fix, but it is a behaviour change for
+anything that scripted around it. The devtest checklist's expectations for `jii list` and `jii how`
+were themselves wrong and were corrected in the same pass — a checklist that describes the bug as
+the expected result is worse than no checklist.

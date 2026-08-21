@@ -395,7 +395,7 @@ impl Cli {
 
             // Implemented in Phase 2.
             Some(Commands::Remove { packages }) => self.remove(packages, config, &renderer).await,
-            Some(Commands::How { package }) => self.how(package, config, &renderer),
+            Some(Commands::How { package }) => self.how(package, config, &renderer).await,
             Some(Commands::List { audit }) => self.list(*audit, config, &renderer),
             Some(Commands::History) => self.history(config, &renderer),
             Some(Commands::Achievements) => self.achievements(&renderer),
@@ -525,7 +525,9 @@ impl Cli {
         //    implemented, so reject it clearly rather than silently installing the latest.
         let specs = match self.parse_specs(packages, renderer) {
             Some(specs) => specs,
-            None => return Ok(()),
+            // The rejection (a bad `@ref`, an unknown `:source`) is already on screen as a red
+            // ✗ — but it is still a refusal to do what was asked, so the run exits non-zero.
+            None => return Err(crate::error::JiiError::AlreadyReported),
         };
 
         // 1. Resolve each package to its best candidate; collect the misses separately.
@@ -729,9 +731,10 @@ impl Cli {
         chosen = self
             .bootstrap_missing_managers(&engine, chosen, &config, renderer, assume_yes)
             .await?;
-        if chosen.is_empty() {
-            return Ok(());
-        }
+        // No early return on an empty `chosen` here. When *nothing* resolved, `chosen` was
+        // already empty on the way in, and returning at this point skipped step 2 below — so
+        // `jii <a-name-that-does-not-exist>` printed absolutely nothing and exited 0. The one
+        // `chosen.is_empty()` check that matters lives after the misses are reported.
 
         // 1b. Declarative-vs-imperative install choice (ADR-0054/0056 + the `prefer_declarative`
         //     follow-up). The owning source may offer alternative install *strategies* (Nix:
@@ -851,7 +854,15 @@ impl Cli {
             }
         }
         if chosen.is_empty() {
-            return Ok(());
+            // Nothing at all to install. If that is because a name resolved nowhere, the run
+            // failed — it printed a red ✗ — and must exit non-zero, so a script wrapping jii
+            // can tell. The message is already on screen; `AlreadyReported` carries only the
+            // status. An empty `chosen` with no misses is an ordinary "nothing to do".
+            return if not_found.is_empty() {
+                Ok(())
+            } else {
+                Err(crate::error::JiiError::AlreadyReported)
+            };
         }
         if !not_found.is_empty() {
             let flags = self.prompt_flags(engine.config().install.auto).with_yes(assume_yes);
@@ -1282,7 +1293,9 @@ impl Cli {
         // "which one?". `@ref` is rejected (jii removes what's installed, not a version).
         let specs = match self.parse_specs(packages, renderer) {
             Some(specs) => specs,
-            None => return Ok(()),
+            // The rejection (a bad `@ref`, an unknown `:source`) is already on screen as a red
+            // ✗ — but it is still a refusal to do what was asked, so the run exits non-zero.
+            None => return Err(crate::error::JiiError::AlreadyReported),
         };
 
         // 1. Resolve each name to its owning record(s). A package can be installed via more
@@ -1466,7 +1479,8 @@ impl Cli {
             // first); the fan-out only runs when a source needs matching.
             let specs = match self.parse_specs(packages, renderer) {
                 Some(specs) => specs,
-                None => return Ok(()),
+                // Already reported; carry the non-zero status (see the install path).
+                None => return Err(crate::error::JiiError::AlreadyReported),
             };
             let mut resolved = Vec::new();
             let mut not_installed = Vec::new();
@@ -1877,7 +1891,9 @@ impl Cli {
         // provider; `@ref` is rejected until version selection lands.
         let specs = match self.parse_specs(&[package.to_string()], renderer) {
             Some(specs) => specs,
-            None => return Ok(()),
+            // The rejection (a bad `@ref`, an unknown `:source`) is already on screen as a red
+            // ✗ — but it is still a refusal to do what was asked, so the run exits non-zero.
+            None => return Err(crate::error::JiiError::AlreadyReported),
         };
         let spec = &specs[0];
         let name = &spec.name;
@@ -2882,14 +2898,21 @@ impl Cli {
         ranked
     }
 
-    /// Explain how a package was (or would be) installed (from the registry). A package
-    /// installed via several sources shows **every** record, not a silent first pick.
-    fn how(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
+    /// Explain how a package was — **or would be** — installed. Three cases, in order:
+    ///
+    /// 1. JII's own ledger has it: every record (a package can be installed from more than one
+    ///    source), with the date it went in.
+    /// 2. The ledger has nothing, but the package *is* on the system — installed by hand, by the
+    ///    distro, or before JII existed. Answer with what the system says: which manager owns it,
+    ///    which version, how far that source is trusted. `jii remove` has always been able to
+    ///    remove these, so refusing to explain them was both a dead end and a contradiction.
+    /// 3. Not installed at all: explain how JII *would* install it — which is the other half of
+    ///    what this command promises, and used to be missing entirely.
+    async fn how(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let records = engine.registry().get_all(package);
         if records.is_empty() {
-            renderer.warn(&crate::t!("how.no_record", package = package));
-            return Ok(());
+            return self.how_unrecorded(&engine, package, renderer).await;
         }
         for record in records {
             let trust = engine
@@ -2910,6 +2933,70 @@ impl Cli {
             renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
             renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
         }
+        self.grant_achievement("paper-trail", renderer);
+        Ok(())
+    }
+
+    /// `how` for a package JII has no record of: either the system owns it, or nobody does.
+    /// Never ends on "no record" alone — that was a dead end, and ADR-0080's rule is that a
+    /// refusal must carry the next step.
+    async fn how_unrecorded(
+        &self,
+        engine: &Engine,
+        package: &str,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let palette = renderer.palette();
+        let ok = palette.mark_ok();
+
+        // Case 2 — the system has it, JII just didn't put it there.
+        let owners = engine.resolve_all_installed(package).await;
+        if !owners.is_empty() {
+            for record in &owners {
+                let trust = engine
+                    .source_trust(&record.source_id)
+                    .map(|t| t.display())
+                    .unwrap_or_else(|| crate::t!("common.unknown"));
+                renderer.info(&crate::t!(
+                    "how.system_owned",
+                    package = package,
+                    source = record.source_id.clone()
+                ));
+                renderer.info(&format!(
+                    "  {ok} {}",
+                    crate::t!(
+                        "how.version_line",
+                        version = version_or_unknown(record.version.as_ref())
+                    )
+                ));
+                renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
+            }
+            renderer.info(&palette.dim(&crate::t!("how.not_by_jii", package = package)));
+            self.grant_achievement("paper-trail", renderer);
+            return Ok(());
+        }
+
+        // Case 3 — not installed anywhere: say how it *would* go in.
+        let ranked = self.ranked_for(engine, package, None, renderer).await;
+        let Some(best) = ranked.first() else {
+            renderer.warn(&crate::t!("how.nowhere", package = package));
+            renderer.info(&palette.dim(&crate::t!("how.nowhere_hint", package = package)));
+            return Ok(());
+        };
+        renderer.info(&crate::t!(
+            "how.would_install",
+            package = package,
+            source = best.source_id.clone()
+        ));
+        renderer.info(&format!(
+            "  {ok} {}",
+            crate::t!("how.version_line", version = version_or_unknown(best.version.as_ref()))
+        ));
+        renderer.info(&format!(
+            "  {ok} {}",
+            crate::t!("how.trust_line", trust = best.trust.display())
+        ));
+        renderer.info(&palette.dim(&crate::t!("how.would_hint", package = package)));
         self.grant_achievement("paper-trail", renderer);
         Ok(())
     }

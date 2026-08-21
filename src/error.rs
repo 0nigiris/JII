@@ -33,6 +33,13 @@ pub enum JiiError {
     #[error("`{command}` failed")]
     StepFailed { command: String, output: String },
 
+    /// The command failed and has **already told the user why**, in its own words and in
+    /// their language. Carries no message of its own: it exists so a path that printed a
+    /// red ✗ can still exit non-zero, instead of reporting success for a run that plainly
+    /// did not succeed. `main::report` prints nothing for it.
+    #[error("")]
+    AlreadyReported,
+
     /// Any other error, wrapped for convenience.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -77,6 +84,8 @@ impl JiiError {
             // A failed step is already explained where it happens (the source's own note, or
             // a tail of its real output), so a generic remedy here would only add noise.
             JiiError::StepFailed { .. } => None,
+            // Already explained by the command that raised it, remedy included.
+            JiiError::AlreadyReported => None,
             // `Other` wraps opaque text from many call sites; string-sniffing it would be
             // fragile and often wrong, so we don't guess a remedy here.
             JiiError::Other(_) => None,
@@ -87,6 +96,16 @@ impl JiiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn already_reported_carries_a_status_and_nothing_else() {
+        // It exists so a command that printed its own red ✗ can still exit non-zero. If it ever
+        // grew a message or a remedy, the user would see the same failure explained twice — the
+        // exact thing `StepFailed` is suppressed for.
+        let e = JiiError::AlreadyReported;
+        assert_eq!(e.to_string(), "");
+        assert!(e.remedy().is_none());
+    }
 
     #[test]
     fn unknown_source_lists_the_known_ones() {

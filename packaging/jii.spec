@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.17-beta
+%global _tag v0.1.18-beta
 
 Name:           jii
-Version:        0.1.17~beta
+Version:        0.1.18~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,16 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Aug 21 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.18~beta-1
+- Three findings from the Arch tester round (ADR-0082). A name that resolves nowhere
+  printed nothing and exited 0: ADR-0065's bootstrap step returns on an empty
+  candidate set, which for a total miss is immediately, skipping the misses report.
+- `jii how` no longer dead-ends on "no record": it reports the system's own owner for
+  a package JII didn't install, and how it *would* install one that isn't there.
+- Renderer flushes stdout before writing to stderr, so warnings stay next to the
+  output they belong under once either stream is redirected.
+- Failed runs exit non-zero: a new silent `JiiError::AlreadyReported` carries the
+  status for paths that have already printed their own explanation.
 * Fri Aug 21 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.17~beta-1
 - `jii update jii` and install.sh now require a `v*` tag when picking the newest
   release, so a boss-fight bundle is never mistaken for a JII release, and the

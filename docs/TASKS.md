@@ -775,6 +775,17 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   runner). Untracked `graphify-out/` — 76 files / 5.2 MB of code-graph tool output
                   committed by accident in `e4a8079`, two of them carrying absolute local paths.
                   Wrote the owner a full cross-system tester checklist (outside the repo, in Russian).
+            - [x] **Arch tester round: three defects (2026-08-21, → v0.1.18-beta)** (ADR-0082).
+                  From the owner's `jii yes-I-am-dev-and-want-to-test` log. **(1)** A name that
+                  resolved nowhere printed *nothing* and exited 0 — ADR-0065's bootstrap step
+                  returns on an empty candidate set, which for a total miss is before step 2 ever
+                  reports the misses; guard deleted. **(2)** `jii how` dead-ended on "no record"
+                  for a package the system owns (while `jii remove` removed it): now async and
+                  three-cased — ledger, then the system's owner, then how it *would* be installed.
+                  **(3)** `Renderer` flushes stdout before stderr, so warnings stop drifting away
+                  from their context in any redirected output. Plus `JiiError::AlreadyReported`
+                  so a run that printed a ✗ exits non-zero, and two wrong devtest expectations
+                  corrected. 324 tests.
                   **Open:** the credits name only Toby Fox and the TurboWarp Packager — the Scratch
                   project's author/source link is still needed from the owner.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.

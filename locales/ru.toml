@@ -49,6 +49,12 @@ col_source = "ИСТОЧНИК"
 
 [how]
 no_record = "«{package}» не устанавливался через jii (нет записи). Попробуйте `jii {package}`."
+system_owned = "{package} установлен через {source} — вашей системой, не через jii"
+not_by_jii = "jii его не ставил, поэтому даты установки нет. Но `jii remove {package}` его удалит, а `jii update {package}` обновит."
+would_install = "{package} не установлен. jii поставил бы его через {source}:"
+would_hint = "Выполните `jii {package}`, чтобы поставить, или `jii {package} --dry-run`, чтобы сначала посмотреть план целиком."
+nowhere = "{package} не установлен, и ни один из ваших источников его не предлагает."
+nowhere_hint = "`jii search {package}` ищет по всем источникам; `jii sources` показывает, какие из них здесь живы."
 installed_on = "Установлено через {source} — {date}"
 version_line = "Версия {version}"
 trust_line = "Доверие к источнику: {trust}"

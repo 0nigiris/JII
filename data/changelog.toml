@@ -13,6 +13,20 @@
 # * `date` is the release date, ISO `YYYY-MM-DD`.
 
 [[release]]
+version = "0.1.18-beta"
+date = "2026-08-21"
+en = [
+  "Asking for a package that doesn't exist used to print **nothing at all** and report success. The \"not found\" message and the browse links had been written all along — a later change made the install path return before it ever reached them. It says so again, and a failed run now exits non-zero instead of claiming everything went fine.",
+  "`jii how` answers for software JII didn't install. It used to stop at \"no record\" even for a package sitting right there on your system — while `jii remove` happily removed it. Now it tells you which manager owns it, its version and how far that source is trusted; and for something not installed at all, how JII would install it.",
+  "Warnings no longer drift away from what they're about. They go to a different stream than the rest of the output, so the moment you piped JII into a file or a log the two arrived out of order and `jii doctor`'s advice appeared under the wrong check.",
+]
+ru = [
+  "Запрос несуществующего пакета раньше не печатал **вообще ничего** и сообщал об успехе. Сообщение «не найдено» и ссылки на поиск были написаны давно — просто более позднее изменение заставляло установку выйти раньше, чем до них дойдёт. Теперь он снова отвечает, а неудачный запуск завершается с ненулевым кодом, а не делает вид, что всё прошло хорошо.",
+  "`jii how` отвечает и про то, что ставил не JII. Раньше он упирался в «нет записи» даже для пакета, который стоит прямо здесь, — при том что `jii remove` его спокойно удалял. Теперь он говорит, какой менеджер им владеет, какая версия и насколько источник доверенный; а если пакет не установлен вовсе — как JII его поставил бы.",
+  "Предупреждения больше не уезжают от того, к чему относятся. Они идут в другой поток, чем остальной вывод, — и стоило направить JII в файл или лог, как порядок ломался, и советы `jii doctor` оказывались под чужими проверками.",
+]
+
+[[release]]
 version = "0.1.17-beta"
 date = "2026-08-21"
 en = [
