@@ -765,6 +765,16 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   on the character a key produces, so `z` on a Cyrillic layout was `я` and nothing ever
                   confirmed), and `install.sh` + `selfupdate::pick_release` now require a `v` tag so a
                   **game-bundle release can never be installed as JII**. 323 tests.
+            - [x] **Release hygiene round (2026-08-21, → v0.1.17-beta)** (ADR-0081, 2nd addendum).
+                  The release-picking fix had landed after `v0.1.16-beta` was cut, so no shipped binary
+                  had it. Cut `v0.1.17-beta` rather than moving the published tag — a version number
+                  names one immutable set of bytes. All 12 assets published and verified end to end
+                  against the live API. Fixed a **CI red since 2026-08-17** that three pushes walked
+                  past: `provider::homebrew`'s plan tests asserted the literal `"brew"` while ADR-0080's
+                  `brew_bin()` resolves an absolute path on any host with brew off `PATH` (the GitHub
+                  runner). Untracked `graphify-out/` — 76 files / 5.2 MB of code-graph tool output
+                  committed by accident in `e4a8079`, two of them carrying absolute local paths.
+                  Wrote the owner a full cross-system tester checklist (outside the repo, in Russian).
                   **Open:** the credits name only Toby Fox and the TurboWarp Packager — the Scratch
                   project's author/source link is still needed from the owner.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.

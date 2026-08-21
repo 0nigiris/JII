@@ -3301,3 +3301,17 @@ arrows and then nothing ever confirms — a dead end at the first prompt. `jii-m
 feeds the runtime the Latin letter the physical key stands for (`event.code` → `KeyZ` → `z`),
 alongside whatever the layout produced. Telling the player to go change their system settings
 would have been exactly the hand-off to the user that ADR-0080 exists to stop.
+
+**Addendum (2026-08-21) — a published tag is never moved.** The release-picking fix above landed
+*after* `v0.1.16-beta` was cut, so no shipped binary contained it. The tempting repair was to
+force the tag onto the newer commit: `softprops/action-gh-release@v2` updates the existing
+release in place, the assets would have been replaced, and the version number would have stayed
+put. **Rejected.** A version number must name one immutable set of bytes — otherwise "I'm on
+0.1.16" stops being a fact anyone can act on, a checksum a user recorded silently stops
+matching, and a bug report can no longer be tied to a build. The cost of the alternative is one
+extra patch number, which is free. `v0.1.17-beta` was cut instead, carrying that one fix.
+
+*Consequence:* the fix a release forgets is a reason to release again, never a reason to edit
+history. The same rule does **not** apply to the game-bundle releases (`chaos-game`,
+`spamton-game`, `flowey-game`): they are not versioned, nothing resolves them by number, and
+their assets are re-uploaded with `--clobber` as the fights are fixed.

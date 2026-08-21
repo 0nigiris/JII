@@ -8,11 +8,47 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-18_
+_Last updated: 2026-08-21_
 
 ---
 
-## Most recent work (2026-08-18, batch 18) — read this first
+## Most recent work (2026-08-21, batch 19) — read this first
+
+**Released `v0.1.17-beta`, fixed a CI that had been red for three commits, and untracked 5 MB
+of tool output that had been committed by accident. No new features.**
+
+- **`v0.1.17-beta` is tagged, built and published** (all 12 assets, both arches). It carries
+  exactly one user-visible change: the ADR-0081 addendum fix (`pick_release` / `install.sh`
+  require a `v` tag), which landed *after* `v0.1.16-beta` was cut and so was never in a
+  shipped binary. Verified end to end against the live API — the one-liner resolves
+  `v0.1.17-beta` and the installed binary reports it.
+- **A published tag is never moved.** The obvious fix was to re-cut `v0.1.16-beta` at the newer
+  commit; a fresh patch tag was chosen instead, so a version number always names one immutable
+  set of bytes. Recorded as the second addendum to ADR-0081.
+- **CI had been red since 2026-08-17** (batches 17 and 18, three consecutive pushes) and nobody
+  noticed, because it is green locally. `provider::homebrew`'s two plan tests asserted the
+  literal `"brew"`, but ADR-0080 made `brew_bin()` resolve to an absolute prefix path when brew
+  is installed off `PATH` — which it is on the GitHub runner. They now compare against
+  `brew_bin()` itself. **Check the CI badge after pushing; a green local `cargo test` is not the
+  same claim.**
+- **`graphify-out/` is untracked and ignored.** 76 files / 5.2 MB (a 1.5 MB `graph.html` plus an
+  AST cache) went in with `e4a8079`; it is the output of a code-graph tool run against this repo,
+  nothing in JII reads it, and two files recorded absolute paths from the machine that generated
+  them. The working copy is left in place.
+- **A tester-facing checklist lives outside the repo**, at
+  `~/Documents/suka/JII — полный чек-лист проверки.md` (Russian, 21 sections, ~226 checkboxes):
+  every command, flag, env knob, source, achievement and secret install path, plus per-distro
+  specifics. It is derived from `docs/RELEASE_TESTPLAN.md` + `docs/SUPPORTED_SYSTEMS.md` +
+  `docs/TESTING.md` — **when behaviour changes, those three are the ones to update**, the
+  checklist is a snapshot for one round.
+- **Two stale `jii providers` invocations** removed from the operational testing docs (the
+  command was merged into `jii sources` in ADR-0062). The historical mentions in ADRs and TASKS
+  are left alone; `docs/ARCHITECTURE.md` §13 still lists it as part of the designed surface.
+- 323 tests, `cargo build` / `clippy --all-targets` clean, CI green.
+- **Still open, needs the owner:** the Scratch project's author/source link for the `flowey`
+  branch README and the `flowey-game` release notes (see batch 18).
+
+## Previous work (2026-08-18, batch 18)
 
 **Owner handed over a downloaded copy of *Omega Flowey Simulator* — "guess what you're doing
 now". It is the fourth secret install path. Landed in the not-yet-released v0.1.16-beta;
