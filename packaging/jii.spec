@@ -78,6 +78,8 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
   "unverified".
 - A fourth secret install path and its badge, plus the boss table that made it a
   single row: a fight now declares its own endings and sentinel (ADR-0081).
+- `jii update jii` and install.sh now require a `v*` tag when picking the newest
+  release, so a boss-fight bundle is never mistaken for a JII release (ADR-0081).
 * Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.15~beta-1
 - Achievements: 15 → 30. Every boss ending is now its own badge (spare and kill
   each count, plus a "both ways" badge for seeing them all, plus one for beating

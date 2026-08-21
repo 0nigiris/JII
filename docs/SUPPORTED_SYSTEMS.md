@@ -82,7 +82,7 @@ uname -m ; (. /etc/os-release && echo "$PRETTY_NAME") ; jii --version
 # 1. Health & discovery — does JII see this system's sources?
 jii doctor            # source health + system checks (answer prompts, or add -n to preview)
 jii sources           # every provider + whether it's usable HERE
-jii providers         # ecosystem managers present / bootstrappable
+jii sources --all     # every source, including ones this system can't use
 
 # 2. Search & matching (read-only, changes nothing)
 jii search htop

@@ -24,6 +24,7 @@ en = [
   "Achievements show a ✓ next to the ones you've earned, so a copied list still tells you which is which — and setting a manager up with `jii sources add` finally counts for 🔧 Bootstrapper.",
   "The scariest-looking trust level is now called \"unverified\" instead of \"untrusted\": it always meant \"JII can't confirm who published this\", not \"this is malware\".",
   "A fourth secret achievement, hidden behind an install path of its own — the hardest one yet. It remembers which way you won.",
+  "`jii update jii` and the install script now only ever consider real JII releases. Both used to take whatever was published last, which would have handed you a boss-fight bundle instead of an update.",
 ]
 ru = [
   "Новая команда `jii changelog`: что изменилось в JII, человеческим языком. Без аргументов — про версию, которая у вас стоит, `jii changelog 0.1.12` — про любую прошлую, `jii changelog --all` — вся история. Всё офлайн, прямо из бинарника.",
@@ -34,6 +35,7 @@ ru = [
   "В списке достижений рядом с полученными стоит ✓ — теперь и в скопированном тексте видно, что получено, а что нет. И установка менеджера через `jii sources add` наконец засчитывается на 🔧 «С нуля».",
   "Самый пугающий уровень доверия теперь называется «без проверки», а не «недоверенный»: он всегда значил «JII не может подтвердить, кто это выпустил», а не «это вредонос».",
   "Четвёртое секретное достижение, спрятанное за собственным способом установки — самым сложным на сегодня. Оно помнит, каким путём вы победили.",
+  "`jii update jii` и скрипт установки теперь смотрят только на настоящие релизы JII. Раньше оба брали то, что вышло последним, — и вместо обновления могли выдать сборку с боем.",
 ]
 
 [[release]]

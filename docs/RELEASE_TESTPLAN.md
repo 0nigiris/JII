@@ -60,8 +60,8 @@
 | `jii pipx` (absent) | Resolves a distro package for pipx and offers it (e.g. via dnf); **no loop**. |
 | `jii nix` (absent) | Shows the install script, **does not run it** (trust boundary). |
 | `jii npm:npm -n` | Pinned → treats it as the *package* named npm, not the manager. |
-| `jii providers` | Lists ecosystem managers + installed/available. |
-| `jii providers add npm` | Same bootstrap path as `jii npm`. |
+| `jii sources` | Lists sources + usable-here, with how to add/remove each manager. |
+| `jii sources add npm` | Same bootstrap path as `jii npm`. |
 
 ## 5. npm / Cargo / language sources — #5
 
