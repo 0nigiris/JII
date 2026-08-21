@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.16-beta
+%global _tag v0.1.17-beta
 
 Name:           jii
-Version:        0.1.16~beta
+Version:        0.1.17~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,11 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Fri Aug 21 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.17~beta-1
+- `jii update jii` and install.sh now require a `v*` tag when picking the newest
+  release, so a boss-fight bundle is never mistaken for a JII release, and the
+  shell one-liner no longer depends on the JSON body being pretty-printed
+  (ADR-0081 addendum).
 * Tue Aug 18 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.16~beta-1
 - New `jii changelog`: JII's release notes in plain language, embedded in the binary
   and readable offline. Bare shows the running version, `jii changelog 0.1.12` any
@@ -78,8 +83,6 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
   "unverified".
 - A fourth secret install path and its badge, plus the boss table that made it a
   single row: a fight now declares its own endings and sentinel (ADR-0081).
-- `jii update jii` and install.sh now require a `v*` tag when picking the newest
-  release, so a boss-fight bundle is never mistaken for a JII release (ADR-0081).
 * Sat Aug 16 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.15~beta-1
 - Achievements: 15 → 30. Every boss ending is now its own badge (spare and kill
   each count, plus a "both ways" badge for seeing them all, plus one for beating
