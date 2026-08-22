@@ -1,0 +1,41 @@
+version = 1
+
+[[annotations]]
+path = [".gitignore", "rustfmt.toml", "rust-toolchain.toml", "Cargo.toml"]
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = ".github/**"
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = ".githooks/**"
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = ["README.md", "SECURITY.md", "CONTRIBUTING.md", "TODO.md", "ROADMAP.md"]
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = ".cargo/**"
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = ".claude/**"
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = ["**/Cargo.lock"]
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = "doc/**"
+SPDX-FileCopyrightText = ["0nigiris"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
