@@ -16,7 +16,7 @@ SPDX-FileCopyrightText = ["0nigiris"]
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
 [[annotations]]
-path = ["README.md", "SECURITY.md", "CONTRIBUTING.md", "TODO.md", "ROADMAP.md", "AGENTS.md", "CLAUDE.md"]
+path = ["README.md", "SECURITY.md", "CONTRIBUTING.md", "AGENTS.md", "CLAUDE.md"]
 SPDX-FileCopyrightText = ["0nigiris"]
 SPDX-License-Identifier = "CC-BY-SA-4.0"
 
