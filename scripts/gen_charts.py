@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+
+# SPDX-FileCopyrightText: 2026 0nigiris
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """Generate self-hosted growth charts for the README — two simple SVGs.
 
 Third-party live widgets (star-history.com, starchart.cc) share GitHub API tokens and
