@@ -786,8 +786,9 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   from their context in any redirected output. Plus `JiiError::AlreadyReported`
                   so a run that printed a ✗ exits non-zero, and two wrong devtest expectations
                   corrected. 324 tests.
-                  **Open:** the credits name only Toby Fox and the TurboWarp Packager — the Scratch
-                  project's author/source link is still needed from the owner.
+                  **Settled (2026-08-22):** the credits name Toby Fox and the TurboWarp Packager
+                  and carry a takedown offer. The Scratch project's own author is unknown — the
+                  game was found on a site that credited none — so there is no link to add. Closed.
             - [x] **Outside PR review + the token it exposed (2026-08-22)** (ADR-0083, ADR-0084).
                   Reviewed `justpav05`'s PR #12. Its one genuinely important finding: JII's own
                   setup told the user to `export GITHUB_TOKEN=…` in `~/.bashrc`, which hands the

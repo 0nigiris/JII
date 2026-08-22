@@ -45,7 +45,9 @@ parts that were right, and fixed the security problem they found. ADR-0083 and A
   `REUSE.toml` — good work, left to land as its own PR. `Ideas_ToDo.md` deleted (stale, duplicated
   `docs/ROADMAP.md`, nothing referenced it).
 - 330 tests, clippy clean, build clean. **Not yet released** — this is unreleased work on `master`.
-- **Still open, needs the owner:** the Scratch project's author/source link (see batch 18).
+- **Closed, do not reopen:** the Scratch project's author/source link. The owner found the game
+  on a site with no attribution and has no link to give. Credits stay as they are — Toby Fox and
+  the TurboWarp Packager, with the takedown offer. Stop asking.
 
 ## Previous work (2026-08-21, batch 20)
 
@@ -75,7 +77,7 @@ Three real defects, two of them dead ends. Fixed and released as `v0.1.18-beta`;
   an already-present package correctly shows nothing (the ledger is not an inventory of the
   machine), and `how`'s expectation now names all three cases.
 - 324 tests, clippy clean, CI green. `v0.1.18-beta` tagged and published.
-- **Still open, needs the owner:** the Scratch project's author/source link (see batch 18); the
+- **Closed:** the Scratch author/source link — the owner has no link to give (see batch 21). The
   owner's checklist at `~/Documents/suka/JII — полный чек-лист проверки.md` still says `v0.1.17-beta`.
 
 ## Previous work (2026-08-21, batch 19)
@@ -111,8 +113,8 @@ of tool output that had been committed by accident. No new features.**
   command was merged into `jii sources` in ADR-0062). The historical mentions in ADRs and TASKS
   are left alone; `docs/ARCHITECTURE.md` §13 still lists it as part of the designed surface.
 - 323 tests, `cargo build` / `clippy --all-targets` clean, CI green.
-- **Still open, needs the owner:** the Scratch project's author/source link for the `flowey`
-  branch README and the `flowey-game` release notes (see batch 18).
+- **Closed:** the Scratch project's author/source link for the `flowey` branch README and the
+  `flowey-game` release notes — none exists to be had (see batch 21).
 
 ## Previous work (2026-08-18, batch 18)
 
@@ -163,9 +165,10 @@ recorded as ADR-0081.**
   `Install nfpm` on a runner network stall — cancelled, re-run, second attempt green), branch
   [`flowey`](https://github.com/0nigiris/JII/tree/flowey) is pushed, and the game ships as the
   `flowey-game` release asset.
-- **Still open, needs the owner:** the branch README and the release notes credit only Toby Fox
-  and the TurboWarp Packager — the Scratch project's own author/source link is unknown and only
-  the owner can supply it. Both carry a takedown offer meanwhile.
+- **Closed (2026-08-22):** the branch README and the release notes credit Toby Fox and the
+  TurboWarp Packager, and both carry a takedown offer. The Scratch project's own author is
+  unknown — the owner found the game on a site that named none, so there is no link to add.
+  This is settled; do not raise it again.
 
 ## Previous work (2026-08-17, batch 17)
 
