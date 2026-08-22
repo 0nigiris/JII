@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Zypper provider (openSUSE, SLE).
 //!
 //! Self-gates on `zypper` (absent elsewhere → drops out; no distro check, ADR-0029).
@@ -70,11 +74,7 @@ impl Provider for Zypper {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let repo = candidate
-            .raw
-            .get("repo")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let repo = candidate.raw.get("repo").and_then(|v| v.as_str()).unwrap_or("unknown");
         let mut reasons = vec![
             crate::t!("reason.zypper_official"),
             crate::t!("reason.repository", repo = repo),
@@ -85,10 +85,7 @@ impl Provider for Zypper {
         Ok(root_plan(&candidate.name, &["install", &candidate.name], reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `zypper -n install a b c` for the whole group.
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install"];
@@ -98,7 +95,11 @@ impl Provider for Zypper {
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "zypper")];
+        let reasons = vec![crate::t!(
+            "reason.remove_one",
+            name = record.name.clone(),
+            mgr = "zypper"
+        )];
         Ok(root_plan(&record.name, &["remove", &record.name], reasons))
     }
 
@@ -106,12 +107,20 @@ impl Provider for Zypper {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["remove"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.remove_many", mgr = "zypper", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.remove_many",
+            mgr = "zypper",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "zypper")];
+        let reasons = vec![crate::t!(
+            "reason.update_one",
+            name = record.name.clone(),
+            mgr = "zypper"
+        )];
         Ok(root_plan(&record.name, &["update", &record.name], reasons))
     }
 
@@ -119,7 +128,11 @@ impl Provider for Zypper {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["update"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.update_many", mgr = "zypper", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many",
+            mgr = "zypper",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -133,13 +146,7 @@ impl Provider for Zypper {
     async fn list_installed(&self) -> Result<Vec<InstalledRecord>> {
         // openSUSE is rpm-based; rpm gives clean `name<TAB>version` output that the shared
         // installed-records parser already understands.
-        let out = run_capture(&[
-            "rpm",
-            "-qa",
-            "--qf",
-            "%{NAME}\t%{VERSION}-%{RELEASE}\n",
-        ])
-        .await?;
+        let out = run_capture(&["rpm", "-qa", "--qf", "%{NAME}\t%{VERSION}-%{RELEASE}\n"]).await?;
         Ok(super::parse_installed_records(&out, self.id()))
     }
 }
@@ -262,7 +269,10 @@ mod tests {
     #[tokio::test]
     async fn batch_install_is_one_non_interactive_root_command() {
         let cands = parse_search_xml(SAMPLE, "zypper", TrustLevel::Official);
-        let extra = PackageCandidate { name: "htop".into(), ..cands[0].clone() };
+        let extra = PackageCandidate {
+            name: "htop".into(),
+            ..cands[0].clone()
+        };
         let refs = vec![&cands[0], &extra];
         let plan = Zypper::new()
             .plan_install_many(&refs)

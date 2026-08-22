@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Command-line surface: clap definitions, global flags, and dispatch.
 //!
 //! The command set is intentionally the full, stable surface from
@@ -281,21 +285,17 @@ impl Cli {
             | Some(Commands::Man)
             | Some(Commands::DevTest) => None,
             Some(Commands::Install { packages }) => Some(format!("jii {}", packages.join(" "))),
-            Some(Commands::Remove { packages }) => {
-                Some(format!("jii remove {}", packages.join(" ")))
-            }
-            Some(Commands::Update { packages }) if packages.is_empty() => {
-                Some("jii update".to_string())
-            }
-            Some(Commands::Update { packages }) => {
-                Some(format!("jii update {}", packages.join(" ")))
-            }
+            Some(Commands::Remove { packages }) => Some(format!("jii remove {}", packages.join(" "))),
+            Some(Commands::Update { packages }) if packages.is_empty() => Some("jii update".to_string()),
+            Some(Commands::Update { packages }) => Some(format!("jii update {}", packages.join(" "))),
             Some(Commands::Search { query }) => Some(format!("jii search {}", query.join(" "))),
             Some(Commands::Info { package }) => Some(format!("jii info {package}")),
             Some(Commands::How { package }) => Some(format!("jii how {package}")),
-            Some(Commands::List { audit }) => {
-                Some(if *audit { "jii list --audit".to_string() } else { "jii list".to_string() })
-            }
+            Some(Commands::List { audit }) => Some(if *audit {
+                "jii list --audit".to_string()
+            } else {
+                "jii list".to_string()
+            }),
             Some(Commands::History) => Some("jii history".to_string()),
             Some(Commands::Achievements) => None,
             Some(Commands::Changelog { .. }) => None,
@@ -375,9 +375,7 @@ impl Cli {
 
         match &self.command {
             // Explicit `jii install <pkg…>` or bare `jii <pkg…>`.
-            Some(Commands::Install { packages }) => {
-                self.install(packages, config, &renderer).await
-            }
+            Some(Commands::Install { packages }) => self.install(packages, config, &renderer).await,
             None => {
                 if self.packages.is_empty() {
                     // Very first bare `jii` on an interactive terminal → a warm welcome + the
@@ -411,16 +409,10 @@ impl Cli {
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
             Some(Commands::Sources { all, action }) => match action {
                 None => self.sources(*all, config, &renderer).await,
-                Some(SourcesAction::Disable { id }) => {
-                    self.sources_set_enabled(id, false, config, &renderer)
-                }
-                Some(SourcesAction::Enable { id }) => {
-                    self.sources_set_enabled(id, true, config, &renderer)
-                }
+                Some(SourcesAction::Disable { id }) => self.sources_set_enabled(id, false, config, &renderer),
+                Some(SourcesAction::Enable { id }) => self.sources_set_enabled(id, true, config, &renderer),
                 Some(SourcesAction::Add { id }) => self.sources_add(id, config, &renderer).await,
-                Some(SourcesAction::Remove { id }) => {
-                    self.sources_remove(id, config, &renderer).await
-                }
+                Some(SourcesAction::Remove { id }) => self.sources_remove(id, config, &renderer).await,
             },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
             Some(Commands::Cache { action }) => self.cache(action.as_ref(), &renderer),
@@ -476,12 +468,7 @@ impl Cli {
     /// run them as **one** operation (one preview, one confirmation, one root escalation,
     /// one execution). A not-found package never cancels the rest (requirement: it is
     /// reported and the user is offered to continue).
-    async fn install(
-        &self,
-        packages: &[String],
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn install(&self, packages: &[String], config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         self.install_inner(packages, config, renderer, false, true).await
     }
 
@@ -492,12 +479,7 @@ impl Cli {
     /// it is **off** when installing a bootstrap package (whose name, e.g. `pipx`, may itself
     /// be a manager id — routing it would loop) and for doctor's explicit package installs.
     async fn install_inner(
-        &self,
-        packages: &[String],
-        config: Config,
-        renderer: &Renderer,
-        assume_yes: bool,
-        route_managers: bool,
+        &self, packages: &[String], config: Config, renderer: &Renderer, assume_yes: bool, route_managers: bool,
     ) -> crate::error::Result<()> {
         let mut engine = Engine::new(self.apply_profile(config.clone()))?;
 
@@ -614,11 +596,7 @@ impl Cli {
                 let same_source = record.source_id == recommended_source;
                 let outdated = same_source && available.is_some() && available != record.version;
                 if !outdated {
-                    let v = record
-                        .version
-                        .as_ref()
-                        .map(|v| format!(" ({v})"))
-                        .unwrap_or_default();
+                    let v = record.version.as_ref().map(|v| format!(" ({v})")).unwrap_or_default();
                     renderer.success(&crate::t!(
                         "install.already_installed",
                         name = name,
@@ -631,8 +609,7 @@ impl Cli {
                     if self.global.run
                         && single
                         && !self.global.dry_run
-                        && let Some(candidate) =
-                            ranked.iter().find(|c| c.source_id == record.source_id)
+                        && let Some(candidate) = ranked.iter().find(|c| c.source_id == record.source_id)
                     {
                         self.launch(&engine, candidate, renderer).await;
                     }
@@ -761,17 +738,14 @@ impl Cli {
                     && self.interactive(renderer)
                 {
                     let candidate = &chosen[0];
-                    let strategies = engine
-                        .install_strategies(&candidate.source_id, candidate)
-                        .await;
+                    let strategies = engine.install_strategies(&candidate.source_id, candidate).await;
                     if !strategies.is_empty() {
                         let palette = renderer.palette();
                         let labels: Vec<String> = strategies
                             .iter()
                             .map(|s| format!("{}  —  {}", s.label, palette.dim(&s.hint)))
                             .collect();
-                        let header =
-                            crate::t!("nix.strategy_header", name = candidate.name.clone());
+                        let header = crate::t!("nix.strategy_header", name = candidate.name.clone());
                         match prompt::choose(renderer, &header, &labels, 0) {
                             None => {
                                 renderer.info(&crate::t!("common.aborted"));
@@ -784,13 +758,8 @@ impl Cli {
                                     return Ok(());
                                 }
                                 kind @ crate::model::StrategyKind::EditFile { .. } => {
-                                    self.apply_edit_file(
-                                        engine.config().install.auto,
-                                        kind,
-                                        assume_yes,
-                                        renderer,
-                                    )
-                                    .await;
+                                    self.apply_edit_file(engine.config().install.auto, kind, assume_yes, renderer)
+                                        .await;
                                     return Ok(());
                                 }
                                 // Imperative → fall through to the normal preview/confirm/install.
@@ -805,10 +774,7 @@ impl Cli {
             DeclarativePref::Always => {
                 let mut remaining = Vec::with_capacity(chosen.len());
                 for candidate in std::mem::take(&mut chosen) {
-                    if self
-                        .route_declarative(&engine, &candidate, assume_yes, renderer)
-                        .await
-                    {
+                    if self.route_declarative(&engine, &candidate, assume_yes, renderer).await {
                         continue;
                     }
                     remaining.push(candidate);
@@ -929,16 +895,9 @@ impl Cli {
         // An interactive chooser pick is itself the consent for a trusted-enough source,
         // so we don't ask twice; an untrusted pick still hits the trust barrier below
         // (ADR-0006 — untrusted always needs an explicit answer).
-        let skip_confirm =
-            chose_interactively && least_trusted <= engine.config().install.default_yes_max_trust;
+        let skip_confirm = chose_interactively && least_trusted <= engine.config().install.default_yes_max_trust;
         if !skip_confirm
-            && !prompt::confirm_install_batch(
-                renderer,
-                least_trusted,
-                installed.len(),
-                engine.config(),
-                &flags,
-            )
+            && !prompt::confirm_install_batch(renderer, least_trusted, installed.len(), engine.config(), &flags)
         {
             renderer.info(&crate::t!("common.aborted"));
             return Ok(());
@@ -979,7 +938,11 @@ impl Cli {
             renderer.warn(&crate::t!("install.run_unknown", name = candidate.name.clone()));
             return;
         }
-        renderer.info(&renderer.palette().dim(&crate::t!("install.run_starting", cmd = argv.join(" "))));
+        renderer.info(
+            &renderer
+                .palette()
+                .dim(&crate::t!("install.run_starting", cmd = argv.join(" "))),
+        );
         // exec(2) returns only on failure.
         use std::os::unix::process::CommandExt;
         let error = std::process::Command::new(&argv[0]).args(&argv[1..]).exec();
@@ -1026,12 +989,7 @@ impl Cli {
     /// Friendly install preview: one short line per package — `Install <name> (<version>) via
     /// <source> — <why>  [needs sudo]` — instead of the full Plan block. Keeps a normal install
     /// quiet and scannable (U5); the full plan is still shown under `--dry-run`/Advanced.
-    fn preview_batch_friendly(
-        &self,
-        batch: &[crate::engine::BatchPlan],
-        engine: &Engine,
-        renderer: &Renderer,
-    ) {
+    fn preview_batch_friendly(&self, batch: &[crate::engine::BatchPlan], engine: &Engine, renderer: &Renderer) {
         let palette = renderer.palette();
         for bp in batch {
             let sudo = if bp.plan.needs_root() {
@@ -1100,10 +1058,7 @@ impl Cli {
     /// the normal preview→confirm→install flow). Returns `None` on cancel, nothing found, or if
     /// every pick published no installable Linux binary. Only reached in an interactive session.
     async fn repo_picker(
-        &self,
-        engine: &Engine,
-        name: &str,
-        renderer: &Renderer,
+        &self, engine: &Engine, name: &str, renderer: &Renderer,
     ) -> Option<crate::model::PackageCandidate> {
         let palette = renderer.palette();
         renderer.info(&crate::t!("install.gh_searching", name = name));
@@ -1118,11 +1073,7 @@ impl Cli {
             for variant in crate::engine::typo_variants(name) {
                 let found = engine.forge_repo_search(&variant, 1).await;
                 if !found.is_empty() {
-                    renderer.info(&crate::t!(
-                        "install.gh_corrected",
-                        name = name,
-                        fixed = variant.clone()
-                    ));
+                    renderer.info(&crate::t!("install.gh_corrected", name = name, fixed = variant.clone()));
                     query = variant;
                     hits = found;
                     break;
@@ -1219,11 +1170,7 @@ impl Cli {
         }
         if let Some(spec) = specs.iter().find(|s| s.reference.is_some()) {
             let r = spec.reference.as_deref().unwrap_or("");
-            renderer.error(&crate::t!(
-                "parse.pin_unsupported",
-                pin = r,
-                name = spec.name.clone()
-            ));
+            renderer.error(&crate::t!("parse.pin_unsupported", pin = r, name = spec.name.clone()));
             return None;
         }
         Some(specs)
@@ -1261,12 +1208,7 @@ impl Cli {
     /// (`dnf remove a b c`), and run them as **one** operation (one preview, one
     /// confirmation, one root escalation, one execution). A not-installed package is
     /// reported and never cancels the rest (offer to continue).
-    async fn remove(
-        &self,
-        packages: &[String],
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn remove(&self, packages: &[String], config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         // `jii remove jii` removes JII itself (see also `jii uninstall`). Handle it, then
         // remove any remaining names normally.
         let wants_self = packages.iter().any(|p| p == selfupdate::SELF_NAME);
@@ -1431,12 +1373,7 @@ impl Cli {
     /// the engine resolves each record's provider (ADR-0004/0025). A named package that is
     /// not installed is reported; a package whose source can't update is warned and
     /// skipped, never cancelling the rest.
-    async fn update(
-        &self,
-        packages: &[String],
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn update(&self, packages: &[String], config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         // `jii update jii` (or `jii` among the names) updates JII **itself** — a self-managed
         // action, not a registry package. Handle it, then update any remaining names.
         let wants_self = packages.iter().any(|p| p == selfupdate::SELF_NAME);
@@ -1577,9 +1514,7 @@ impl Cli {
     /// for how it was installed (user-space binary swap, or a `.rpm`/`.deb` via dnf/apt).
     /// Everything is a previewable plan; `--dry-run` shows it and stops.
     async fn self_update(
-        &self,
-        config: Config,
-        renderer: &Renderer,
+        &self, config: Config, renderer: &Renderer,
         prefetch: Option<tokio::task::JoinHandle<crate::error::Result<selfupdate::Latest>>>,
     ) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
@@ -1588,9 +1523,9 @@ impl Cli {
         // Use the release lookup started in parallel with the system update when available,
         // otherwise fetch it now (the direct `jii update jii` path).
         let fetched = match prefetch {
-            Some(handle) => handle.await.unwrap_or_else(|e| {
-                Err(crate::error::JiiError::Other(anyhow::anyhow!(e.to_string())))
-            }),
+            Some(handle) => handle
+                .await
+                .unwrap_or_else(|e| Err(crate::error::JiiError::Other(anyhow::anyhow!(e.to_string())))),
             None => selfupdate::latest_release().await,
         };
         let latest = match fetched {
@@ -1648,12 +1583,7 @@ impl Cli {
     /// the version it just installed. The new binary can — it is already on disk at the same
     /// path — so we ask it: `jii changelog --since <the version we were>`. Best-effort: if it
     /// can't be run, point at the command rather than ending on a bare "updated".
-    async fn show_update_changelog(
-        &self,
-        exe: &std::path::Path,
-        from: &str,
-        renderer: &Renderer,
-    ) {
+    async fn show_update_changelog(&self, exe: &std::path::Path, from: &str, renderer: &Renderer) {
         // JSON consumers get one document per command; a second one from a child process
         // would corrupt it.
         if renderer.is_json() {
@@ -1717,8 +1647,7 @@ impl Cli {
         }
 
         let system = engine.plan_update_all().await?;
-        let covered: std::collections::HashSet<&str> =
-            system.sources.iter().map(|s| s.as_str()).collect();
+        let covered: std::collections::HashSet<&str> = system.sources.iter().map(|s| s.as_str()).collect();
 
         // JII-tracked packages whose source offers no bulk update-all still get updated,
         // per-record, so a bare `jii update` misses nothing it installed.
@@ -1729,13 +1658,16 @@ impl Cli {
             .filter(|r| !covered.contains(r.source_id.as_str()))
             .cloned()
             .collect();
-        let (refreshed, transitions, up_to_date) =
-            self.refresh_for_update(&engine, fallback_records).await;
+        let (refreshed, transitions, up_to_date) = self.refresh_for_update(&engine, fallback_records).await;
         let fallback = engine
             .plan_record_batch(refreshed, crate::engine::RecordOp::Update)
             .await?;
         for (name, reason) in &fallback.unplannable {
-            renderer.warn(&crate::t!("update.cannot_plan", name = name.clone(), reason = reason.clone()));
+            renderer.warn(&crate::t!(
+                "update.cannot_plan",
+                name = name.clone(),
+                reason = reason.clone()
+            ));
         }
 
         if system.plans.is_empty() && fallback.plans.is_empty() {
@@ -1750,7 +1682,11 @@ impl Cli {
         if renderer.is_friendly() && !self.global.dry_run {
             for plan in &system.plans {
                 let why = plan.reasons.first().cloned().unwrap_or_default();
-                let sudo = if plan.needs_root() { crate::t!("common.needs_sudo") } else { String::new() };
+                let sudo = if plan.needs_root() {
+                    crate::t!("common.needs_sudo")
+                } else {
+                    String::new()
+                };
                 renderer.info(&format!("  {why}{sudo}"));
             }
         } else {
@@ -1792,9 +1728,7 @@ impl Cli {
     /// named-package and system-fallback update paths; the engine stamps installed_at/
     /// verification on write.
     async fn refresh_for_update(
-        &self,
-        engine: &Engine,
-        records: Vec<InstalledRecord>,
+        &self, engine: &Engine, records: Vec<InstalledRecord>,
     ) -> (Vec<InstalledRecord>, Vec<String>, usize) {
         let mut refreshed = Vec::new();
         let mut transitions = Vec::new();
@@ -1826,11 +1760,7 @@ impl Cli {
     /// Re-search an installed record's **owning** source for its latest candidate (the
     /// normal search→rank path, filtered to that source). `None` if the source no longer
     /// offers it — the update can still proceed, just without a refreshed version.
-    async fn latest_from_source(
-        &self,
-        engine: &Engine,
-        record: &InstalledRecord,
-    ) -> Option<PackageCandidate> {
+    async fn latest_from_source(&self, engine: &Engine, record: &InstalledRecord) -> Option<PackageCandidate> {
         let query = Query::name(&record.name);
         let mut ranked = engine.rank(&record.name, engine.search(&query).await.candidates);
         ranked.retain(|c| c.source_id == record.source_id);
@@ -1839,12 +1769,7 @@ impl Cli {
 
     /// Search path: show ranked candidates for a query without installing anything.
     /// Read-only — same search→rank the install path uses, just rendered, not executed.
-    async fn search(
-        &self,
-        terms: &[String],
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn search(&self, terms: &[String], config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(self.apply_profile(config))?;
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
@@ -1852,7 +1777,9 @@ impl Cli {
         // `search` is free-text discovery, not a package spec (ADR-0031) — the terms are the
         // query verbatim; `--source` still narrows the results.
         let name = terms.join(" ");
-        let ranked = self.ranked_for(&engine, &name, self.global.source.as_ref(), renderer).await;
+        let ranked = self
+            .ranked_for(&engine, &name, self.global.source.as_ref(), renderer)
+            .await;
         if ranked.is_empty() {
             renderer.error(&crate::t!("search.none", name = name));
             if let Some(msg) = engine.explain_miss(&name).await {
@@ -1877,12 +1804,7 @@ impl Cli {
 
     /// Info path: show every enabled source that offers a package, the recommended one,
     /// and why — for transparency, without installing. Read-only.
-    async fn info(
-        &self,
-        package: &str,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn info(&self, package: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(self.apply_profile(config))?;
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
@@ -1931,9 +1853,7 @@ impl Cli {
             renderer.info(desc);
         }
         renderer.info("");
-        let row = |label: &str, value: &str| {
-            format!("  {}{value}", palette.dim(&format!("{label:<11}")))
-        };
+        let row = |label: &str, value: &str| format!("  {}{value}", palette.dim(&format!("{label:<11}")));
         renderer.info(&row(
             &crate::t!("info.row_source"),
             &format!("{} ({})", palette.source(&best.source_id), palette.trust(best.trust)),
@@ -1959,10 +1879,7 @@ impl Cli {
         for candidate in &ranked {
             renderer.info(&format!("  {}", candidate_line(candidate, palette)));
         }
-        renderer.info(&crate::t!(
-            "info.recommended",
-            source = palette.source(&best.source_id)
-        ));
+        renderer.info(&crate::t!("info.recommended", source = palette.source(&best.source_id)));
         let highlights = engine.candidate_highlights(best);
         let check = palette.good(palette.mark_ok());
         for reason in recommendation_reasons(best, highlights) {
@@ -1974,11 +1891,7 @@ impl Cli {
     /// Render an informational `Reference` card (ADR-0045): `jii info` for a name that isn't
     /// an installable program (e.g. an npm library). Shows what it is — description, links,
     /// and a clarifying note — with **no install phrasing**, keeping `info` purely a "show".
-    fn render_reference(
-        &self,
-        card: &crate::model::Reference,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    fn render_reference(&self, card: &crate::model::Reference, renderer: &Renderer) -> crate::error::Result<()> {
         if renderer.is_json() {
             renderer.json_value(&serde_json::json!(card));
             return Ok(());
@@ -1989,9 +1902,7 @@ impl Cli {
             renderer.info(desc);
         }
         renderer.info("");
-        let row = |label: &str, value: &str| {
-            format!("  {}{value}", palette.dim(&format!("{label:<11}")))
-        };
+        let row = |label: &str, value: &str| format!("  {}{value}", palette.dim(&format!("{label:<11}")));
         renderer.info(&row(&crate::t!("info.row_source"), &palette.source(&card.source_id)));
         if let Some(v) = &card.version {
             renderer.info(&row(&crate::t!("info.row_version"), &v.to_string()));
@@ -2012,12 +1923,7 @@ impl Cli {
     /// Sources path: list enabled providers and whether each is usable on this machine.
     /// Native managers for other distros (pacman on Fedora) are hidden unless `all` — a user
     /// shouldn't have to reason about a package manager their system doesn't have.
-    async fn sources(
-        &self,
-        all: bool,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn sources(&self, all: bool, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         let engine = Engine::new(config)?;
         let full = engine.source_catalog().await;
         // A disabled source is dropped when the provider registry is built, so it is absent from
@@ -2034,8 +1940,7 @@ impl Cli {
             .map(|e| (e.id, matches!(e.bootstrap, crate::provider::Bootstrap::Script { .. })))
             .collect();
         let hidden = full.iter().filter(|e| !e.relevant).count();
-        let shown: Vec<&crate::engine::SourceEntry> =
-            full.iter().filter(|e| all || e.relevant).collect();
+        let shown: Vec<&crate::engine::SourceEntry> = full.iter().filter(|e| all || e.relevant).collect();
 
         if renderer.is_json() {
             let mut rows: Vec<_> = shown
@@ -2071,11 +1976,14 @@ impl Cli {
             if !managers.contains_key(e.id) {
                 return String::new();
             }
-            let key = if e.available { "sources.remove_hint" } else { "sources.add_hint2" };
+            let key = if e.available {
+                "sources.remove_hint"
+            } else {
+                "sources.add_hint2"
+            };
             format!("  {}", palette.dim(&crate::t!(key, id = e.id)))
         };
-        let (active, inactive): (Vec<Row>, Vec<Row>) =
-            shown.into_iter().partition(|e| e.available);
+        let (active, inactive): (Vec<Row>, Vec<Row>) = shown.into_iter().partition(|e| e.available);
         if !active.is_empty() {
             renderer.heading(&crate::t!("sources.active"));
             for e in &active {
@@ -2126,11 +2034,7 @@ impl Cli {
     /// A disabled source is dropped when the provider registry is built, so JII stops searching
     /// it everywhere at once. The id is validated so a typo fails loudly instead of silently.
     fn sources_set_enabled(
-        &self,
-        id: &str,
-        enable: bool,
-        mut config: Config,
-        renderer: &Renderer,
+        &self, id: &str, enable: bool, mut config: Config, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         if !crate::config::KNOWN_SOURCES.contains(&id) {
             renderer.error(&crate::t!("sources.unknown", id = id));
@@ -2142,7 +2046,11 @@ impl Cli {
         }
         let currently_enabled = config.is_enabled(id);
         if enable == currently_enabled {
-            let key = if enable { "sources.already_enabled" } else { "sources.already_disabled" };
+            let key = if enable {
+                "sources.already_enabled"
+            } else {
+                "sources.already_disabled"
+            };
             renderer.info(&crate::t!(key, id = id));
             return Ok(());
         }
@@ -2152,7 +2060,11 @@ impl Cli {
             config.sources.disabled.push(id.to_string());
         }
         config.save()?;
-        let key = if enable { "sources.enabled" } else { "sources.disabled_ok" };
+        let key = if enable {
+            "sources.enabled"
+        } else {
+            "sources.disabled_ok"
+        };
         renderer.success(&crate::t!(key, id = id));
         Ok(())
     }
@@ -2163,12 +2075,7 @@ impl Cli {
     /// **normal install path** — same preview → confirm → execute → record as any package. A
     /// manager that bootstraps via its own upstream script (Homebrew, Nix, an AUR helper) is
     /// **shown, never run** — JII does not pipe an installer into your shell (ADR-0005/0006).
-    async fn sources_add(
-        &self,
-        id: &str,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn sources_add(&self, id: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         // `jii sources add yay|paru` — an AUR helper, only meaningful on Arch.
         if matches!(id, "yay" | "paru") {
             return self.add_aur_helper(id, renderer).await;
@@ -2198,9 +2105,7 @@ impl Cli {
             return Ok(());
         }
         renderer.info(&crate::t!("aur.helper_intro", helper = helper.to_string()));
-        renderer.info(&format!(
-            "  git clone https://aur.archlinux.org/{helper}-bin.git",
-        ));
+        renderer.info(&format!("  git clone https://aur.archlinux.org/{helper}-bin.git",));
         renderer.info(&format!("  cd {helper}-bin && makepkg -si"));
         Ok(())
     }
@@ -2211,12 +2116,7 @@ impl Cli {
     /// pointed to. A repo-provided manager (flatpak/snap/cargo/pipx/go) is removed through the
     /// host's system package manager, with the **exact elevated command shown first** and a
     /// default-no confirmation. AUR helpers (yay/paru) are removed via pacman.
-    async fn sources_remove(
-        &self,
-        id: &str,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn sources_remove(&self, id: &str, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         // AUR helpers are ordinary pacman packages — remove them directly.
         if matches!(id, "yay" | "paru") {
             return self.remove_via_pacman(id, renderer).await;
@@ -2268,16 +2168,13 @@ impl Cli {
             ));
             return Ok(());
         }
-        self.run_system_remove(&mgr, &installed, eco.label, config, renderer).await
+        self.run_system_remove(&mgr, &installed, eco.label, config, renderer)
+            .await
     }
 
     /// Remove an AUR helper (yay/paru) via pacman — the exact elevated command shown first,
     /// default-no confirmation. Arch-only; a no-op with a note if it isn't installed.
-    async fn remove_via_pacman(
-        &self,
-        helper: &str,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn remove_via_pacman(&self, helper: &str, renderer: &Renderer) -> crate::error::Result<()> {
         if !crate::provider::which(helper).await {
             renderer.info(&crate::t!("sources.remove_not_installed", label = helper.to_string()));
             return Ok(());
@@ -2293,12 +2190,7 @@ impl Cli {
 
     /// Show the elevated system-manager removal command, confirm (default no), then run it.
     async fn run_system_remove(
-        &self,
-        mgr: &SysManager,
-        pkgs: &[String],
-        label: &str,
-        _config: Config,
-        renderer: &Renderer,
+        &self, mgr: &SysManager, pkgs: &[String], label: &str, _config: Config, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         let (argv, needs_root) = mgr.remove_argv(pkgs);
         self.confirm_and_run_removal(&argv, needs_root, label, renderer).await
@@ -2307,11 +2199,7 @@ impl Cli {
     /// Shared tail of every manager removal: print the exact elevated command, honour
     /// `--dry-run`, ask a default-no confirmation, then run it through the privilege layer.
     async fn confirm_and_run_removal(
-        &self,
-        argv: &[String],
-        needs_root: bool,
-        label: &str,
-        renderer: &Renderer,
+        &self, argv: &[String], needs_root: bool, label: &str, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         let privilege = crate::privilege::Privilege::detect();
         let shown = privilege.elevated_argv(argv, needs_root);
@@ -2343,11 +2231,7 @@ impl Cli {
     /// unpinned (no `:source`, no `--source`) and matches a known ecosystem id; a cheap pure
     /// id check means an ordinary `jii vlc` pays nothing (no catalog probe).
     async fn route_managers(
-        &self,
-        engine: &Engine,
-        packages: &[String],
-        config: Config,
-        renderer: &Renderer,
+        &self, engine: &Engine, packages: &[String], config: Config, renderer: &Renderer,
     ) -> crate::error::Result<Vec<String>> {
         let ids = engine.ecosystem_ids();
         let pinned_globally = self.global.source.is_some();
@@ -2393,11 +2277,7 @@ impl Cli {
     /// install-path routing of a bare manager name (#4). If it's already present, say so — a
     /// manager is something JII *drives*, so re-"installing" it is a no-op worth explaining.
     async fn bootstrap_ecosystem(
-        &self,
-        engine: &Engine,
-        eco: &crate::engine::EcosystemStatus,
-        config: Config,
-        renderer: &Renderer,
+        &self, engine: &Engine, eco: &crate::engine::EcosystemStatus, config: Config, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         if eco.installed {
             renderer.success(&crate::t!("providers.already_installed", label = eco.label));
@@ -2414,8 +2294,7 @@ impl Cli {
                     // id — routing it would loop. Box::pin breaks the async recursion cycle.
                     Some((pkg, source)) => {
                         let spec = format!("{pkg}:{source}");
-                        Box::pin(self.install_inner(&[spec], config, renderer, false, false))
-                            .await?;
+                        Box::pin(self.install_inner(&[spec], config, renderer, false, false)).await?;
                         if self.global.dry_run {
                             // Everything is previewable: show the finishing steps too, since
                             // they are part of what `jii sources add` would really do.
@@ -2448,7 +2327,10 @@ impl Cli {
             // No distro package exists for this one — its own upstream script is the install
             // path. Shown in full, run only on an explicit answer (ADR-0066).
             Bootstrap::Script { cmd, shell } => {
-                if self.offer_script_bootstrap(engine, eco.id, label, cmd, shell, renderer).await {
+                if self
+                    .offer_script_bootstrap(engine, eco.id, label, cmd, shell, renderer)
+                    .await
+                {
                     self.grant_achievement("bootstrapper", renderer);
                 }
                 Ok(())
@@ -2468,12 +2350,7 @@ impl Cli {
     /// note. Candidates whose manager is already present, or isn't an ecosystem at all (github),
     /// pass through untouched. Returns the survivors.
     async fn bootstrap_missing_managers(
-        &self,
-        engine: &Engine,
-        chosen: Vec<PackageCandidate>,
-        config: &Config,
-        renderer: &Renderer,
-        assume_yes: bool,
+        &self, engine: &Engine, chosen: Vec<PackageCandidate>, config: &Config, renderer: &Renderer, assume_yes: bool,
     ) -> crate::error::Result<Vec<PackageCandidate>> {
         let eco = engine.ecosystem_catalog().await;
         let status_of = |id: &str| eco.iter().find(|e| e.id == id);
@@ -2526,8 +2403,7 @@ impl Cli {
                 // remote it needs. In dry-run we preview the setup and keep the app so its plan is
                 // shown too, without touching the system.
                 Bootstrap::Packages(names) => {
-                    let question =
-                        crate::t!("install.bootstrap_confirm", manager = manager, app = cand.name.clone());
+                    let question = crate::t!("install.bootstrap_confirm", manager = manager, app = cand.name.clone());
                     if !self.global.dry_run && !prompt::confirm(renderer, &question, true, &flags) {
                         false
                     } else {
@@ -2562,12 +2438,7 @@ impl Cli {
     /// Returns whether the manager is usable afterwards (a fresh Homebrew often isn't on this
     /// shell's PATH yet, which is reported rather than silently failing the dependent install).
     async fn offer_script_bootstrap(
-        &self,
-        engine: &Engine,
-        source_id: &str,
-        manager: &str,
-        cmd: &str,
-        shell: Option<crate::provider::ShellSetup>,
+        &self, engine: &Engine, source_id: &str, manager: &str, cmd: &str, shell: Option<crate::provider::ShellSetup>,
         renderer: &Renderer,
     ) -> bool {
         renderer.info(&crate::t!("install.script_intro", manager = manager));
@@ -2581,7 +2452,11 @@ impl Cli {
             renderer.info(&crate::t!("install.script_manual", manager = manager));
             return false;
         }
-        let flags = prompt::PromptFlags { auto: false, yes: false, no: false };
+        let flags = prompt::PromptFlags {
+            auto: false,
+            yes: false,
+            no: false,
+        };
         let question = crate::t!("install.script_confirm", manager = manager);
         if !prompt::confirm(renderer, &question, true, &flags) {
             renderer.info(&crate::t!("install.script_manual", manager = manager));
@@ -2619,12 +2494,7 @@ impl Cli {
     /// written only on an explicit yes: this edits a file JII doesn't own. Silent when the line
     /// is already there, when the binary can't be located, or in a non-interactive session
     /// (where the line is printed to paste instead — never a dead end).
-    fn offer_shell_line(
-        &self,
-        manager: &str,
-        setup: crate::provider::ShellSetup,
-        renderer: &Renderer,
-    ) {
+    fn offer_shell_line(&self, manager: &str, setup: crate::provider::ShellSetup, renderer: &Renderer) {
         let Some(bin) = crate::provider::first_existing(setup.bins) else {
             return;
         };
@@ -2645,17 +2515,13 @@ impl Cli {
         ));
         renderer.info(&format!("  {line}"));
         let flags = self.prompt_flags(self.global.auto);
-        if !self.interactive(renderer)
-            || !prompt::confirm(renderer, &crate::t!("install.shell_confirm"), true, &flags)
+        if !self.interactive(renderer) || !prompt::confirm(renderer, &crate::t!("install.shell_confirm"), true, &flags)
         {
             renderer.info(&crate::t!("install.shell_manual", line = line.clone()));
             return;
         }
         match crate::shellrc::append_line(&rc, manager, &line) {
-            Ok(()) => renderer.success(&crate::t!(
-                "install.shell_added",
-                file = rc.display().to_string()
-            )),
+            Ok(()) => renderer.success(&crate::t!("install.shell_added", file = rc.display().to_string())),
             Err(e) => {
                 renderer.warn(&crate::t!("install.shell_failed", error = e.to_string()));
                 renderer.info(&crate::t!("install.shell_manual", line = line.clone()));
@@ -2670,12 +2536,7 @@ impl Cli {
     /// own plan is previewed too). Returns `false` — dropping the dependent app — if no package
     /// resolves or the manager still isn't present after install.
     async fn set_up_manager(
-        &self,
-        engine: &Engine,
-        source_id: &str,
-        manager: &str,
-        names: &[&'static str],
-        config: Config,
+        &self, engine: &Engine, source_id: &str, manager: &str, names: &[&'static str], config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<bool> {
         let Some((pkg, from)) = engine.first_bootstrap_package(names).await else {
@@ -2713,12 +2574,7 @@ impl Cli {
     /// `jii lang [code]` — show or persist the interface language. With no argument it prints
     /// the saved setting and the choices; with `en`/`ru`/`auto` it writes `[ui] locale` to the
     /// config so the choice sticks across runs (the global `--lang` stays a per-run override).
-    fn lang(
-        &self,
-        code: Option<&str>,
-        mut config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    fn lang(&self, code: Option<&str>, mut config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         const SUPPORTED: &[&str] = &["auto", "en", "ru"];
         match code {
             None => {
@@ -2761,13 +2617,9 @@ impl Cli {
                 None => renderer.info(&crate::t!("cache.no_path")),
             },
             Some(CacheAction::Clear) => match crate::cache::Cache::clear_disk() {
-                Ok(Some(p)) => {
-                    renderer.success(&crate::t!("cache.cleared", path = p.display().to_string()))
-                }
+                Ok(Some(p)) => renderer.success(&crate::t!("cache.cleared", path = p.display().to_string())),
                 Ok(None) => renderer.info(&crate::t!("cache.already_empty")),
-                Err(e) => {
-                    renderer.error(&crate::t!("cache.clear_failed", error = e.to_string()))
-                }
+                Err(e) => renderer.error(&crate::t!("cache.clear_failed", error = e.to_string())),
             },
         }
         Ok(())
@@ -2783,11 +2635,7 @@ impl Cli {
     /// invocation that triggered onboarding *is* `jii doctor`, so the real doctor runs once
     /// afterwards instead of being offered here and then again by the dispatched command.
     async fn setup(
-        &self,
-        mut config: Config,
-        renderer: &Renderer,
-        first_run: bool,
-        offer_doctor: bool,
+        &self, mut config: Config, renderer: &Renderer, first_run: bool, offer_doctor: bool,
     ) -> crate::error::Result<()> {
         let flags = self.prompt_flags(false);
 
@@ -2812,10 +2660,7 @@ impl Cli {
         let mode = match prompt::choose(
             renderer,
             &crate::t!("setup.detail_q"),
-            &[
-                crate::t!("setup.detail_friendly"),
-                crate::t!("setup.detail_advanced"),
-            ],
+            &[crate::t!("setup.detail_friendly"), crate::t!("setup.detail_advanced")],
             0,
         ) {
             Some(1) => crate::config::OutputMode::Advanced,
@@ -2877,11 +2722,7 @@ impl Cli {
     /// that was unavailable/errored). Shared by the read-only `search`/`info` paths; `source`
     /// (a `:source` spec or `--source`) narrows the result to one provider when given.
     async fn ranked_for(
-        &self,
-        engine: &Engine,
-        name: &str,
-        source: Option<&String>,
-        renderer: &Renderer,
+        &self, engine: &Engine, name: &str, source: Option<&String>, renderer: &Renderer,
     ) -> Vec<PackageCandidate> {
         let query = Query::name(name);
         let result = engine.search(&query).await;
@@ -2940,12 +2781,7 @@ impl Cli {
     /// `how` for a package JII has no record of: either the system owns it, or nobody does.
     /// Never ends on "no record" alone — that was a dead end, and ADR-0080's rule is that a
     /// refusal must carry the next step.
-    async fn how_unrecorded(
-        &self,
-        engine: &Engine,
-        package: &str,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn how_unrecorded(&self, engine: &Engine, package: &str, renderer: &Renderer) -> crate::error::Result<()> {
         let palette = renderer.palette();
         let ok = palette.mark_ok();
 
@@ -3096,8 +2932,11 @@ impl Cli {
 
         renderer.heading(&crate::t!("doctor.sources_header"));
         for d in &diagnostics {
-            let mark =
-                if d.available { palette.good(palette.mark_ok()) } else { palette.dim(palette.mark_bad()) };
+            let mark = if d.available {
+                palette.good(palette.mark_ok())
+            } else {
+                palette.dim(palette.mark_bad())
+            };
             let detail = match &d.detail {
                 Some(text) => palette.dim(&format!("  ({text})")),
                 None => String::new(),
@@ -3182,11 +3021,7 @@ impl Cli {
     /// twice (`with_yes`); the trust barrier (ADR-0006) still gates anything untrusted.
     /// `--dry-run` shows what each "yes" *would* do without changing anything.
     async fn doctor_offer(
-        &self,
-        engine: &Engine,
-        checks: &[SystemCheck],
-        config: Config,
-        renderer: &Renderer,
+        &self, engine: &Engine, checks: &[SystemCheck], config: Config, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         let fixes: Vec<(&SystemCheck, &Fix)> = checks
             .iter()
@@ -3195,10 +3030,7 @@ impl Cli {
 
         let catalog = crate::recommend::Catalog::load().ok();
         let distro_id = crate::platform::Platform::detect().distro.id();
-        let all_suggestions = catalog
-            .as_ref()
-            .map(|c| c.for_distro(distro_id))
-            .unwrap_or_default();
+        let all_suggestions = catalog.as_ref().map(|c| c.for_distro(distro_id)).unwrap_or_default();
 
         // Analyse the system first (#1): drop suggestions the user has already done, so
         // doctor is real diagnostics — not a canned list. One installed-scan for the batch.
@@ -3257,9 +3089,7 @@ impl Cli {
             // command is shown before it runs (apply_suggestion prints it); the "yes" to the
             // dependent is the consent for its prerequisite. Deduped within the run, and
             // skipped when the prerequisite is already present (pure decision in `recommend`).
-            if let Some(prereq) =
-                crate::recommend::prerequisite(r, &all_suggestions, &installed, &enabled_repos)
-            {
+            if let Some(prereq) = crate::recommend::prerequisite(r, &all_suggestions, &installed, &enabled_repos) {
                 renderer.info(&format!("    {}", crate::t!("doctor.prereq", title = prereq.title)));
                 if let Some(note) = &prereq.note {
                     renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
@@ -3288,15 +3118,11 @@ impl Cli {
     /// Apply one fixable system check. Installs route through the normal path with the
     /// questionnaire's "yes" carried through (`assume_yes`); a `Command` is shown then run;
     /// a `PathExport` appends the right line to the user's shell rc.
-    async fn apply_fix(
-        &self,
-        fix: &Fix,
-        config: Config,
-        renderer: &Renderer,
-    ) -> crate::error::Result<()> {
+    async fn apply_fix(&self, fix: &Fix, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
         match fix {
             Fix::Install(pkg) => {
-                self.install_inner(&[pkg.to_string()], config, renderer, true, false).await?;
+                self.install_inner(&[pkg.to_string()], config, renderer, true, false)
+                    .await?;
             }
             Fix::Command { argv, show } => {
                 if self.global.dry_run {
@@ -3318,10 +3144,7 @@ impl Cli {
     /// already given) or run its documented `manual` command (a repo-enable etc., which may
     /// use shell syntax like `$(rpm -E %fedora)`, so it runs through `sh -c`).
     async fn apply_suggestion(
-        &self,
-        r: &crate::recommend::Recommendation,
-        config: Config,
-        renderer: &Renderer,
+        &self, r: &crate::recommend::Recommendation, config: Config, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         if !r.packages.is_empty() {
             self.install_inner(&r.packages, config, renderer, true, false).await?;
@@ -3504,8 +3327,7 @@ impl Cli {
             newly.push("completionist".to_string());
         }
         // Beating every boss is its own (secret) badge, so it never gates the crown.
-        let all_bosses_down =
-            crate::achievements::BOSSES.iter().all(|b| store.is_unlocked(b.id));
+        let all_bosses_down = crate::achievements::BOSSES.iter().all(|b| store.is_unlocked(b.id));
         if all_bosses_down && store.unlock("boss-slayer") {
             newly.push("boss-slayer".to_string());
         }
@@ -3552,8 +3374,7 @@ impl Cli {
         // Every ending seen at least once → the "both ways" badge. A fight with a single path
         // (Sans) has no endings listed and so never earns one.
         let endings = crate::achievements::boss(id).map(|b| b.endings).unwrap_or(&[]);
-        let all_endings =
-            !endings.is_empty() && endings.iter().all(|e| store.counter(&format!("{id}-{e}")) > 0);
+        let all_endings = !endings.is_empty() && endings.iter().all(|e| store.counter(&format!("{id}-{e}")) > 0);
         let both_id = format!("{id}-both");
         if all_endings && store.unlock(&both_id) {
             newly.push(both_id);
@@ -3578,13 +3399,7 @@ impl Cli {
     /// counter, remember which sources were used, and unlock whatever that newly earns
     /// (first-install, the 100/500 grinds, breadth, the night shift, the crown). One load/save,
     /// best-effort, silent in JSON mode. `count` is how many packages actually landed.
-    fn record_install(
-        &self,
-        batch: &[crate::engine::BatchPlan],
-        count: usize,
-        pinned: bool,
-        renderer: &Renderer,
-    ) {
+    fn record_install(&self, batch: &[crate::engine::BatchPlan], count: usize, pinned: bool, renderer: &Renderer) {
         use chrono::Timelike;
         let Ok(mut store) = crate::achievements::Achievements::load() else {
             return;
@@ -3672,11 +3487,7 @@ impl Cli {
         let earned = crate::achievements::visible(&store)
             .filter(|a| store.is_unlocked(a.id))
             .count();
-        renderer.info(&palette.heading(&crate::t!(
-            "achieve.header",
-            earned = earned,
-            total = total
-        )));
+        renderer.info(&palette.heading(&crate::t!("achieve.header", earned = earned, total = total)));
         renderer.info("");
 
         for a in crate::achievements::visible(&store) {
@@ -3700,8 +3511,16 @@ impl Cli {
             }
             let title = crate::i18n::tr(&format!("achieve.{}.title", a.id));
             let desc = crate::i18n::tr(&format!("achieve.{}.desc", a.id));
-            let mark = if unlocked { palette.good(a.icon) } else { palette.dim(a.icon) };
-            let title = if unlocked { palette.heading(&title) } else { palette.dim(&title) };
+            let mark = if unlocked {
+                palette.good(a.icon)
+            } else {
+                palette.dim(a.icon)
+            };
+            let title = if unlocked {
+                palette.heading(&title)
+            } else {
+                palette.dim(&title)
+            };
             renderer.info(&format!("  {state} {mark}  {title}"));
             renderer.info(&format!("        {}", palette.dim(&desc)));
         }
@@ -3713,11 +3532,7 @@ impl Cli {
     /// argument shows that release, `--all` the whole history, and `--since <ver>` everything
     /// newer than it (which is what `jii update jii` runs for you after an update).
     fn changelog(
-        &self,
-        version: Option<&str>,
-        all: bool,
-        since: Option<&str>,
-        renderer: &Renderer,
+        &self, version: Option<&str>, all: bool, since: Option<&str>, renderer: &Renderer,
     ) -> crate::error::Result<()> {
         let running = crate::selfupdate::current_version();
         let picked: Vec<&crate::changelog::Release> = if all {
@@ -3859,7 +3674,11 @@ impl Cli {
         }
 
         if flagged > 0 {
-            renderer.warn(&crate::t!("audit.need_attention", flagged = flagged, total = entries.len()));
+            renderer.warn(&crate::t!(
+                "audit.need_attention",
+                flagged = flagged,
+                total = entries.len()
+            ));
         } else {
             renderer.success(&crate::t!("audit.all_fine", total = entries.len()));
         }
@@ -3894,11 +3713,7 @@ impl Cli {
     /// (`needs_root`) is written via `privilege.rs`, with the exact `sudo`/`pkexec` commands
     /// shown first.
     async fn apply_edit_file(
-        &self,
-        config_auto: bool,
-        kind: &crate::model::StrategyKind,
-        assume_yes: bool,
-        renderer: &Renderer,
+        &self, config_auto: bool, kind: &crate::model::StrategyKind, assume_yes: bool, renderer: &Renderer,
     ) {
         let crate::model::StrategyKind::EditFile {
             path,
@@ -3954,27 +3769,16 @@ impl Cli {
     /// caller must NOT also install it imperatively); `false` to fall through to an imperative
     /// install (any non-Nix source, or Nix with no detected config → empty strategies).
     async fn route_declarative(
-        &self,
-        engine: &Engine,
-        candidate: &PackageCandidate,
-        assume_yes: bool,
-        renderer: &Renderer,
+        &self, engine: &Engine, candidate: &PackageCandidate, assume_yes: bool, renderer: &Renderer,
     ) -> bool {
-        let strategies = engine
-            .install_strategies(&candidate.source_id, candidate)
-            .await;
+        let strategies = engine.install_strategies(&candidate.source_id, candidate).await;
         // Prefer a file we can actually edit; else a snippet we can only show.
         if let Some(strat) = strategies
             .iter()
             .find(|s| matches!(s.kind, crate::model::StrategyKind::EditFile { .. }))
         {
-            self.apply_edit_file(
-                engine.config().install.auto,
-                &strat.kind,
-                assume_yes,
-                renderer,
-            )
-            .await;
+            self.apply_edit_file(engine.config().install.auto, &strat.kind, assume_yes, renderer)
+                .await;
             return true;
         }
         if let Some(strat) = strategies
@@ -4001,7 +3805,9 @@ fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
 
 /// Render an optional version, or `unknown` when a source doesn't report one.
 fn version_or_unknown(version: Option<&crate::model::PkgVersion>) -> String {
-    version.map(|v| v.to_string()).unwrap_or_else(|| crate::t!("common.unknown"))
+    version
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| crate::t!("common.unknown"))
 }
 
 /// Render an aligned text table: a header row then one line per data row, each
@@ -4158,7 +3964,13 @@ struct SystemCheck {
 
 impl SystemCheck {
     fn pass(label: impl Into<String>) -> Self {
-        SystemCheck { ok: true, critical: false, label: label.into(), advice: None, fix: None }
+        SystemCheck {
+            ok: true,
+            critical: false,
+            label: label.into(),
+            advice: None,
+            fix: None,
+        }
     }
     fn warn(label: impl Into<String>, advice: impl Into<String>) -> Self {
         SystemCheck {
@@ -4218,25 +4030,19 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
     checks.push(if f.internet {
         SystemCheck::pass(crate::t!("check.internet_ok"))
     } else {
-        SystemCheck::warn(
-            crate::t!("check.internet_missing"),
-            crate::t!("check.internet_advice"),
-        )
-        .critical()
+        SystemCheck::warn(crate::t!("check.internet_missing"), crate::t!("check.internet_advice")).critical()
     });
 
     // Common tools JII and its sources lean on — and which JII can itself install.
     checks.push(if f.git {
         SystemCheck::pass(crate::t!("check.git_ok"))
     } else {
-        SystemCheck::warn(crate::t!("check.git_missing"), crate::t!("check.git_advice"))
-            .fixable(Fix::Install("git"))
+        SystemCheck::warn(crate::t!("check.git_missing"), crate::t!("check.git_advice")).fixable(Fix::Install("git"))
     });
     checks.push(if f.curl {
         SystemCheck::pass(crate::t!("check.curl_ok"))
     } else {
-        SystemCheck::warn(crate::t!("check.curl_missing"), crate::t!("check.curl_advice"))
-            .fixable(Fix::Install("curl"))
+        SystemCheck::warn(crate::t!("check.curl_missing"), crate::t!("check.curl_advice")).fixable(Fix::Install("curl"))
     });
 
     // ~/.local/bin on PATH — user-space installs land there.
@@ -4248,7 +4054,9 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
             crate::t!("check.path_missing", dir = local),
             crate::t!("check.local_path_advice"),
         )
-        .fixable(Fix::PathExport { dir: f.local_bin.clone() })
+        .fixable(Fix::PathExport {
+            dir: f.local_bin.clone(),
+        })
     });
 
     // ~/.cargo/bin on PATH — only when cargo is actually in play.
@@ -4261,7 +4069,9 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
                 crate::t!("check.path_missing", dir = cargo),
                 crate::t!("check.cargo_path_advice"),
             )
-            .fixable(Fix::PathExport { dir: f.cargo_bin.clone() })
+            .fixable(Fix::PathExport {
+                dir: f.cargo_bin.clone(),
+            })
         });
     }
 
@@ -4272,11 +4082,8 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
         checks.push(if f.build_tools {
             SystemCheck::pass(crate::t!("check.build_ok"))
         } else {
-            SystemCheck::warn(
-                crate::t!("check.build_missing"),
-                crate::t!("check.build_advice"),
-            )
-            .fixable(Fix::Install("gcc"))
+            SystemCheck::warn(crate::t!("check.build_missing"), crate::t!("check.build_advice"))
+                .fixable(Fix::Install("gcc"))
         });
     }
 
@@ -4285,26 +4092,24 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
         checks.push(if f.flathub {
             SystemCheck::pass(crate::t!("check.flathub_ok"))
         } else {
-            SystemCheck::warn(
-                crate::t!("check.flathub_missing"),
-                crate::t!("check.flathub_advice"),
-            )
-            .fixable(Fix::Command {
-                // --user: a user-scope remote needs no root/polkit and matches how JII installs
-                // (`flatpak install --user`). It also avoids "Unable to connect to system bus"
-                // on minimal/live systems with no running system D-Bus (seen on Void live).
-                argv: vec![
-                    "flatpak".into(),
-                    "remote-add".into(),
-                    "--user".into(),
-                    "--if-not-exists".into(),
-                    "flathub".into(),
-                    "https://flathub.org/repo/flathub.flatpakrepo".into(),
-                ],
-                show: "flatpak remote-add --user --if-not-exists flathub \
+            SystemCheck::warn(crate::t!("check.flathub_missing"), crate::t!("check.flathub_advice")).fixable(
+                Fix::Command {
+                    // --user: a user-scope remote needs no root/polkit and matches how JII installs
+                    // (`flatpak install --user`). It also avoids "Unable to connect to system bus"
+                    // on minimal/live systems with no running system D-Bus (seen on Void live).
+                    argv: vec![
+                        "flatpak".into(),
+                        "remote-add".into(),
+                        "--user".into(),
+                        "--if-not-exists".into(),
+                        "flathub".into(),
+                        "https://flathub.org/repo/flathub.flatpakrepo".into(),
+                    ],
+                    show: "flatpak remote-add --user --if-not-exists flathub \
                        https://flathub.org/repo/flathub.flatpakrepo"
-                    .into(),
-            })
+                        .into(),
+                },
+            )
         });
     }
 
@@ -4336,10 +4141,7 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
         .unwrap_or_else(|| std::path::PathBuf::from("~/.cargo/bin"));
 
     let platform = crate::platform::Platform::detect();
-    let local_bin_on_path = home
-        .as_ref()
-        .map(|_| platform.is_on_path(&local_bin))
-        .unwrap_or(true); // can't resolve HOME → don't cry wolf
+    let local_bin_on_path = home.as_ref().map(|_| platform.is_on_path(&local_bin)).unwrap_or(true); // can't resolve HOME → don't cry wolf
     let cargo_bin_on_path = platform.is_on_path(&cargo_bin);
 
     // Independent probes run concurrently.
@@ -4416,9 +4218,7 @@ fn url_query_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }
@@ -4481,7 +4281,11 @@ async fn flathub_configured() -> bool {
         .args(["remotes", "--columns=name"])
         .output()
         .await
-        .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).lines().any(|l| l.trim() == "flathub"))
+        .is_ok_and(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.trim() == "flathub")
+        })
 }
 
 /// Back up `path` to `<path>.jii-bak` and overwrite it with `content`, returning the backup
@@ -4508,19 +4312,12 @@ fn jii_backup_path(path: &std::path::Path) -> std::path::PathBuf {
 /// `(backup_cmd, write_cmd)` so the CLI can *show them verbatim* before running anything. The
 /// write command copies from a placeholder temp path (`{tmp}`) that [`write_nix_config_root`]
 /// fills in — the shown form uses the same real temp path it will run.
-fn root_write_argv(
-    privilege: &crate::privilege::Privilege,
-    path: &std::path::Path,
-) -> (Vec<String>, Vec<String>) {
+fn root_write_argv(privilege: &crate::privilege::Privilege, path: &std::path::Path) -> (Vec<String>, Vec<String>) {
     let dest = path.display().to_string();
     let backup = jii_backup_path(path).display().to_string();
     let tmp = root_tmp_path(path).display().to_string();
-    let backup_cmd = privilege.elevated_argv(
-        &["cp".into(), "-a".into(), "--".into(), dest.clone(), backup],
-        true,
-    );
-    let write_cmd =
-        privilege.elevated_argv(&["cp".into(), "--".into(), tmp, dest], true);
+    let backup_cmd = privilege.elevated_argv(&["cp".into(), "-a".into(), "--".into(), dest.clone(), backup], true);
+    let write_cmd = privilege.elevated_argv(&["cp".into(), "--".into(), tmp, dest], true);
     (backup_cmd, write_cmd)
 }
 
@@ -4541,10 +4338,7 @@ fn root_tmp_path(path: &std::path::Path) -> std::path::PathBuf {
 /// already showed). Returns the backup path on success. JII never runs fully as root — only these
 /// two concrete `cp` steps escalate, through `privilege.rs`.
 async fn write_nix_config_root(
-    privilege: &crate::privilege::Privilege,
-    path: &std::path::Path,
-    content: &str,
-    backup_cmd: &[String],
+    privilege: &crate::privilege::Privilege, path: &std::path::Path, content: &str, backup_cmd: &[String],
     write_cmd: &[String],
 ) -> std::result::Result<std::path::PathBuf, String> {
     use std::io::Write;
@@ -4554,9 +4348,7 @@ async fn write_nix_config_root(
         .create_new(true)
         .open(&tmp)
         .map_err(|e| e.to_string())?;
-    let staged = file
-        .write_all(content.as_bytes())
-        .and_then(|()| file.sync_all());
+    let staged = file.write_all(content.as_bytes()).and_then(|()| file.sync_all());
     if let Err(e) = staged {
         let _ = std::fs::remove_file(&tmp);
         return Err(e.to_string());
@@ -4746,8 +4538,7 @@ mod tests {
             needs_root: false,
         };
         let cli = Cli::parse_from(["jii", "-d", "install", "foo"]);
-        let renderer =
-            Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
+        let renderer = Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
         cli.apply_edit_file(false, &kind, false, &renderer).await;
 
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "original\n");
@@ -4771,8 +4562,7 @@ mod tests {
             needs_root: true,
         };
         let cli = Cli::parse_from(["jii", "-d", "install", "foo"]);
-        let renderer =
-            Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
+        let renderer = Renderer::new(ColorChoice::Never, false, crate::config::OutputMode::Friendly);
         cli.apply_edit_file(false, &kind, false, &renderer).await;
 
         assert_eq!(std::fs::read_to_string(&cfg).unwrap(), "original\n");
@@ -4877,8 +4667,7 @@ mod tests {
     #[test]
     fn reasons_fall_back_to_trust_without_highlights() {
         // No provider highlights → the trust label leads (fallback), then the model facts.
-        let reasons =
-            recommendation_reasons(&candidate(TrustLevel::Official, true, Some("1.2")), vec![]);
+        let reasons = recommendation_reasons(&candidate(TrustLevel::Official, true, Some("1.2")), vec![]);
         assert_eq!(reasons[0], "official source");
         assert!(reasons.iter().any(|s| s.contains("verifiable")));
         assert!(reasons.iter().any(|s| s == "version 1.2"));
@@ -5018,7 +4807,10 @@ mod tests {
         let mut f = facts_all_good();
         f.internet = false;
         let checks = system_checks(&f);
-        let net = checks.iter().find(|c| c.label.contains("internet") || c.label.contains("Internet")).unwrap();
+        let net = checks
+            .iter()
+            .find(|c| c.label.contains("internet") || c.label.contains("Internet"))
+            .unwrap();
         assert!(!net.ok);
         assert!(net.critical);
     }

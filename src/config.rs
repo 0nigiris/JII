@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Configuration: typed struct, sane defaults, TOML loading and validation.
 //!
 //! Precedence is CLI flag > env > config > default; this module owns the
@@ -15,8 +19,8 @@ use crate::model::TrustLevel;
 /// Providers are wired in over later phases; this list is the contract the config
 /// validates against so a typo fails fast instead of silently doing nothing.
 pub const KNOWN_SOURCES: &[&str] = &[
-    "dnf", "copr", "apt", "pacman", "aur", "zypper", "void", "gentoo", "flatpak", "snap", "github",
-    "cargo", "npm", "pipx", "go", "brew", "nix",
+    "dnf", "copr", "apt", "pacman", "aur", "zypper", "void", "gentoo", "flatpak", "snap", "github", "cargo", "npm",
+    "pipx", "go", "brew", "nix",
 ];
 
 /// Top-level configuration.
@@ -159,8 +163,8 @@ impl Default for SourcesConfig {
                 // GitHub Releases is the deliberate last resort: it installs a raw upstream
                 // binary with no package manager behind it, so every real package source —
                 // native, Flatpak/Snap, and every language ecosystem — is preferred first.
-                "dnf", "copr", "apt", "pacman", "zypper", "void", "gentoo", "flatpak", "snap",
-                "aur", "cargo", "npm", "pipx", "go", "brew", "nix", "github",
+                "dnf", "copr", "apt", "pacman", "zypper", "void", "gentoo", "flatpak", "snap", "aur", "cargo", "npm",
+                "pipx", "go", "brew", "nix", "github",
             ]
             .iter()
             .map(|s| s.to_string())
@@ -222,16 +226,15 @@ impl Default for UiConfig {
 impl Config {
     /// Default path: `$XDG_CONFIG_HOME/jii/config.toml`.
     pub fn default_path() -> Option<PathBuf> {
-        directories::ProjectDirs::from("", "", "jii")
-            .map(|d| d.config_dir().join("config.toml"))
+        directories::ProjectDirs::from("", "", "jii").map(|d| d.config_dir().join("config.toml"))
     }
 
     /// Load config from `path`, falling back to defaults if it does not exist.
     pub fn load_from(path: &Path) -> Result<Config> {
         match std::fs::read_to_string(path) {
             Ok(text) => {
-                let cfg: Config = toml::from_str(&text)
-                    .map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
+                let cfg: Config =
+                    toml::from_str(&text).map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
                 cfg.validate()?;
                 Ok(cfg)
             }
@@ -251,13 +254,12 @@ impl Config {
     /// Write the config back to the default path (creating the directory if needed). Used by
     /// the first-run wizard / `jii setup` to persist the chosen mode and the first-run flag.
     pub fn save(&self) -> Result<()> {
-        let path = Self::default_path()
-            .ok_or_else(|| JiiError::Config("cannot resolve a config path to save to".into()))?;
+        let path =
+            Self::default_path().ok_or_else(|| JiiError::Config("cannot resolve a config path to save to".into()))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| JiiError::io(&path, e))?;
         }
-        let text = toml::to_string_pretty(self)
-            .map_err(|e| JiiError::Config(format!("serializing config: {e}")))?;
+        let text = toml::to_string_pretty(self).map_err(|e| JiiError::Config(format!("serializing config: {e}")))?;
         std::fs::write(&path, text).map_err(|e| JiiError::io(&path, e))?;
         Ok(())
     }
@@ -279,11 +281,7 @@ impl Config {
 
     /// Rank of a source id: its index in `priority`, or a large number if absent.
     pub fn source_rank(&self, id: &str) -> usize {
-        self.sources
-            .priority
-            .iter()
-            .position(|s| s == id)
-            .unwrap_or(usize::MAX)
+        self.sources.priority.iter().position(|s| s == id).unwrap_or(usize::MAX)
     }
 
     /// Whether a source is enabled (not in `disabled`).
@@ -305,9 +303,7 @@ mod tests {
     fn rejects_unknown_source() {
         let mut cfg = Config::default();
         cfg.sources.priority.push("totally-unknown".to_string());
-        assert!(
-            matches!(cfg.validate(), Err(JiiError::UnknownSource(s)) if s == "totally-unknown")
-        );
+        assert!(matches!(cfg.validate(), Err(JiiError::UnknownSource(s)) if s == "totally-unknown"));
     }
 
     #[test]

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! COPR provider (Fedora's community build service).
 //!
 //! COPR has no package search — only a *project* search — so this resolves a query
@@ -22,9 +26,7 @@ use std::collections::HashMap;
 
 use super::{Probe, Provider, http_client, run_capture, which};
 use crate::error::{JiiError, Result};
-use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, Query, TrustLevel,
-};
+use crate::model::{Action, InstallPlan, InstalledRecord, PackageCandidate, Query, TrustLevel};
 
 const ID: &str = "copr";
 const BIN: &str = "dnf5";
@@ -106,7 +108,11 @@ impl Provider for Copr {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut argv = vec![BIN, "-y", "remove"];
         argv.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.remove_many", mgr = "copr/dnf", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.remove_many",
+            mgr = "copr/dnf",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
     }
 
@@ -124,7 +130,11 @@ impl Provider for Copr {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut argv = vec![BIN, "-y", "upgrade"];
         argv.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.update_many", mgr = "copr/dnf", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many",
+            mgr = "copr/dnf",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), vec![argv], reasons)))
     }
 
@@ -216,11 +226,7 @@ fn candidate(project: &Project) -> PackageCandidate {
         trust: TrustLevel::Community,
         arch_ok: true,
         signed: true,
-        summary: project
-            .description
-            .as_ref()
-            .filter(|d| !d.is_empty())
-            .cloned(),
+        summary: project.description.as_ref().filter(|d| !d.is_empty()).cloned(),
         popularity: None,
         suspicious: false,
         raw: json!({ "project": project.full_name }),

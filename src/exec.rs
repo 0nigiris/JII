@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Plan executor: the one place that turns a previewed [`InstallPlan`] into effects.
 //!
 //! Every [`Action`] variant has a focused handler here — there is deliberately no
@@ -47,10 +51,7 @@ pub async fn run_actions(plan: &InstallPlan, privilege: &Privilege, renderer: &R
 /// output are printed, and the error propagates. Errors are the one thing worth the screen space.
 /// Streaming (Advanced/`--json`) stays on [`run_actions`]; the caller picks by mode.
 pub async fn run_actions_quiet(
-    plan: &InstallPlan,
-    privilege: &Privilege,
-    renderer: &Renderer,
-    label: &str,
+    plan: &InstallPlan, privilege: &Privilege, renderer: &Renderer, label: &str,
 ) -> Result<()> {
     let spinner = Spinner::start(renderer, label);
     let reporter = spinner.reporter();
@@ -147,11 +148,17 @@ pub fn summarize_update(output: &str) -> UpdateSummary {
     };
 
     let mut notes = Vec::new();
-    let deprecations = output.lines().filter(|l| l.to_ascii_lowercase().contains("deprecated")).count();
+    let deprecations = output
+        .lines()
+        .filter(|l| l.to_ascii_lowercase().contains("deprecated"))
+        .count();
     if deprecations > 0 {
         notes.push(crate::t!("update.sum_deprecated", count = deprecations.to_string()));
     }
-    let eol = output.lines().filter(|l| l.to_ascii_lowercase().contains("end-of-life")).count();
+    let eol = output
+        .lines()
+        .filter(|l| l.to_ascii_lowercase().contains("end-of-life"))
+        .count();
     if eol > 0 {
         notes.push(crate::t!("update.sum_eol", count = eol.to_string()));
     }
@@ -208,7 +215,12 @@ async fn run_action(action: &Action, privilege: &Privilege) -> Result<()> {
         Action::RunCommand { argv, needs_root } => privilege.run(argv, *needs_root).await,
         Action::Download { url, dest, verify } => download(url, dest, verify).await,
         Action::Place { src, dest, mode } => place(src, dest, *mode),
-        Action::Extract { archive, member, dest, mode } => extract(archive, member, dest, *mode),
+        Action::Extract {
+            archive,
+            member,
+            dest,
+            mode,
+        } => extract(archive, member, dest, *mode),
         Action::RemoveFile { path } => remove_file(path),
         Action::Replace { src, dest } => replace_file(src, dest),
     }
@@ -241,10 +253,7 @@ async fn download(url: &str, dest: &Path, verify: &Verification) -> Result<()> {
 /// timed spinner, when the server sends no `Content-Length`. Verification and the atomic write
 /// are identical to [`download`] — the bytes only land at `dest` if the digest matches.
 async fn download_reported(
-    url: &str,
-    dest: &Path,
-    verify: &Verification,
-    reporter: &crate::ui::ProgressReporter,
+    url: &str, dest: &Path, verify: &Verification, reporter: &crate::ui::ProgressReporter,
 ) -> Result<()> {
     use futures::StreamExt;
 
@@ -316,11 +325,7 @@ fn verify_bytes(bytes: &[u8], verify: &Verification) -> Result<()> {
 fn hex_digest(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
+    hasher.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Copy `src` to `dest` and set its unix mode (e.g. make a downloaded binary
@@ -397,8 +402,7 @@ fn read_archive(archive: &Path) -> Result<Vec<ArchiveFile>> {
 
 /// Read a gzip-compressed tarball into archive files.
 fn read_tar_gz(archive: &Path) -> Result<Vec<ArchiveFile>> {
-    let file =
-        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
+    let file = std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
     let mut tar = tar::Archive::new(GzDecoder::new(file));
 
     let mut files = Vec::new();
@@ -419,8 +423,7 @@ fn read_tar_gz(archive: &Path) -> Result<Vec<ArchiveFile>> {
 /// Read a zip archive into archive files. Entries authored on non-unix systems may
 /// carry no mode (0); the exact-name match in [`select_member`] still resolves them.
 fn read_zip(archive: &Path) -> Result<Vec<ArchiveFile>> {
-    let file =
-        std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
+    let file = std::fs::File::open(archive).map_err(|e| JiiError::io(archive.display().to_string(), e))?;
     let mut zip = zip::ZipArchive::new(file).map_err(zip_err)?;
 
     let mut files = Vec::new();
@@ -493,8 +496,14 @@ mod tests {
 
     #[test]
     fn summarize_detects_nothing_to_do() {
-        assert_eq!(summarize_update("Repositories loaded.\nNothing to do.\n").headline, "nothing to update");
-        assert_eq!(summarize_update("Looking for updates…\nNothing to update.\n").headline, "nothing to update");
+        assert_eq!(
+            summarize_update("Repositories loaded.\nNothing to do.\n").headline,
+            "nothing to update"
+        );
+        assert_eq!(
+            summarize_update("Looking for updates…\nNothing to update.\n").headline,
+            "nothing to update"
+        );
         assert_eq!(summarize_update("up to date in 512ms\n").headline, "nothing to update");
     }
 
@@ -508,7 +517,10 @@ mod tests {
 
     #[test]
     fn summarize_counts_apt_upgrades_and_flatpak_eol() {
-        assert_eq!(summarize_update("5 upgraded, 0 newly installed\n").headline, "5 packages updated");
+        assert_eq!(
+            summarize_update("5 upgraded, 0 newly installed\n").headline,
+            "5 packages updated"
+        );
         let s = summarize_update("Info: runtime org.kde.Platform is end-of-life\nNothing to update.\n");
         // A real update stream: "nothing to update" headline, but the EOL note still surfaces.
         assert_eq!(s.headline, "nothing to update");
@@ -547,9 +559,7 @@ mod tests {
 
     #[test]
     fn verify_sha256_accepts_correct_and_is_case_insensitive() {
-        let v = Verification::Sha256(
-            "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824".into(),
-        );
+        let v = Verification::Sha256("2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824".into());
         assert!(verify_bytes(b"hello", &v).is_ok());
     }
 
@@ -602,7 +612,11 @@ mod tests {
     }
 
     fn tf(path: &str, mode: u32) -> ArchiveFile {
-        ArchiveFile { path: path.into(), mode, bytes: path.as_bytes().to_vec() }
+        ArchiveFile {
+            path: path.into(),
+            mode,
+            bytes: path.as_bytes().to_vec(),
+        }
     }
 
     #[test]

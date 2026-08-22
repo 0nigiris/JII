@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! AUR provider (the Arch User Repository, via an AUR helper — `yay` or `paru`).
 //!
 //! The AUR is **Arch-family only**: it is meaningless on Fedora/Debian/openSUSE, so every
@@ -17,9 +21,7 @@ use serde::Deserialize;
 
 use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, run_capture_lax, which};
 use crate::error::Result;
-use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 use crate::platform::Platform;
 
 const ID: &str = "aur";
@@ -108,13 +110,15 @@ impl Provider for Aur {
         if let Some(v) = &candidate.version {
             reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        Ok(helper_plan(helper, &["-S"], std::slice::from_ref(&candidate.name), reasons))
+        Ok(helper_plan(
+            helper,
+            &["-S"],
+            std::slice::from_ref(&candidate.name),
+            reasons,
+        ))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         let helper = self.helper_or_err().await?;
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let reasons = vec![crate::t!("reason.aur", helper = helper.to_string())];
@@ -123,9 +127,13 @@ impl Provider for Aur {
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let helper = self.helper_or_err().await?;
-        let reasons =
-            vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = helper)];
-        Ok(helper_plan(helper, &["-Rs"], std::slice::from_ref(&record.name), reasons))
+        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = helper)];
+        Ok(helper_plan(
+            helper,
+            &["-Rs"],
+            std::slice::from_ref(&record.name),
+            reasons,
+        ))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
@@ -135,7 +143,12 @@ impl Provider for Aur {
             name = record.name.clone(),
             mgr = helper
         )];
-        Ok(helper_plan(helper, &["-S"], std::slice::from_ref(&record.name), reasons))
+        Ok(helper_plan(
+            helper,
+            &["-S"],
+            std::slice::from_ref(&record.name),
+            reasons,
+        ))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {

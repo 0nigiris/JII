@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Go provider (`go install` — commands from the Go module ecosystem).
 //!
 //! `go install <module>@latest` builds a module's command into `$GOBIN` (or
@@ -23,9 +27,7 @@ use std::path::PathBuf;
 
 use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, run_capture};
 use crate::error::{JiiError, Result};
-use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const ID: &str = "go";
 const BIN: &str = "go";
@@ -103,10 +105,7 @@ impl Provider for Go {
         Ok(go_install_plan(&candidate.name, reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // `go install a@latest b@latest` builds each module's command in one run.
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
@@ -120,7 +119,11 @@ impl Provider for Go {
         let bin = go_bin_dir()
             .ok_or_else(|| JiiError::Other(anyhow::anyhow!("cannot resolve Go bin dir")))?
             .join(binary_name(&record.name));
-        let reasons = vec![crate::t!("reason.go_remove", name = record.name.clone(), path = bin.display().to_string())];
+        let reasons = vec![crate::t!(
+            "reason.go_remove",
+            name = record.name.clone(),
+            path = bin.display().to_string()
+        )];
         Ok(InstallPlan {
             candidate_ref: record.name.clone(),
             source_id: ID.to_string(),
@@ -185,11 +188,7 @@ fn candidate(module: &str, latest: &GoLatest) -> PackageCandidate {
 
 /// A `go install <module>@latest` plan (single unprivileged command).
 fn go_install_plan(module: &str, reasons: Vec<String>) -> InstallPlan {
-    let argv = vec![
-        BIN.to_string(),
-        "install".to_string(),
-        format!("{module}@latest"),
-    ];
+    let argv = vec![BIN.to_string(), "install".to_string(), format!("{module}@latest")];
     command_plan(ID, module, argv, false, reasons)
 }
 
@@ -297,10 +296,7 @@ mod tests {
             escape_module("github.com/BurntSushi/toml"),
             "github.com/!burnt!sushi/toml"
         );
-        assert_eq!(
-            escape_module("github.com/junegunn/fzf"),
-            "github.com/junegunn/fzf"
-        );
+        assert_eq!(escape_module("github.com/junegunn/fzf"), "github.com/junegunn/fzf");
     }
 
     #[tokio::test]

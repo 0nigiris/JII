@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Self-management: JII updating and removing **itself**.
 //!
 //! JII already knows how to install software the right way; it should treat itself the
@@ -214,8 +218,7 @@ pub async fn latest_release() -> Result<Latest> {
         .json()
         .await
         .map_err(|e| JiiError::Other(anyhow::anyhow!("release metadata: {e}")))?;
-    let rel = pick_release(releases)
-        .ok_or_else(|| JiiError::Other(anyhow::anyhow!("no published release found")))?;
+    let rel = pick_release(releases).ok_or_else(|| JiiError::Other(anyhow::anyhow!("no published release found")))?;
     Ok(Latest {
         tag: rel.tag_name,
         assets: rel.assets,
@@ -230,9 +233,7 @@ pub async fn latest_release() -> Result<Latest> {
 /// otherwise become "the latest JII", and every update would fail looking for a tarball that
 /// isn't there. So a release counts only if its tag starts with `v`.
 fn pick_release(releases: Vec<ReleaseJson>) -> Option<ReleaseJson> {
-    releases
-        .into_iter()
-        .find(|r| !r.draft && r.tag_name.starts_with('v'))
+    releases.into_iter().find(|r| !r.draft && r.tag_name.starts_with('v'))
 }
 
 /// Resolve the verification for `asset` — its published sha256 if present, else none.
@@ -312,7 +313,11 @@ fn user_update_plan(exe: &Path, asset: &Asset, tag: &str, verify: Verification) 
     self_plan(
         actions,
         vec![
-            crate::t!("selfupdate.plan_update", current = current_version(), latest = normalize_tag(tag)),
+            crate::t!(
+                "selfupdate.plan_update",
+                current = current_version(),
+                latest = normalize_tag(tag)
+            ),
             crate::t!("selfupdate.plan_replace", exe = exe.display().to_string()),
         ],
     )
@@ -333,10 +338,7 @@ fn package_update_plan(manager: Manager, asset: &Asset, tag: &str, verify: Verif
             dest: pkg,
             verify,
         },
-        Action::RunCommand {
-            argv,
-            needs_root: true,
-        },
+        Action::RunCommand { argv, needs_root: true },
     ];
     self_plan(
         actions,
@@ -358,18 +360,10 @@ pub fn plan_uninstall(install: &Install) -> InstallPlan {
         Install::Package { manager, .. } => {
             let argv = match manager {
                 Manager::Dnf => vec!["dnf".into(), "remove".into(), "-y".into(), "jii".into()],
-                Manager::Apt => vec![
-                    "apt-get".into(),
-                    "remove".into(),
-                    "-y".into(),
-                    "jii".into(),
-                ],
+                Manager::Apt => vec!["apt-get".into(), "remove".into(), "-y".into(), "jii".into()],
             };
             self_plan(
-                vec![Action::RunCommand {
-                    argv,
-                    needs_root: true,
-                }],
+                vec![Action::RunCommand { argv, needs_root: true }],
                 vec![crate::t!("selfupdate.plan_remove_pkg")],
             )
         }
@@ -399,7 +393,11 @@ mod tests {
     }
 
     fn release(tag: &str, draft: bool) -> ReleaseJson {
-        ReleaseJson { tag_name: tag.to_string(), draft, assets: vec![] }
+        ReleaseJson {
+            tag_name: tag.to_string(),
+            draft,
+            assets: vec![],
+        }
     }
 
     #[test]

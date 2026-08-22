@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Void Linux provider (the XBPS package manager).
 //!
 //! Self-gates on `xbps-install` (absent elsewhere → drops out; no distro check, ADR-0029).
@@ -66,10 +70,7 @@ impl Provider for Void {
         Ok(root_plan(&candidate.name, &["-Sy", &candidate.name], reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `xbps-install -Sy a b c` for the whole group.
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["-Sy"];
@@ -242,7 +243,10 @@ state: uninstalled
         assert_eq!(c.source_id, "void");
         assert_eq!(c.trust, TrustLevel::Official);
         assert!(c.signed);
-        assert_eq!(c.raw.get("repo").unwrap().as_str(), Some("https://repo-default.voidlinux.org/current"));
+        assert_eq!(
+            c.raw.get("repo").unwrap().as_str(),
+            Some("https://repo-default.voidlinux.org/current")
+        );
         assert!(c.summary.as_deref().unwrap().starts_with("Line-oriented"));
     }
 
@@ -259,7 +263,10 @@ state: uninstalled
 
     #[test]
     fn splits_hyphenated_pkgver() {
-        assert_eq!(split_pkgver("ripgrep-14.1.1_1"), ("ripgrep".into(), Some("14.1.1".into())));
+        assert_eq!(
+            split_pkgver("ripgrep-14.1.1_1"),
+            ("ripgrep".into(), Some("14.1.1".into()))
+        );
         assert_eq!(split_pkgver("xbps-0.59_1"), ("xbps".into(), Some("0.59".into())));
         assert_eq!(
             split_pkgver("python3-requests-2.28.0_2"),
@@ -269,7 +276,8 @@ state: uninstalled
 
     #[test]
     fn parses_installed_list() {
-        let sample = "ii ripgrep-14.1.1_1     Line-oriented search tool\nii htop-3.4.0_1         Interactive process viewer\n";
+        let sample =
+            "ii ripgrep-14.1.1_1     Line-oriented search tool\nii htop-3.4.0_1         Interactive process viewer\n";
         let recs = parse_query_list(sample, "void");
         assert_eq!(recs.len(), 2);
         assert_eq!(recs[0].name, "ripgrep");
@@ -309,7 +317,10 @@ state: uninstalled
     #[tokio::test]
     async fn batch_install_merges_into_one_root_command() {
         let a = parse_show(SHOW, "ripgrep", "void", TrustLevel::Official).remove(0);
-        let b = PackageCandidate { name: "htop".into(), ..a.clone() };
+        let b = PackageCandidate {
+            name: "htop".into(),
+            ..a.clone()
+        };
         let plan = Void::new()
             .plan_install_many(&[&a, &b])
             .await

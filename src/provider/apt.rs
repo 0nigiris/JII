@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! APT provider (Debian, Ubuntu and derivatives).
 //!
 //! Self-gates on `apt-get` (absent on Fedora/Arch → this provider simply drops out),
@@ -11,9 +15,7 @@ use serde_json::json;
 
 use super::{Provider, command_plan, run_capture, run_capture_lax, which};
 use crate::error::Result;
-use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 /// The apt binary that runs (privileged) transactions. `apt-get` has a stable scripting
 /// interface (unlike `apt`, which warns it has none), so plans and availability use it.
@@ -69,10 +71,7 @@ impl Provider for Apt {
         Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `apt-get install -y a b c` for the whole group (apt resolves them together).
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install", "-y"];
@@ -121,7 +120,10 @@ impl Provider for Apt {
         // escalation: the privilege layer batches consecutive root actions into a single sudo.
         let reasons = vec![crate::t!("reason.upgrade_all_system", mgr = "apt")];
         let step = |args: &[&str]| Action::RunCommand {
-            argv: std::iter::once(BIN).chain(args.iter().copied()).map(String::from).collect(),
+            argv: std::iter::once(BIN)
+                .chain(args.iter().copied())
+                .map(String::from)
+                .collect(),
             needs_root: true,
         };
         Ok(Some(InstallPlan {
@@ -175,8 +177,7 @@ fn parse_show(stdout: &str, source_id: &str, trust: TrustLevel) -> Vec<PackageCa
             version = Some(value.to_string());
         } else if summary.is_none()
             && !value.is_empty()
-            && (key == "Description"
-                || (key.starts_with("Description-") && key != "Description-md5"))
+            && (key == "Description" || (key.starts_with("Description-") && key != "Description-md5"))
         {
             summary = Some(value.to_string());
         }
@@ -298,11 +299,7 @@ Description: an older version
     async fn batch_install_merges_into_one_root_apt_command() {
         let (a, b) = (cand("git"), cand("htop"));
         let refs = vec![&a, &b];
-        let plan = Apt::new()
-            .plan_install_many(&refs)
-            .await
-            .unwrap()
-            .expect("apt batches");
+        let plan = Apt::new().plan_install_many(&refs).await.unwrap().expect("apt batches");
         assert_eq!(plan.actions.len(), 1);
         assert_eq!(argv_of(&plan), &["apt-get", "install", "-y", "git", "htop"]);
     }
@@ -311,11 +308,7 @@ Description: an older version
     async fn batch_remove_merges_into_one_root_apt_command() {
         let (a, b) = (rec("git"), rec("htop"));
         let refs = vec![&a, &b];
-        let plan = Apt::new()
-            .plan_remove_many(&refs)
-            .await
-            .unwrap()
-            .expect("apt batches");
+        let plan = Apt::new().plan_remove_many(&refs).await.unwrap().expect("apt batches");
         assert_eq!(argv_of(&plan), &["apt-get", "remove", "-y", "git", "htop"]);
     }
 
@@ -323,11 +316,7 @@ Description: an older version
     async fn batch_update_uses_only_upgrade() {
         let (a, b) = (rec("git"), rec("htop"));
         let refs = vec![&a, &b];
-        let plan = Apt::new()
-            .plan_update_many(&refs)
-            .await
-            .unwrap()
-            .expect("apt batches");
+        let plan = Apt::new().plan_update_many(&refs).await.unwrap().expect("apt batches");
         assert_eq!(
             argv_of(&plan),
             &["apt-get", "install", "--only-upgrade", "-y", "git", "htop"]
@@ -337,9 +326,6 @@ Description: an older version
     #[tokio::test]
     async fn single_update_upgrades_in_place() {
         let plan = Apt::new().plan_update(&rec("git")).await.unwrap();
-        assert_eq!(
-            argv_of(&plan),
-            &["apt-get", "install", "--only-upgrade", "-y", "git"]
-        );
+        assert_eq!(argv_of(&plan), &["apt-get", "install", "--only-upgrade", "-y", "git"]);
     }
 }

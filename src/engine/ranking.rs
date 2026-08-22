@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Ranking: order candidates so the best is first.
 //!
 //! Deterministic and explainable — no hidden ML. The primary key is the configured
@@ -68,9 +72,7 @@ const POPULARITY_FLOOR: u64 = 1_000;
 /// Path-style names (`owner/repo`, `github.com/x/y`) were typed knowingly and are skipped.
 pub fn mark_suspicious(network_registry: &HashSet<&str>, candidates: &mut [PackageCandidate]) {
     for c in candidates.iter_mut() {
-        if c.trust != TrustLevel::Community
-            || !network_registry.contains(c.source_id.as_str())
-            || c.name.contains('/')
+        if c.trust != TrustLevel::Community || !network_registry.contains(c.source_id.as_str()) || c.name.contains('/')
         {
             continue;
         }
@@ -79,10 +81,7 @@ pub fn mark_suspicious(network_registry: &HashSet<&str>, candidates: &mut [Packa
         let obscure = c.suspicious
             || match c.popularity {
                 Some(downloads) => downloads < POPULARITY_FLOOR,
-                None => {
-                    c.summary.is_none()
-                        || c.version.as_ref().is_some_and(|v| v.0.starts_with("0.0."))
-                }
+                None => c.summary.is_none() || c.version.as_ref().is_some_and(|v| v.0.starts_with("0.0.")),
             };
         if obscure {
             c.suspicious = true;
@@ -165,10 +164,7 @@ mod tests {
             .collect();
         // All candidates share the name "pkg"; querying "pkg" keeps them in one match tier,
         // so ordering is decided by priority/trust (what these tests exercise).
-        rank(config, "pkg", cands)
-            .into_iter()
-            .map(|c| c.source_id)
-            .collect()
+        rank(config, "pkg", cands).into_iter().map(|c| c.source_id).collect()
     }
 
     /// A named candidate from one source, for the name-match-tier tests.
@@ -227,11 +223,7 @@ mod tests {
         // No exact match: `git` → both are prefix matches; the shorter name is the tighter
         // fit and sorts first.
         let cfg = Config::default();
-        let ranked = rank(
-            &cfg,
-            "git",
-            vec![named("dnf", "git-core"), named("dnf", "gitk")],
-        );
+        let ranked = rank(&cfg, "git", vec![named("dnf", "git-core"), named("dnf", "gitk")]);
         assert_eq!(ranked[0].name, "gitk"); // 4 chars < "git-core" (8)
     }
 
@@ -263,7 +255,7 @@ mod tests {
             &cfg,
             "obsidian",
             vec![
-                named("pipx", "Obsidian"),              // unrelated same-name, lower priority
+                named("pipx", "Obsidian"),                // unrelated same-name, lower priority
                 named("flatpak", "md.obsidian.Obsidian"), // the real one
             ],
         );
@@ -276,10 +268,7 @@ mod tests {
 
     /// A community candidate from a network registry, with tunable junk signals.
     fn registry_candidate(
-        source: &str,
-        popularity: Option<u64>,
-        summary: Option<&str>,
-        version: Option<&str>,
+        source: &str, popularity: Option<u64>, summary: Option<&str>, version: Option<&str>,
     ) -> PackageCandidate {
         let mut c = candidate(source, TrustLevel::Community, true);
         c.name = "htop".into();

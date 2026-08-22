@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Homebrew provider (Linuxbrew — `brew`, the Homebrew formula ecosystem on Linux).
 //!
 //! `brew install <formula>` installs into Homebrew's own prefix (`/home/linuxbrew`
@@ -17,13 +21,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{
-    Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, nonempty_lines, run_capture, which,
-};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, nonempty_lines, run_capture, which};
 use crate::error::Result;
-use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const ID: &str = "brew";
 const BIN: &str = "brew";
@@ -119,10 +119,7 @@ impl Provider for Homebrew {
         Ok(brew_plan(&candidate.name, "install", reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // `brew install a b c` installs the whole group in one unprivileged run.
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let reasons = vec![crate::t!("reason.brew_formula_many", names = names.join(", "))];
@@ -341,10 +338,7 @@ mod tests {
         assert!(!plan.needs_root());
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, .. } => {
-                assert_eq!(
-                    argv,
-                    &[brew_bin(), "install".into(), "ripgrep".into(), "bat".into()]
-                );
+                assert_eq!(argv, &[brew_bin(), "install".into(), "ripgrep".into(), "bat".into()]);
             }
             other => panic!("expected run, got {other:?}"),
         }

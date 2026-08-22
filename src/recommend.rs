@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The recommend-catalog: curated, distro-aware system-onboarding suggestions.
 //!
 //! This is a **data subsystem**, not core logic and not a `Provider`. The catalog is
@@ -95,9 +99,7 @@ impl Recommendation {
 /// since a satisfied one is filtered out of the offered list); `installed` is the installed-id
 /// set; `enabled` is the repos enabled so far in this run (dedupe).
 pub fn prerequisite<'a>(
-    chosen: &Recommendation,
-    all: &[&'a Recommendation],
-    installed: &std::collections::HashSet<String>,
+    chosen: &Recommendation, all: &[&'a Recommendation], installed: &std::collections::HashSet<String>,
     enabled: &std::collections::HashSet<String>,
 ) -> Option<&'a Recommendation> {
     let req = chosen.requires.as_deref()?;
@@ -122,10 +124,7 @@ impl Catalog {
     /// The entries that apply to `distro_id`, in catalog order (authoring order is the
     /// display order, so the most foundational entries — e.g. enabling a repo — come first).
     pub fn for_distro(&self, distro_id: &str) -> Vec<&Recommendation> {
-        self.recommendation
-            .iter()
-            .filter(|r| r.applies_to(distro_id))
-            .collect()
+        self.recommendation.iter().filter(|r| r.applies_to(distro_id)).collect()
     }
 }
 
@@ -143,11 +142,7 @@ mod tests {
             assert!(!r.why.is_empty());
             assert!(!r.category.is_empty());
             // An entry must offer *something* to do: packages or a manual command.
-            assert!(
-                !r.packages.is_empty() || r.manual.is_some(),
-                "{} does nothing",
-                r.title
-            );
+            assert!(!r.packages.is_empty() || r.manual.is_some(), "{} does nothing", r.title);
         }
     }
 
@@ -157,8 +152,7 @@ mod tests {
         // the same title across distros — "VLC media player" for Fedora and Arch — is fine.
         let catalog = Catalog::load().unwrap();
         for distro in ["fedora", "arch"] {
-            let mut titles: Vec<&str> =
-                catalog.for_distro(distro).iter().map(|r| r.title.as_str()).collect();
+            let mut titles: Vec<&str> = catalog.for_distro(distro).iter().map(|r| r.title.as_str()).collect();
             titles.sort_unstable();
             let before = titles.len();
             titles.dedup();
@@ -290,8 +284,7 @@ mod tests {
     #[test]
     fn prerequisites_point_at_a_real_entry() {
         let catalog = Catalog::load().unwrap();
-        let ids: std::collections::HashSet<&str> =
-            catalog.recommendation.iter().map(|r| r.id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = catalog.recommendation.iter().map(|r| r.id.as_str()).collect();
         // Every `requires` must name an existing entry (no dangling prerequisite).
         for r in &catalog.recommendation {
             if let Some(req) = &r.requires {

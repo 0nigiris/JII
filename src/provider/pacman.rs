@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Pacman provider (Arch Linux and derivatives — Manjaro, EndeavourOS…).
 //!
 //! Self-gates on `pacman` (absent elsewhere → drops out; no distro check, ADR-0029).
@@ -57,11 +61,7 @@ impl Provider for Pacman {
     }
 
     async fn plan_install(&self, candidate: &PackageCandidate) -> Result<InstallPlan> {
-        let repo = candidate
-            .raw
-            .get("repo")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+        let repo = candidate.raw.get("repo").and_then(|v| v.as_str()).unwrap_or("unknown");
         let mut reasons = vec![
             crate::t!("reason.pacman_official"),
             crate::t!("reason.repository", repo = repo),
@@ -69,13 +69,14 @@ impl Provider for Pacman {
         if let Some(v) = &candidate.version {
             reasons.push(crate::t!("reason.version", v = v.clone()));
         }
-        Ok(root_plan(&candidate.name, &["-S", "--noconfirm", &candidate.name], reasons))
+        Ok(root_plan(
+            &candidate.name,
+            &["-S", "--noconfirm", &candidate.name],
+            reasons,
+        ))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `pacman -S --noconfirm a b c` for the whole group.
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["-S", "--noconfirm"];
@@ -87,7 +88,11 @@ impl Provider for Pacman {
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // -Rs also removes dependencies no longer required by anything else (the closest
         // analogue to dnf/apt cleanup); the full command is shown before it runs.
-        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "pacman")];
+        let reasons = vec![crate::t!(
+            "reason.remove_one",
+            name = record.name.clone(),
+            mgr = "pacman"
+        )];
         Ok(root_plan(&record.name, &["-Rs", "--noconfirm", &record.name], reasons))
     }
 
@@ -95,7 +100,11 @@ impl Provider for Pacman {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["-Rs", "--noconfirm"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.remove_many", mgr = "pacman", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.remove_many",
+            mgr = "pacman",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -103,7 +112,11 @@ impl Provider for Pacman {
         // pacman has no isolated single-package upgrade; installing the target pulls its
         // newest version from the current sync db. (A full `-Syu` is the user's own call —
         // JII updates the packages it tracks, one target at a time.)
-        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "pacman")];
+        let reasons = vec![crate::t!(
+            "reason.update_one",
+            name = record.name.clone(),
+            mgr = "pacman"
+        )];
         Ok(root_plan(&record.name, &["-S", "--noconfirm", &record.name], reasons))
     }
 
@@ -111,7 +124,11 @@ impl Provider for Pacman {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["-S", "--noconfirm"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.update_many", mgr = "pacman", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many",
+            mgr = "pacman",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -267,7 +284,10 @@ Description     : Detached debugging symbols for ripgrep
     #[tokio::test]
     async fn batch_install_merges_into_one_root_pacman_command() {
         let cands = parse_si(SAMPLE, "pacman", TrustLevel::Official);
-        let extra = PackageCandidate { name: "htop".into(), ..cands[0].clone() };
+        let extra = PackageCandidate {
+            name: "htop".into(),
+            ..cands[0].clone()
+        };
         let refs = vec![&cands[0], &extra];
         let plan = Pacman::new()
             .plan_install_many(&refs)

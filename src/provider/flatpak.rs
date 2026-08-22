@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Flatpak provider.
 //!
 //! Uses `flatpak search --columns=…` for stable machine output. All plans use
@@ -14,13 +18,11 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::{
-    Bootstrap, Ecosystem, Provider, command_plan, nonempty_lines, parse_installed_records,
-    post_json_opt, run_capture, which,
+    Bootstrap, Ecosystem, Provider, command_plan, nonempty_lines, parse_installed_records, post_json_opt, run_capture,
+    which,
 };
 use crate::error::Result;
-use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const BIN: &str = "flatpak";
 const ID: &str = "flatpak";
@@ -52,7 +54,10 @@ impl Provider for Flatpak {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![crate::t!("reason.flatpak_sandboxed"), crate::t!("reason.flatpak_crossdistro")]
+        vec![
+            crate::t!("reason.flatpak_sandboxed"),
+            crate::t!("reason.flatpak_crossdistro"),
+        ]
     }
 
     async fn is_available(&self) -> bool {
@@ -149,7 +154,11 @@ impl Provider for Flatpak {
                 0,
                 Action::RunCommand {
                     argv: [
-                        BIN, "remote-add", "--user", "--if-not-exists", "flathub",
+                        BIN,
+                        "remote-add",
+                        "--user",
+                        "--if-not-exists",
+                        "flathub",
                         "https://flathub.org/repo/flathub.flatpakrepo",
                     ]
                     .iter()
@@ -163,8 +172,16 @@ impl Provider for Flatpak {
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "flatpak")];
-        Ok(user_plan(&record.name, &["uninstall", "--user", "-y", &record.name], reasons))
+        let reasons = vec![crate::t!(
+            "reason.remove_one",
+            name = record.name.clone(),
+            mgr = "flatpak"
+        )];
+        Ok(user_plan(
+            &record.name,
+            &["uninstall", "--user", "-y", &record.name],
+            reasons,
+        ))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
@@ -172,13 +189,25 @@ impl Provider for Flatpak {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["uninstall", "--user", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.remove_many", mgr = "flatpak", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.remove_many",
+            mgr = "flatpak",
+            names = names.join(", ")
+        )];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "flatpak")];
-        Ok(user_plan(&record.name, &["update", "--user", "-y", &record.name], reasons))
+        let reasons = vec![crate::t!(
+            "reason.update_one",
+            name = record.name.clone(),
+            mgr = "flatpak"
+        )];
+        Ok(user_plan(
+            &record.name,
+            &["update", "--user", "-y", &record.name],
+            reasons,
+        ))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
@@ -186,7 +215,11 @@ impl Provider for Flatpak {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["update", "--user", "-y"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.update_many", mgr = "flatpak", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many",
+            mgr = "flatpak",
+            names = names.join(", ")
+        )];
         Ok(Some(user_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -272,9 +305,7 @@ struct FlathubSearch {
 /// `plan_install`) are identical: installing then bootstraps Flatpak and runs `flatpak install`.
 async fn flathub_search(query: &str) -> Result<Vec<PackageCandidate>> {
     let body = json!({ "query": query });
-    let Some(resp) =
-        post_json_opt::<_, FlathubSearch>(ID, "https://flathub.org/api/v2/search", &body).await?
-    else {
+    let Some(resp) = post_json_opt::<_, FlathubSearch>(ID, "https://flathub.org/api/v2/search", &body).await? else {
         return Ok(Vec::new());
     };
     let rows: Vec<Row> = resp
@@ -421,13 +452,19 @@ Resynthesizer\torg.gimp.GIMP.Plugin.Resynthesizer\t3.0.1\t3\tflathub\n";
         assert_eq!(plan.actions.len(), 2);
         match &plan.actions[0] {
             Action::RunCommand { argv, .. } => {
-                assert_eq!(argv[..5], ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub"]);
+                assert_eq!(
+                    argv[..5],
+                    ["flatpak", "remote-add", "--user", "--if-not-exists", "flathub"]
+                );
             }
             other => panic!("expected run, got {other:?}"),
         }
         match &plan.actions[1] {
             Action::RunCommand { argv, .. } => {
-                assert_eq!(argv, &["flatpak", "install", "--user", "-y", "flathub", "org.gimp.GIMP"]);
+                assert_eq!(
+                    argv,
+                    &["flatpak", "install", "--user", "-y", "flathub", "org.gimp.GIMP"]
+                );
             }
             other => panic!("expected run, got {other:?}"),
         }

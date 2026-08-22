@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! npm provider (the npm registry — Node.js packages).
 //!
 //! Mirrors the cargo provider: search resolves an exact package via the npm registry
@@ -18,8 +22,7 @@ use serde_json::json;
 use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, Reference,
-    TrustLevel,
+    InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, Reference, TrustLevel,
 };
 
 const ID: &str = "npm";
@@ -115,11 +118,7 @@ impl Provider for Npm {
                 author: None,
             },
             note: is_library.then(|| library_note(name)),
-            version: manifest
-                .version
-                .clone()
-                .filter(|v| !v.is_empty())
-                .map(PkgVersion::new),
+            version: manifest.version.clone().filter(|v| !v.is_empty()).map(PkgVersion::new),
         })
     }
 
@@ -137,10 +136,7 @@ impl Provider for Npm {
         Ok(npm_plan(&candidate.name, "install", &prefix, reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `npm install --global --prefix $HOME/.local a b c` (still no root).
         let prefix = user_prefix()?;
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
@@ -163,18 +159,30 @@ impl Provider for Npm {
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        Ok(Some(npm_many("uninstall", records, &crate::t!("reason.npm_remove_label"))?))
+        Ok(Some(npm_many(
+            "uninstall",
+            records,
+            &crate::t!("reason.npm_remove_label"),
+        )?))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // Reinstalling the package pulls the newest published version.
         let prefix = user_prefix()?;
-        let reasons = vec![crate::t!("reason.update_one_reinstall", name = record.name.clone(), mgr = "npm")];
+        let reasons = vec![crate::t!(
+            "reason.update_one_reinstall",
+            name = record.name.clone(),
+            mgr = "npm"
+        )];
         Ok(npm_plan(&record.name, "install", &prefix, reasons))
     }
 
     async fn plan_update_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
-        Ok(Some(npm_many("install", records, &crate::t!("reason.npm_update_label"))?))
+        Ok(Some(npm_many(
+            "install",
+            records,
+            &crate::t!("reason.npm_update_label"),
+        )?))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
@@ -281,11 +289,7 @@ fn candidate(manifest: &Manifest) -> Option<PackageCandidate> {
     Some(PackageCandidate {
         name: manifest.name.clone(),
         source_id: ID.to_string(),
-        version: manifest
-            .version
-            .clone()
-            .filter(|s| !s.is_empty())
-            .map(PkgVersion::new),
+        version: manifest.version.clone().filter(|s| !s.is_empty()).map(PkgVersion::new),
         trust: TrustLevel::Community,
         // npm packages are platform-independent JS; npm verifies registry integrity.
         arch_ok: true,
@@ -429,9 +433,7 @@ mod tests {
     #[test]
     fn repository_url_cleans_object_and_string_forms() {
         // Object form with npm's git+ prefix and .git suffix.
-        let m = manifest(
-            r#"{"name":"x","repository":{"type":"git","url":"git+https://github.com/a/b.git"}}"#,
-        );
+        let m = manifest(r#"{"name":"x","repository":{"type":"git","url":"git+https://github.com/a/b.git"}}"#);
         assert_eq!(m.repository_url().as_deref(), Some("https://github.com/a/b"));
         // Bare-string form.
         let m = manifest(r#"{"name":"x","repository":"https://gitlab.com/a/b"}"#);

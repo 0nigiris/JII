@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! GitHub — a [`Forge`] implementation for GitHub Releases.
 //!
 //! Supplies only the GitHub-specific bits: the API base, the "latest release" call and its
@@ -34,11 +38,7 @@ impl Forge for GithubForge {
     }
 
     async fn latest_release(
-        &self,
-        client: &reqwest::Client,
-        owner: &str,
-        repo: &str,
-        token: Option<&str>,
+        &self, client: &reqwest::Client, owner: &str, repo: &str, token: Option<&str>,
     ) -> Result<Release> {
         // The release **list**, not `/releases/latest`: the latter 404s on a repo whose only
         // releases are pre-releases (deliberately excluded there), which made `jii owner/repo`
@@ -77,12 +77,7 @@ impl Forge for GithubForge {
     }
 
     async fn search_repos(
-        &self,
-        client: &reqwest::Client,
-        query: &str,
-        per_page: u32,
-        page: u32,
-        token: Option<&str>,
+        &self, client: &reqwest::Client, query: &str, per_page: u32, page: u32, token: Option<&str>,
     ) -> Result<Vec<RepoHit>> {
         // GitHub's repo search: relevance-ranked ("best match") by default, which is what we
         // want for "find the repo I mean by name". `page` is 1-based.
@@ -265,9 +260,8 @@ mod tests {
     fn pick_release_prefers_newest_non_draft_with_assets() {
         let parse = |s: &str| serde_json::from_str::<Vec<GhRelease>>(s).unwrap();
         // A prerelease-only repo (the /releases/latest 404 trap) still resolves.
-        let only_pre = parse(
-            r#"[{"tag_name":"v0.2-beta","assets":[{"name":"a","browser_download_url":"u","size":1}]}]"#,
-        );
+        let only_pre =
+            parse(r#"[{"tag_name":"v0.2-beta","assets":[{"name":"a","browser_download_url":"u","size":1}]}]"#);
         assert_eq!(pick_release(only_pre).unwrap().tag_name, "v0.2-beta");
         // A newer source-only release is skipped in favour of one that ships assets.
         let source_only_first = parse(
@@ -283,8 +277,7 @@ mod tests {
 
     #[test]
     fn parses_rate_limit_json() {
-        let body: RateLimit =
-            serde_json::from_str(r#"{"rate":{"limit":60,"remaining":57}}"#).unwrap();
+        let body: RateLimit = serde_json::from_str(r#"{"rate":{"limit":60,"remaining":57}}"#).unwrap();
         assert_eq!(body.rate.limit, 60);
         assert_eq!(body.rate.remaining, 57);
     }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The user's shell startup file — locating it, and adding a manager's setup line to it.
 //!
 //! A script-installed manager (Homebrew) ends by telling the *user* to paste a line into their
@@ -45,9 +49,7 @@ pub fn append_line(file: &Path, manager: &str, line: &str) -> Result<()> {
         .open(file)
         .map_err(|e| JiiError::io(file, e))?;
     let block = format!("\n# Added by JII — {manager} on this shell's PATH\n{line}\n");
-    handle
-        .write_all(block.as_bytes())
-        .map_err(|e| JiiError::io(file, e))
+    handle.write_all(block.as_bytes()).map_err(|e| JiiError::io(file, e))
 }
 
 #[cfg(test)]
@@ -66,7 +68,10 @@ mod tests {
         let _ = std::fs::remove_file(&file);
         let line = "eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"";
 
-        assert!(!already_present(&file, line), "nothing is present in a file that doesn't exist");
+        assert!(
+            !already_present(&file, line),
+            "nothing is present in a file that doesn't exist"
+        );
         append_line(&file, "Homebrew", line).unwrap();
         assert!(already_present(&file, line));
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Localization (i18n).
 //!
 //! User-facing strings live in `locales/<lang>.toml`, **not** in Rust code — the code holds
@@ -40,14 +44,22 @@ pub fn init(flag: Option<&str>, config_locale: &str) {
         "ru" => flatten(RU),
         _ => flatten(EN),
     };
-    let _ = ACTIVE.set(Active { lang, primary, english: flatten(EN) });
+    let _ = ACTIVE.set(Active {
+        lang,
+        primary,
+        english: flatten(EN),
+    });
 }
 
 /// The active tables, defaulting to English if [`init`] was never called (e.g. in tests).
 fn active() -> &'static Active {
     ACTIVE.get_or_init(|| {
         let english = flatten(EN);
-        Active { lang: "en", primary: english.clone(), english }
+        Active {
+            lang: "en",
+            primary: english.clone(),
+            english,
+        }
     })
 }
 
@@ -80,7 +92,11 @@ pub fn tr_args(key: &str, args: &[(&str, String)]) -> String {
 /// (which is fixed for the process by [`init`]). `jii lang <code>` uses this to confirm in
 /// the language just chosen. `code` accepts `auto` — it resolves against the environment.
 pub fn tr_in(code: &str, key: &str, args: &[(&str, String)]) -> String {
-    let lang = if code == "auto" { resolve_lang(None, "auto") } else { normalize(code) };
+    let lang = if code == "auto" {
+        resolve_lang(None, "auto")
+    } else {
+        normalize(code)
+    };
     let table = if lang == "ru" { flatten(RU) } else { flatten(EN) };
     let english = flatten(EN);
     let mut s = table

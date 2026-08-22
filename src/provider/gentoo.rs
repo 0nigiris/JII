@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Gentoo provider (the Portage package manager, `emerge`).
 //!
 //! Self-gates on `emerge` (absent elsewhere → drops out; no distro check, ADR-0029). Covers
@@ -74,10 +78,7 @@ impl Provider for Gentoo {
         Ok(root_plan(&candidate.name, &["--ask=n", &atom(candidate)], reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `emerge --ask=n cat/a cat/b` for the whole group.
         let atoms: Vec<String> = candidates.iter().map(|c| atom(c)).collect();
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
@@ -90,20 +91,36 @@ impl Provider for Gentoo {
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `emerge --unmerge` removes just this package (depclean is the user's own call — JII
         // removes what it's asked to, one target at a time). The full command is shown first.
-        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "emerge")];
-        Ok(root_plan(&record.name, &["--unmerge", "--ask=n", &record.name], reasons))
+        let reasons = vec![crate::t!(
+            "reason.remove_one",
+            name = record.name.clone(),
+            mgr = "emerge"
+        )];
+        Ok(root_plan(
+            &record.name,
+            &["--unmerge", "--ask=n", &record.name],
+            reasons,
+        ))
     }
 
     async fn plan_remove_many(&self, records: &[&InstalledRecord]) -> Result<Option<InstallPlan>> {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["--unmerge", "--ask=n"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.remove_many", mgr = "emerge", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.remove_many",
+            mgr = "emerge",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.update_one", name = record.name.clone(), mgr = "emerge")];
+        let reasons = vec![crate::t!(
+            "reason.update_one",
+            name = record.name.clone(),
+            mgr = "emerge"
+        )];
         Ok(root_plan(&record.name, &["--update", "--ask=n", &record.name], reasons))
     }
 
@@ -111,7 +128,11 @@ impl Provider for Gentoo {
         let names: Vec<&str> = records.iter().map(|r| r.name.as_str()).collect();
         let mut args = vec!["--update", "--ask=n"];
         args.extend_from_slice(&names);
-        let reasons = vec![crate::t!("reason.update_many", mgr = "emerge", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many",
+            mgr = "emerge",
+            names = names.join(", ")
+        )];
         Ok(Some(root_plan(&names.join(", "), &args, reasons)))
     }
 
@@ -188,7 +209,10 @@ fn parse_search(stdout: &str, name: &str, source_id: &str, trust: TrustLevel) ->
     for line in stdout.lines() {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("* ") {
-            blocks.push(Block { atom: rest.trim().to_string(), ..Block::default() });
+            blocks.push(Block {
+                atom: rest.trim().to_string(),
+                ..Block::default()
+            });
             continue;
         }
         let Some(current) = blocks.last_mut() else {
@@ -305,7 +329,10 @@ Searching...
 ";
         let cands = parse_search(sample, "foo", "gentoo", TrustLevel::Official);
         assert_eq!(cands.len(), 2);
-        let atoms: Vec<&str> = cands.iter().filter_map(|c| c.raw.get("atom").and_then(|a| a.as_str())).collect();
+        let atoms: Vec<&str> = cands
+            .iter()
+            .filter_map(|c| c.raw.get("atom").and_then(|a| a.as_str()))
+            .collect();
         assert!(atoms.contains(&"dev-util/foo"));
         assert!(atoms.contains(&"app-misc/foo"));
     }
@@ -349,8 +376,16 @@ Searching...
     #[tokio::test]
     async fn batch_install_merges_atoms() {
         let a = parse_search(SEARCH, "ripgrep", "gentoo", TrustLevel::Official).remove(0);
-        let b = PackageCandidate { name: "htop".into(), raw: json!({ "atom": "sys-process/htop" }), ..a.clone() };
-        let plan = Gentoo::new().plan_install_many(&[&a, &b]).await.unwrap().expect("gentoo batches");
+        let b = PackageCandidate {
+            name: "htop".into(),
+            raw: json!({ "atom": "sys-process/htop" }),
+            ..a.clone()
+        };
+        let plan = Gentoo::new()
+            .plan_install_many(&[&a, &b])
+            .await
+            .unwrap()
+            .expect("gentoo batches");
         assert_eq!(
             argv_of(&plan),
             &["emerge", "--ask=n", "app-misc/ripgrep", "sys-process/htop"]
@@ -359,7 +394,11 @@ Searching...
 
     #[tokio::test]
     async fn update_all_upgrades_world() {
-        let plan = Gentoo::new().plan_update_all().await.unwrap().expect("gentoo bulk-updates");
+        let plan = Gentoo::new()
+            .plan_update_all()
+            .await
+            .unwrap()
+            .expect("gentoo bulk-updates");
         assert_eq!(
             argv_of(&plan),
             &["emerge", "--update", "--deep", "--newuse", "--ask=n", "@world"]

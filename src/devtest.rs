@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The hidden tester checklist: `jii yes-I-am-dev-and-want-to-test`.
 //!
 //! Built for **external testers** running JII in a fresh VM (see `docs/TESTING.md`; the
@@ -34,18 +38,66 @@ struct Step {
 /// Steps 10–11 are *expected* to end in a clear error: that is the behavior under test.
 fn checklist() -> Vec<Step> {
     vec![
-        Step { title: "Version banner", args: &["--version"], expect: "The version prints and matches the release you installed." },
-        Step { title: "Doctor (read-only)", args: &["doctor", "--no"], expect: "Source table + system checks; no question is asked, nothing is changed." },
-        Step { title: "Search with junk heuristics", args: &["search", "htop"], expect: "dnf/apt/… first; obscure registry squatters (pipx/cargo 'htop') shown red untrusted." },
-        Step { title: "Info card", args: &["info", "htop"], expect: "A card with description, source list and a recommendation." },
-        Step { title: "REAL install", args: &["htop", "-y"], expect: "htop installs through your system manager (sudo may prompt). Friendly one-line preview, then success." },
-        Step { title: "List installs", args: &["list"], expect: "The ledger of what JII itself installed. If htop was already on this system, JII installed nothing just now and an empty list is the correct answer — `jii list` is not a list of what's on the machine." },
-        Step { title: "Explain an install", args: &["how", "htop"], expect: "How htop got here: JII's own record with a date, or — when the system installed it — which manager owns it, its version and trust. If it isn't installed at all, how JII *would* install it. Never a bare 'no record'." },
-        Step { title: "Update one package", args: &["update", "htop", "-y"], expect: "Either 'already up to date' or a clean in-place update." },
-        Step { title: "REAL removal", args: &["remove", "htop", "-y"], expect: "htop is removed via the same source that installed it." },
-        Step { title: "Dead-end UX (not found)", args: &["totally-nonexistent-xyz321", "--no"], expect: "A clear 'not found' with browse links — never a bare dead end, never a crash. Silence here is a failure, and so is exit 0." },
-        Step { title: "Version-pin rejection", args: &["npm@1.0", "--no"], expect: "A clear 'version pins not supported yet' error — the pin must NOT be silently ignored." },
-        Step { title: "Sources view", args: &["sources"], expect: "Active/unavailable sources for THIS machine; irrelevant distro managers hidden." },
+        Step {
+            title: "Version banner",
+            args: &["--version"],
+            expect: "The version prints and matches the release you installed.",
+        },
+        Step {
+            title: "Doctor (read-only)",
+            args: &["doctor", "--no"],
+            expect: "Source table + system checks; no question is asked, nothing is changed.",
+        },
+        Step {
+            title: "Search with junk heuristics",
+            args: &["search", "htop"],
+            expect: "dnf/apt/… first; obscure registry squatters (pipx/cargo 'htop') shown red untrusted.",
+        },
+        Step {
+            title: "Info card",
+            args: &["info", "htop"],
+            expect: "A card with description, source list and a recommendation.",
+        },
+        Step {
+            title: "REAL install",
+            args: &["htop", "-y"],
+            expect: "htop installs through your system manager (sudo may prompt). Friendly one-line preview, then success.",
+        },
+        Step {
+            title: "List installs",
+            args: &["list"],
+            expect: "The ledger of what JII itself installed. If htop was already on this system, JII installed nothing just now and an empty list is the correct answer — `jii list` is not a list of what's on the machine.",
+        },
+        Step {
+            title: "Explain an install",
+            args: &["how", "htop"],
+            expect: "How htop got here: JII's own record with a date, or — when the system installed it — which manager owns it, its version and trust. If it isn't installed at all, how JII *would* install it. Never a bare 'no record'.",
+        },
+        Step {
+            title: "Update one package",
+            args: &["update", "htop", "-y"],
+            expect: "Either 'already up to date' or a clean in-place update.",
+        },
+        Step {
+            title: "REAL removal",
+            args: &["remove", "htop", "-y"],
+            expect: "htop is removed via the same source that installed it.",
+        },
+        Step {
+            title: "Dead-end UX (not found)",
+            args: &["totally-nonexistent-xyz321", "--no"],
+            expect: "A clear 'not found' with browse links — never a bare dead end, never a crash. Silence here is a failure, and so is exit 0.",
+        },
+        Step {
+            title: "Version-pin rejection",
+            args: &["npm@1.0", "--no"],
+            expect: "A clear 'version pins not supported yet' error — the pin must NOT be silently ignored.",
+        },
+        Step {
+            title: "Sources view",
+            args: &["sources"],
+            expect: "Active/unavailable sources for THIS machine; irrelevant distro managers hidden.",
+        },
     ]
 }
 
@@ -87,13 +139,23 @@ impl TestLog {
         let name = format!("jii-test-{}.log", chrono::Local::now().format("%Y%m%d-%H%M%S"));
         // Prefer the current directory; fall back to $HOME if it is not writable.
         let path = match std::fs::File::create(&name) {
-            Ok(f) => return Ok(TestLog { path: PathBuf::from(name), file: f, scrub: scrub_pairs() }),
+            Ok(f) => {
+                return Ok(TestLog {
+                    path: PathBuf::from(name),
+                    file: f,
+                    scrub: scrub_pairs(),
+                });
+            }
             Err(_) => directories::BaseDirs::new()
                 .map(|b| b.home_dir().join(&name))
                 .ok_or_else(|| JiiError::Other(anyhow::anyhow!("cannot create the log file")))?,
         };
         let file = std::fs::File::create(&path).map_err(|e| JiiError::io(&path, e))?;
-        Ok(TestLog { path, file, scrub: scrub_pairs() })
+        Ok(TestLog {
+            path,
+            file,
+            scrub: scrub_pairs(),
+        })
     }
 
     /// Append raw text to the log (scrubbed); the caller prints to the console itself.
@@ -222,8 +284,11 @@ async fn upload_log(path: &PathBuf) -> Option<String> {
     let client = crate::provider::http_client().ok()?;
 
     // 0x0.st takes a multipart `file` field and answers with the URL as plain text.
-    let part = reqwest::multipart::Part::bytes(body.clone())
-        .file_name(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "jii-test.log".into()));
+    let part = reqwest::multipart::Part::bytes(body.clone()).file_name(
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "jii-test.log".into()),
+    );
     let form = reqwest::multipart::Form::new().part("file", part);
     if let Ok(resp) = client.post("https://0x0.st").multipart(form).send().await
         && resp.status().is_success()
@@ -275,7 +340,12 @@ fn issue_url(results: &[StepResult], log_url: Option<&str>) -> String {
     body.push_str("| # | Step | Exit | Verdict |\n|---|------|------|--------|\n");
     for (i, r) in results.iter().enumerate() {
         let exit = r.exit.map(|c| c.to_string()).unwrap_or_else(|| "signal".into());
-        body.push_str(&format!("| {} | {} | {exit} | {} |\n", i + 1, r.title, r.verdict.label()));
+        body.push_str(&format!(
+            "| {} | {} | {exit} | {} |\n",
+            i + 1,
+            r.title,
+            r.verdict.label()
+        ));
     }
     for r in &failed {
         if !r.note.is_empty() {
@@ -325,8 +395,21 @@ pub async fn run() -> Result<()> {
         } else {
             String::new()
         };
-        log.log(&format!("    Verdict: {}{}\n", verdict.label(), if note.is_empty() { String::new() } else { format!(" — {note}") }));
-        results.push(StepResult { title: step.title, exit, verdict, note });
+        log.log(&format!(
+            "    Verdict: {}{}\n",
+            verdict.label(),
+            if note.is_empty() {
+                String::new()
+            } else {
+                format!(" — {note}")
+            }
+        ));
+        results.push(StepResult {
+            title: step.title,
+            exit,
+            verdict,
+            note,
+        });
         log.say("");
     }
 
@@ -344,7 +427,10 @@ pub async fn run() -> Result<()> {
 
     // One-keypress upload (the log is already scrubbed of username/hostname).
     let mut log_url: Option<String> = None;
-    if ask("Upload the log to a public paste service (0x0.st)? [Y/n]", "y").to_lowercase().starts_with(['y', 'д']) {
+    if ask("Upload the log to a public paste service (0x0.st)? [Y/n]", "y")
+        .to_lowercase()
+        .starts_with(['y', 'д'])
+    {
         println!("Uploading…");
         match upload_log(&log.path).await {
             Some(url) => {
@@ -392,8 +478,18 @@ mod tests {
     #[test]
     fn issue_url_carries_summary_and_encodes() {
         let results = vec![
-            StepResult { title: "Version banner", exit: Some(0), verdict: Verdict::Pass, note: String::new() },
-            StepResult { title: "REAL install", exit: Some(1), verdict: Verdict::Fail, note: "spinner froze".into() },
+            StepResult {
+                title: "Version banner",
+                exit: Some(0),
+                verdict: Verdict::Pass,
+                note: String::new(),
+            },
+            StepResult {
+                title: "REAL install",
+                exit: Some(1),
+                verdict: Verdict::Fail,
+                note: "spinner froze".into(),
+            },
         ];
         let url = issue_url(&results, Some("https://0x0.st/abc.log"));
         assert!(url.starts_with("https://github.com/0nigiris/JII/issues/new?title="));

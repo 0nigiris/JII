@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Nix provider (the Nix package manager — Nixpkgs, on any distro incl. NixOS).
 //!
 //! Unlike apt/pacman/zypper, Nix is **not** distro-bound and installs into the user's Nix
@@ -22,8 +26,7 @@ use std::path::{Path, PathBuf};
 use super::{Bootstrap, Ecosystem, Provider, command_plan, run_capture_lax, which};
 use crate::error::Result;
 use crate::model::{
-    InstallPlan, InstallStrategy, InstalledRecord, PackageCandidate, PkgVersion, Query,
-    StrategyKind, TrustLevel,
+    InstallPlan, InstallStrategy, InstalledRecord, PackageCandidate, PkgVersion, Query, StrategyKind, TrustLevel,
 };
 
 const ID: &str = "nix";
@@ -102,17 +105,20 @@ impl Provider for Nix {
         Ok(command_plan(ID, &candidate.name, argv, false, reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `nix profile install nixpkgs#a nixpkgs#b` for the whole group (no root).
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let flakes: Vec<String> = names.iter().map(|n| flake_ref(n)).collect();
         let mut sub = vec!["profile", "install"];
         sub.extend(flakes.iter().map(|s| s.as_str()));
         let reasons = vec![crate::t!("reason.nix_pkg_many", names = names.join(", "))];
-        Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
+        Ok(Some(command_plan(
+            ID,
+            &names.join(", "),
+            nix_argv(&sub),
+            false,
+            reasons,
+        )))
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
@@ -127,7 +133,13 @@ impl Provider for Nix {
         let mut sub = vec!["profile", "remove"];
         sub.extend_from_slice(&names);
         let reasons = vec![crate::t!("reason.nix_remove_many", names = names.join(", "))];
-        Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
+        Ok(Some(command_plan(
+            ID,
+            &names.join(", "),
+            nix_argv(&sub),
+            false,
+            reasons,
+        )))
     }
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
@@ -141,7 +153,13 @@ impl Provider for Nix {
         let mut sub = vec!["profile", "upgrade"];
         sub.extend_from_slice(&names);
         let reasons = vec![crate::t!("reason.nix_upgrade_many", names = names.join(", "))];
-        Ok(Some(command_plan(ID, &names.join(", "), nix_argv(&sub), false, reasons)))
+        Ok(Some(command_plan(
+            ID,
+            &names.join(", "),
+            nix_argv(&sub),
+            false,
+            reasons,
+        )))
     }
 
     async fn plan_update_all(&self) -> Result<Option<InstallPlan>> {
@@ -233,7 +251,9 @@ fn strategy_for_target(t: &NixTarget, name: &str) -> StrategyKind {
             needs_root: !t.home,
         };
     }
-    StrategyKind::Manual { guidance: guidance(t, name) }
+    StrategyKind::Manual {
+        guidance: guidance(t, name),
+    }
 }
 
 /// Outcome of splicing a package into a declarative list (see [`insert_package`]).
@@ -318,7 +338,10 @@ fn find_list(root: &SyntaxNode, attr_path: &str) -> Option<SyntaxNode> {
 /// The leading whitespace of the line containing byte offset `at` (an item's indentation).
 fn line_indent(source: &str, at: usize) -> String {
     let line_start = source[..at].rfind('\n').map_or(0, |i| i + 1);
-    source[line_start..at].chars().take_while(|c| *c == ' ' || *c == '\t').collect()
+    source[line_start..at]
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .collect()
 }
 
 /// Replace `source[start..end]` with `replacement`, returning the new string.
@@ -469,8 +492,7 @@ struct NixEntry {
 /// the entry whose `pname` matches the query **exactly** (the regex can still return
 /// near-names, so the exact match is decided here). Unparseable/empty output → no candidate.
 fn parse_search(stdout: &str, name: &str, trust: TrustLevel) -> Vec<PackageCandidate> {
-    let map: BTreeMap<String, NixEntry> =
-        serde_json::from_str(stdout.trim()).unwrap_or_default();
+    let map: BTreeMap<String, NixEntry> = serde_json::from_str(stdout.trim()).unwrap_or_default();
     map.into_values()
         .find(|e| e.pname == name)
         .map(|e| {
@@ -657,7 +679,10 @@ mod tests {
     #[tokio::test]
     async fn batch_install_merges_flake_refs() {
         let a = parse_search(SAMPLE, "ripgrep", TrustLevel::Community).remove(0);
-        let b = PackageCandidate { name: "fd".into(), ..a.clone() };
+        let b = PackageCandidate {
+            name: "fd".into(),
+            ..a.clone()
+        };
         let plan = Nix::new()
             .plan_install_many(&[&a, &b])
             .await
@@ -908,7 +933,10 @@ mod tests {
             Insertion::NotFound
         );
         // Doesn't parse → never edited.
-        assert_eq!(insert_package("{ home.packages = [ ", "home.packages", "bat"), Insertion::NotFound);
+        assert_eq!(
+            insert_package("{ home.packages = [ ", "home.packages", "bat"),
+            Insertion::NotFound
+        );
     }
 
     #[test]

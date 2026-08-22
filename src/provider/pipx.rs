@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! pipx provider (PyPI — Python applications in isolated venvs).
 //!
 //! Mirrors cargo/npm: search resolves an exact package via the PyPI JSON API and plans
@@ -19,9 +23,7 @@ use serde_json::json;
 
 use super::{Bootstrap, Ecosystem, FailureNote, Provider, command_plan, get_json_opt, which};
 use crate::error::{JiiError, Result};
-use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const ID: &str = "pipx";
 const BIN: &str = "pipx";
@@ -213,12 +215,7 @@ fn candidate(resp: &PypiResponse) -> PackageCandidate {
     PackageCandidate {
         name: resp.info.name.clone(),
         source_id: ID.to_string(),
-        version: resp
-            .info
-            .version
-            .clone()
-            .filter(|s| !s.is_empty())
-            .map(PkgVersion::new),
+        version: resp.info.version.clone().filter(|s| !s.is_empty()).map(PkgVersion::new),
         trust: TrustLevel::Community,
         // Python apps are largely platform-independent; pip/pipx verify PyPI hashes.
         arch_ok: true,
@@ -239,11 +236,7 @@ fn candidate(resp: &PypiResponse) -> PackageCandidate {
 fn library_rejection(output: &str) -> Option<String> {
     const MARKER: &str = "No apps associated with package ";
     let rest = output.split(MARKER).nth(1)?;
-    let name = rest
-        .split([' ', '.', '\n', '\r', ','])
-        .next()
-        .unwrap_or("")
-        .trim();
+    let name = rest.split([' ', '.', '\n', '\r', ',']).next().unwrap_or("").trim();
     (!name.is_empty()).then(|| name.to_string())
 }
 
@@ -266,10 +259,7 @@ fn parse_pipx_list(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
             let main = venv.metadata.and_then(|m| m.main_package);
             let (name, version) = match main {
                 // Prefer the recorded package name; fall back to the venv key.
-                Some(m) => (
-                    m.package.filter(|s| !s.is_empty()).unwrap_or(app),
-                    m.package_version,
-                ),
+                Some(m) => (m.package.filter(|s| !s.is_empty()).unwrap_or(app), m.package_version),
                 None => (app, None),
             };
             if name.is_empty() {
@@ -347,8 +337,7 @@ mod tests {
                 "urls":[{{"upload_time_iso_8601":"{fresh_time}"}}]}}"#,
         ));
         assert!(!is_stale(&fresh));
-        let dateless =
-            response(r#"{"info":{"name":"x","version":"1.0"},"urls":[{}]}"#);
+        let dateless = response(r#"{"info":{"name":"x","version":"1.0"},"urls":[{}]}"#);
         assert!(!is_stale(&dateless));
     }
 
@@ -358,7 +347,9 @@ mod tests {
         let out = "creating virtual environment...\ninstalling affinity...\nNo apps associated with package affinity. Try again with '--include-deps' to\ninclude apps of dependent packages, which are listed above.\nNote: Dependent package 'numpy' contains 2 apps\n  - f2py\n";
         assert_eq!(library_rejection(out).as_deref(), Some("affinity"));
 
-        let note = Pipx::new().explain_failure(out).expect("a library failure explains itself");
+        let note = Pipx::new()
+            .explain_failure(out)
+            .expect("a library failure explains itself");
         assert!(note.message.contains("affinity"), "names the package: {}", note.message);
         // Never a dead end: an explanation always comes with somewhere to go.
         assert_eq!(note.hints.len(), 2);

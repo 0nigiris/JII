@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Cargo provider (crates.io — Rust's package registry).
 //!
 //! `cargo install <crate>` builds a crate's executables from source into
@@ -17,9 +21,7 @@ use serde_json::json;
 
 use super::{Bootstrap, Ecosystem, Provider, command_plan, get_json_opt, run_capture, which};
 use crate::error::Result;
-use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const ID: &str = "cargo";
 const BIN: &str = "cargo";
@@ -104,10 +106,7 @@ impl Provider for Cargo {
         Ok(cargo_plan(&candidate.name, "install", reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // `cargo install a b c` builds them all into ~/.cargo/bin in one unprivileged run.
         let names: Vec<String> = candidates.iter().map(|c| c.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
@@ -117,7 +116,11 @@ impl Provider for Cargo {
     }
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
-        let reasons = vec![crate::t!("reason.remove_one", name = record.name.clone(), mgr = "cargo")];
+        let reasons = vec![crate::t!(
+            "reason.remove_one",
+            name = record.name.clone(),
+            mgr = "cargo"
+        )];
         Ok(cargo_plan(&record.name, "uninstall", reasons))
     }
 
@@ -132,7 +135,11 @@ impl Provider for Cargo {
 
     async fn plan_update(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         // `cargo install` reinstalls the newest published version if one exists.
-        let reasons = vec![crate::t!("reason.update_one_reinstall", name = record.name.clone(), mgr = "cargo")];
+        let reasons = vec![crate::t!(
+            "reason.update_one_reinstall",
+            name = record.name.clone(),
+            mgr = "cargo"
+        )];
         Ok(cargo_plan(&record.name, "install", reasons))
     }
 
@@ -141,7 +148,11 @@ impl Provider for Cargo {
         let names: Vec<String> = records.iter().map(|r| r.name.clone()).collect();
         let mut argv = vec![BIN.to_string(), "install".to_string()];
         argv.extend(names.iter().cloned());
-        let reasons = vec![crate::t!("reason.update_many_reinstall", mgr = "cargo", names = names.join(", "))];
+        let reasons = vec![crate::t!(
+            "reason.update_many_reinstall",
+            mgr = "cargo",
+            names = names.join(", ")
+        )];
         Ok(Some(command_plan(ID, &names.join(", "), argv, false, reasons)))
     }
 
@@ -238,11 +249,7 @@ fn parse_installed_list(stdout: &str, source_id: &str) -> Vec<InstalledRecord> {
                 return None;
             }
             // rest is like "v15.1.0" or "v0.1.0 (/some/path)"; take the version token.
-            let ver = rest
-                .split_whitespace()
-                .next()
-                .unwrap_or("")
-                .trim_start_matches('v');
+            let ver = rest.split_whitespace().next().unwrap_or("").trim_start_matches('v');
             Some(InstalledRecord {
                 name: name.to_string(),
                 source_id: source_id.to_string(),

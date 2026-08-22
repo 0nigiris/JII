@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Source-agnostic progress reading from a manager's live output.
 //!
 //! JII's core never branches on the source id (ADR-0004), and neither does this: it reads
@@ -29,7 +33,10 @@ pub struct Progress {
 pub fn parse_progress(line: &str) -> Option<Progress> {
     if let Some((done, total)) = bracketed_ratio(line) {
         let percent = ((done as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u8;
-        return Some(Progress { percent, steps: Some((done, total)) });
+        return Some(Progress {
+            percent,
+            steps: Some((done, total)),
+        });
     }
     last_percent(line).map(|percent| Progress { percent, steps: None })
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Release notes — the data behind `jii changelog` and the "here's what you just got"
 //! summary printed after `jii update jii`.
 //!
@@ -127,7 +131,9 @@ mod tests {
     fn every_release_has_notes_in_both_languages() {
         for r in releases() {
             assert!(!r.en.is_empty(), "{} has no English notes", r.version);
-            let ru = r.ru.as_ref().unwrap_or_else(|| panic!("{} has no Russian notes", r.version));
+            let ru =
+                r.ru.as_ref()
+                    .unwrap_or_else(|| panic!("{} has no Russian notes", r.version));
             assert!(!ru.is_empty(), "{} has empty Russian notes", r.version);
             assert_eq!(r.date.len(), 10, "{} needs an ISO date (YYYY-MM-DD)", r.version);
             assert!(!r.version.starts_with('v'), "{} must not carry a leading v", r.version);
@@ -141,7 +147,12 @@ mod tests {
             .map(|r| core(&r.version).unwrap_or_else(|| panic!("{} isn't a dotted version", r.version)))
             .collect();
         for pair in cores.windows(2) {
-            assert!(pair[0] > pair[1], "changelog must be newest-first: {:?} then {:?}", pair[0], pair[1]);
+            assert!(
+                pair[0] > pair[1],
+                "changelog must be newest-first: {:?} then {:?}",
+                pair[0],
+                pair[1]
+            );
         }
     }
 

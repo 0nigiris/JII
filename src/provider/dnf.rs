@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! DNF provider (Fedora, dnf5).
 //!
 //! Uses `dnf5 repoquery` with an explicit `--queryformat` so we parse stable,
@@ -10,9 +14,7 @@ use serde_json::json;
 
 use super::{Provider, command_plan, nonempty_lines, run_capture, which};
 use crate::error::Result;
-use crate::model::{
-    InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, TrustLevel};
 
 /// Field separator embedded in the `--queryformat`. A real tab is sent to dnf5
 /// (Rust interprets the escape); dnf5 does not itself expand `\t`.
@@ -122,10 +124,7 @@ impl Provider for Dnf {
         Ok(root_plan(&candidate.name, &["install", "-y", &candidate.name], reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // One `dnf5 install -y a b c` for the whole group (dnf resolves them together).
         let names: Vec<&str> = candidates.iter().map(|c| c.name.as_str()).collect();
         let mut args = vec!["install", "-y"];
@@ -324,11 +323,7 @@ License         : SOMETHING-ELSE
             TrustLevel::Official,
         );
         let refs: Vec<&PackageCandidate> = cands.iter().collect();
-        let plan = Dnf::new()
-            .plan_install_many(&refs)
-            .await
-            .unwrap()
-            .expect("dnf batches");
+        let plan = Dnf::new().plan_install_many(&refs).await.unwrap().expect("dnf batches");
         assert_eq!(plan.actions.len(), 1);
         assert!(plan.needs_root());
         match &plan.actions[0] {
@@ -354,11 +349,7 @@ License         : SOMETHING-ELSE
     async fn batch_remove_merges_into_one_root_dnf_command() {
         let (a, b) = (rec("git"), rec("htop"));
         let refs = vec![&a, &b];
-        let plan = Dnf::new()
-            .plan_remove_many(&refs)
-            .await
-            .unwrap()
-            .expect("dnf batches");
+        let plan = Dnf::new().plan_remove_many(&refs).await.unwrap().expect("dnf batches");
         assert_eq!(plan.actions.len(), 1);
         assert!(plan.needs_root());
         match &plan.actions[0] {
@@ -373,11 +364,7 @@ License         : SOMETHING-ELSE
     async fn batch_update_merges_into_one_root_dnf_command() {
         let (a, b) = (rec("git"), rec("htop"));
         let refs = vec![&a, &b];
-        let plan = Dnf::new()
-            .plan_update_many(&refs)
-            .await
-            .unwrap()
-            .expect("dnf batches");
+        let plan = Dnf::new().plan_update_many(&refs).await.unwrap().expect("dnf batches");
         match &plan.actions[0] {
             crate::model::Action::RunCommand { argv, .. } => {
                 assert_eq!(argv, &["dnf5", "upgrade", "-y", "git", "htop"]);

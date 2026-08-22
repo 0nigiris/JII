@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Presentation layer: all user-facing output goes through here so `--json` and
 //! `--no-color` are honored in one place and the rest of the code stays quiet.
 
@@ -24,7 +28,10 @@ impl Palette {
     /// A never-colouring palette (for tests and any plain-text context).
     #[cfg(test)]
     pub fn plain() -> Self {
-        Palette { enabled: false, unicode: true }
+        Palette {
+            enabled: false,
+            unicode: true,
+        }
     }
 
     /// Success marker — `✓`, or `+` where the terminal can't render it.
@@ -72,27 +79,47 @@ impl Palette {
 
     /// A source id (dnf, flatpak, cargo…) — cyan, so it stands out in a candidate line.
     pub fn source(&self, s: &str) -> String {
-        if self.enabled { s.cyan().to_string() } else { s.to_string() }
+        if self.enabled {
+            s.cyan().to_string()
+        } else {
+            s.to_string()
+        }
     }
 
     /// A version string — dimmed, secondary information.
     pub fn version(&self, s: &str) -> String {
-        if self.enabled { s.dimmed().to_string() } else { s.to_string() }
+        if self.enabled {
+            s.dimmed().to_string()
+        } else {
+            s.to_string()
+        }
     }
 
     /// Dim any secondary text.
     pub fn dim(&self, s: &str) -> String {
-        if self.enabled { s.dimmed().to_string() } else { s.to_string() }
+        if self.enabled {
+            s.dimmed().to_string()
+        } else {
+            s.to_string()
+        }
     }
 
     /// Positive / recommended emphasis — green.
     pub fn good(&self, s: &str) -> String {
-        if self.enabled { s.green().to_string() } else { s.to_string() }
+        if self.enabled {
+            s.green().to_string()
+        } else {
+            s.to_string()
+        }
     }
 
     /// A bold heading/line (used for table header rows).
     pub fn heading(&self, s: &str) -> String {
-        if self.enabled { s.bold().to_string() } else { s.to_string() }
+        if self.enabled {
+            s.bold().to_string()
+        } else {
+            s.to_string()
+        }
     }
 }
 
@@ -119,7 +146,11 @@ impl Spinner {
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let progress = std::sync::Arc::new(std::sync::Mutex::new(None));
         if !live {
-            return Spinner { stop, progress, handle: None };
+            return Spinner {
+                stop,
+                progress,
+                handle: None,
+            };
         }
         let flag = stop.clone();
         let progress_read = progress.clone();
@@ -153,7 +184,11 @@ impl Spinner {
                     format!("{prefix}{}", render_bar(p, unicode, color, budget))
                 } else {
                     let secs = started.elapsed().as_secs();
-                    let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
+                    let elapsed = if secs >= 3 {
+                        format!(" ({secs}s)")
+                    } else {
+                        String::new()
+                    };
                     format!("  {frame} {label}{elapsed}")
                 };
                 eprint!("\r\x1b[2K{line}");
@@ -164,14 +199,20 @@ impl Spinner {
             eprint!("\r\x1b[2K"); // erase the line; the caller prints the outcome
             let _ = std::io::stderr().flush();
         });
-        Spinner { stop, progress, handle: Some(handle) }
+        Spinner {
+            stop,
+            progress,
+            handle: Some(handle),
+        }
     }
 
     /// A cheap handle the streaming executor uses to push live progress readings onto this
     /// spinner. Cloneable and inert-safe: on a non-TTY spinner the readings are simply never
     /// drawn. See [`ProgressReporter`].
     pub fn reporter(&self) -> ProgressReporter {
-        ProgressReporter { cell: self.progress.clone() }
+        ProgressReporter {
+            cell: self.progress.clone(),
+        }
     }
 
     /// Stop the animation and wait for the line to be erased, so nothing printed next collides
@@ -270,7 +311,12 @@ impl Renderer {
             ColorChoice::Auto => !json && crate::platform::Platform::detect().is_tty,
         };
         let unicode = crate::platform::Platform::detect().unicode;
-        Renderer { color, json, mode, unicode }
+        Renderer {
+            color,
+            json,
+            mode,
+            unicode,
+        }
     }
 
     /// Whether JSON output mode is active.
@@ -286,7 +332,10 @@ impl Renderer {
 
     /// The semantic colour palette for this renderer (a no-op when colour is off).
     pub fn palette(&self) -> Palette {
-        Palette { enabled: self.color, unicode: self.unicode }
+        Palette {
+            enabled: self.color,
+            unicode: self.unicode,
+        }
     }
 
     /// A bold section heading (falls back to plain text when colour is off / JSON).
@@ -397,7 +446,11 @@ impl Renderer {
         }
 
         let mark = self.palette().mark_ok();
-        let check = if self.color { mark.green().to_string() } else { mark.to_string() };
+        let check = if self.color {
+            mark.green().to_string()
+        } else {
+            mark.to_string()
+        };
         for reason in &plan.reasons {
             println!("  {check} {reason}");
         }
@@ -445,7 +498,12 @@ pub fn describe_action(action: &Action) -> String {
             dest = dest.display().to_string(),
             mode = format!("{mode:o}")
         ),
-        Action::Extract { archive, member, dest, mode } => crate::t!(
+        Action::Extract {
+            archive,
+            member,
+            dest,
+            mode,
+        } => crate::t!(
             "plan.act_extract",
             member = member.clone(),
             archive = archive.display().to_string(),
@@ -487,7 +545,12 @@ fn action_to_json(action: &Action) -> serde_json::Value {
         Action::Place { src, dest, mode } => serde_json::json!({
             "kind": "place", "src": src, "dest": dest, "mode": mode,
         }),
-        Action::Extract { archive, member, dest, mode } => serde_json::json!({
+        Action::Extract {
+            archive,
+            member,
+            dest,
+            mode,
+        } => serde_json::json!({
             "kind": "extract", "archive": archive, "member": member, "dest": dest, "mode": mode,
         }),
         Action::RemoveFile { path } => serde_json::json!({
@@ -508,20 +571,44 @@ mod tests {
     fn bar_fills_proportionally_and_shows_percent_and_steps() {
         // 25% of a 16-cell bar = 4 filled; the counter that drove it is shown too. Budget 29 =
         // 16 bar cells + the 13-char "   25%  [1/4]" suffix.
-        let s = render_bar(Progress { percent: 25, steps: Some((1, 4)) }, true, false, 29);
+        let s = render_bar(
+            Progress {
+                percent: 25,
+                steps: Some((1, 4)),
+            },
+            true,
+            false,
+            29,
+        );
         assert_eq!(s, "████░░░░░░░░░░░░   25%  [1/4]");
     }
 
     #[test]
     fn bar_ascii_fallback_and_no_steps() {
         // Budget 22 = 16 bar cells + the 6-char "  100%" suffix.
-        let s = render_bar(Progress { percent: 100, steps: None }, false, false, 22);
+        let s = render_bar(
+            Progress {
+                percent: 100,
+                steps: None,
+            },
+            false,
+            false,
+            22,
+        );
         assert_eq!(s, "################  100%");
     }
 
     #[test]
     fn bar_wraps_fill_in_colour_when_enabled() {
-        let s = render_bar(Progress { percent: 50, steps: None }, true, true, 22);
+        let s = render_bar(
+            Progress {
+                percent: 50,
+                steps: None,
+            },
+            true,
+            true,
+            22,
+        );
         // Green SGR around the filled run, reset before the empty run.
         assert!(s.starts_with("\x1b[32m████████\x1b[0m"));
         assert!(s.contains("50%"));
@@ -531,14 +618,30 @@ mod tests {
     fn bar_stretches_to_fill_a_wider_budget() {
         // The pacman/dnf behaviour: a wider line yields a wider bar. Budget 40, suffix "  100%"
         // is 6 cols → 34 cells, all filled at 100%.
-        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 40);
+        let s = render_bar(
+            Progress {
+                percent: 100,
+                steps: None,
+            },
+            true,
+            false,
+            40,
+        );
         assert_eq!(s.chars().filter(|&c| c == '█').count(), 34);
     }
 
     #[test]
     fn bar_keeps_a_minimum_on_a_narrow_terminal() {
         // Budget below suffix + minimum: the bar stops shrinking at MIN_BAR_CELLS, it doesn't vanish.
-        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 2);
+        let s = render_bar(
+            Progress {
+                percent: 100,
+                steps: None,
+            },
+            true,
+            false,
+            2,
+        );
         assert_eq!(s.chars().filter(|&c| c == '█').count(), MIN_BAR_CELLS);
     }
 }

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Snap provider (snapd — the Snap Store).
 //!
 //! Unlike the registry-user-space providers (cargo/npm/pipx/go/brew), snap installs
@@ -14,13 +18,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{
-    Bootstrap, Ecosystem, Provider, command_plan, http_client, nonempty_lines, run_capture, which,
-};
+use super::{Bootstrap, Ecosystem, Provider, command_plan, http_client, nonempty_lines, run_capture, which};
 use crate::error::{JiiError, Result};
-use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel,
-};
+use crate::model::{Action, InstallPlan, InstalledRecord, PackageCandidate, PkgVersion, Query, TrustLevel};
 
 const ID: &str = "snap";
 const BIN: &str = "snap";
@@ -111,10 +111,7 @@ impl Provider for Snap {
         // `confinement` (and the rest) are omitted unless explicitly requested via
         // `fields`, and `fields` restricts the response to exactly what is listed — so we
         // must enumerate every field we read (verified against the live API).
-        let url = format!(
-            "{API}/{}?fields=version,confinement,summary,title",
-            query.raw.trim()
-        );
+        let url = format!("{API}/{}?fields=version,confinement,summary,title", query.raw.trim());
         // The Snap Store info API requires the device-series header (else 400).
         let resp = http_client()?
             .get(&url)
@@ -151,10 +148,7 @@ impl Provider for Snap {
         Ok(command_plan(ID, &candidate.name, argv, true, reasons))
     }
 
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         // `--classic` can't be applied selectively in one command, so only merge when no
         // candidate needs it; otherwise decline (`None`) so each gets its own correct plan.
         if candidates.iter().any(|c| is_classic(c)) {
@@ -243,16 +237,12 @@ fn candidate(info: &SnapInfo) -> PackageCandidate {
     let default_channel = info
         .channel_map
         .iter()
-        .find(|e| {
-            e.channel.risk.as_deref() == Some("stable")
-                && e.channel.track.as_deref() == Some("latest")
-        })
+        .find(|e| e.channel.risk.as_deref() == Some("stable") && e.channel.track.as_deref() == Some("latest"))
         .or_else(|| info.channel_map.first());
     let version = default_channel
         .and_then(|e| e.version.clone())
         .filter(|s| !s.is_empty());
-    let classic =
-        default_channel.is_some_and(|e| e.confinement.as_deref() == Some("classic"));
+    let classic = default_channel.is_some_and(|e| e.confinement.as_deref() == Some("classic"));
     let summary = info
         .snap
         .summary
@@ -276,11 +266,7 @@ fn candidate(info: &SnapInfo) -> PackageCandidate {
 
 /// Whether a candidate is a classic-confinement snap (needs `--classic` to install).
 fn is_classic(candidate: &PackageCandidate) -> bool {
-    candidate
-        .raw
-        .get("classic")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
+    candidate.raw.get("classic").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 /// A single root `snap <verb> <name>` plan (install/remove/refresh).

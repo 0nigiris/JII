@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Core data model shared across the whole pipeline: `search → rank → plan → execute`.
 //!
 //! These types are source-agnostic on purpose — the engine and UI operate only on
@@ -147,7 +151,11 @@ impl PackageSpec {
             None => (left.to_string(), None),
         };
 
-        Ok(PackageSpec { name, source, reference })
+        Ok(PackageSpec {
+            name,
+            source,
+            reference,
+        })
     }
 }
 
@@ -482,7 +490,10 @@ mod tests {
 
     #[test]
     fn name_with_ref() {
-        assert_eq!(PackageSpec::parse("firefox@120").unwrap(), spec("firefox", None, Some("120")));
+        assert_eq!(
+            PackageSpec::parse("firefox@120").unwrap(),
+            spec("firefox", None, Some("120"))
+        );
     }
 
     #[test]
@@ -500,7 +511,10 @@ mod tests {
 
     #[test]
     fn leading_at_is_an_npm_scope_not_a_ref() {
-        assert_eq!(PackageSpec::parse("@angular/cli").unwrap(), spec("@angular/cli", None, None));
+        assert_eq!(
+            PackageSpec::parse("@angular/cli").unwrap(),
+            spec("@angular/cli", None, None)
+        );
     }
 
     #[test]
@@ -521,7 +535,10 @@ mod tests {
 
     #[test]
     fn github_owner_repo_is_untouched() {
-        assert_eq!(PackageSpec::parse("BurntSushi/ripgrep").unwrap(), spec("BurntSushi/ripgrep", None, None));
+        assert_eq!(
+            PackageSpec::parse("BurntSushi/ripgrep").unwrap(),
+            spec("BurntSushi/ripgrep", None, None)
+        );
         assert_eq!(
             PackageSpec::parse("BurntSushi/ripgrep:github").unwrap(),
             spec("BurntSushi/ripgrep", Some("github"), None)
@@ -536,7 +553,10 @@ mod tests {
 
     #[test]
     fn whitespace_is_trimmed() {
-        assert_eq!(PackageSpec::parse("  firefox:flatpak  ").unwrap(), spec("firefox", Some("flatpak"), None));
+        assert_eq!(
+            PackageSpec::parse("  firefox:flatpak  ").unwrap(),
+            spec("firefox", Some("flatpak"), None)
+        );
     }
 
     #[test]

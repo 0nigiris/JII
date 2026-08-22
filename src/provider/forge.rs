@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Forge-based release providers.
 //!
 //! A **forge** is a code host that publishes downloadable releases — GitHub, and (via the
@@ -20,8 +24,8 @@ use std::path::{Path, PathBuf};
 use super::{Probe, Provider, http_client};
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query,
-    RepoHit, TrustLevel, Verification,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, RepoHit, TrustLevel,
+    Verification,
 };
 
 /// A code-hosting forge that publishes releases. Implementors supply only host specifics; the
@@ -37,17 +41,17 @@ pub trait Forge: Send + Sync {
     /// Fetch a repo's latest installable release, **normalised** to [`Release`]. `token` is
     /// the optional API token (from the provider's configured env var).
     async fn latest_release(
-        &self,
-        client: &reqwest::Client,
-        owner: &str,
-        repo: &str,
-        token: Option<&str>,
+        &self, client: &reqwest::Client, owner: &str, repo: &str, token: Option<&str>,
     ) -> Result<Release>;
     /// A health probe (rate-limit etc.) for `jii doctor`. Default: assume reachable — a forge
     /// with no cheap probe still works; per-request errors surface during search.
     async fn probe(&self, client: &reqwest::Client, token: Option<&str>) -> Probe {
         let _ = (client, token);
-        Probe { reachable: true, rate_limited: false, detail: None }
+        Probe {
+            reachable: true,
+            rate_limited: false,
+            detail: None,
+        }
     }
 
     /// Free-text repo search: the `page`-th page (1-based) of up to `per_page` repos matching
@@ -55,12 +59,7 @@ pub trait Forge: Send + Sync {
     /// `source_id` = [`id`](Forge::id)). Default: empty — a forge without a search API offers
     /// none, and by-name discovery simply won't surface it.
     async fn search_repos(
-        &self,
-        client: &reqwest::Client,
-        query: &str,
-        per_page: u32,
-        page: u32,
-        token: Option<&str>,
+        &self, client: &reqwest::Client, query: &str, per_page: u32, page: u32, token: Option<&str>,
     ) -> Result<Vec<RepoHit>> {
         let _ = (client, query, per_page, page, token);
         Ok(Vec::new())
@@ -108,7 +107,10 @@ impl ForgeProvider {
     async fn resolve(&self, owner: &str, repo: &str) -> Result<Vec<PackageCandidate>> {
         let client = http_client()?;
         let token = self.token();
-        let release = self.forge.latest_release(&client, owner, repo, token.as_deref()).await?;
+        let release = self
+            .forge
+            .latest_release(&client, owner, repo, token.as_deref())
+            .await?;
 
         let Some((asset, kind)) = select_asset(&release.assets, self.arch) else {
             return Ok(Vec::new());
@@ -152,7 +154,10 @@ impl Provider for ForgeProvider {
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
-        vec![crate::t!("reason.forge_thirdparty"), crate::t!("reason.forge_installs_local")]
+        vec![
+            crate::t!("reason.forge_thirdparty"),
+            crate::t!("reason.forge_installs_local"),
+        ]
     }
 
     async fn is_available(&self) -> bool {
@@ -234,7 +239,11 @@ impl Provider for ForgeProvider {
 
     async fn plan_remove(&self, record: &InstalledRecord) -> Result<InstallPlan> {
         let dest = bin_dir()?.join(&record.name);
-        let reasons = vec![crate::t!("reason.forge_remove", name = record.name.clone(), dest = dest.display().to_string())];
+        let reasons = vec![crate::t!(
+            "reason.forge_remove",
+            name = record.name.clone(),
+            dest = dest.display().to_string()
+        )];
         Ok(InstallPlan {
             candidate_ref: record.name.clone(),
             source_id: self.id().to_string(),
@@ -329,13 +338,7 @@ impl AssetKind {
 /// everything the plan needs is stashed in `raw`.
 #[allow(clippy::too_many_arguments)]
 fn candidate(
-    source_id: &str,
-    label: &str,
-    owner: &str,
-    repo: &str,
-    tag: &str,
-    asset: &ForgeAsset,
-    kind: AssetKind,
+    source_id: &str, label: &str, owner: &str, repo: &str, tag: &str, asset: &ForgeAsset, kind: AssetKind,
     sha256: Option<String>,
 ) -> PackageCandidate {
     PackageCandidate {
@@ -387,9 +390,8 @@ fn arch_tokens(arch: &str) -> &'static [&'static str] {
 fn classify(name: &str, arch_tokens: &[&str]) -> Option<AssetKind> {
     const REJECT: &[&str] = &[
         // other OSes
-        "windows", "win32", "win64", ".exe", ".msi", "darwin", "macos", "apple", ".dmg",
-        "freebsd", "netbsd", "openbsd", "android",
-        // distro packages
+        "windows", "win32", "win64", ".exe", ".msi", "darwin", "macos", "apple", ".dmg", "freebsd", "netbsd", "openbsd",
+        "android", // distro packages
         ".deb", ".rpm", ".apk", ".pkg",
         // delta/patch artifacts (e.g. deno's `*.bsdiff` auto-update patches)
         ".bsdiff", ".patch", ".delta", ".zsync",
@@ -487,17 +489,8 @@ fn is_sha256(s: &str) -> bool {
 /// binary or extract it from the archive into `~/.local/bin`. Pure (unit-testable, no IO).
 #[allow(clippy::too_many_arguments)]
 fn build_install_plan(
-    source_id: &str,
-    name: &str,
-    slug: &str,
-    version: Option<&PkgVersion>,
-    url: &str,
-    filename: &str,
-    archive: bool,
-    sha256: Option<String>,
-    size: u64,
-    bin_dir: &Path,
-    cache_dir: &Path,
+    source_id: &str, name: &str, slug: &str, version: Option<&PkgVersion>, url: &str, filename: &str, archive: bool,
+    sha256: Option<String>, size: u64, bin_dir: &Path, cache_dir: &Path,
 ) -> InstallPlan {
     let staged = cache_dir.join(filename);
     let dest = bin_dir.join(name);
@@ -577,7 +570,11 @@ mod tests {
     use super::*;
 
     fn asset(name: &str) -> ForgeAsset {
-        ForgeAsset { name: name.into(), url: "https://x/a".into(), size: 1 }
+        ForgeAsset {
+            name: name.into(),
+            url: "https://x/a".into(),
+            size: 1,
+        }
     }
 
     #[test]
@@ -695,7 +692,10 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  jq-linux-amd64
 ";
         let digest = parse_checksums(sums, "jq-linux-amd64").unwrap();
-        assert_eq!(digest, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(
+            digest,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
         assert!(parse_checksums(sums, "absent").is_none());
     }
 
@@ -798,7 +798,13 @@ deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef  jq-linux-arm64
             Path::new("/b"),
             Path::new("/c"),
         );
-        assert!(matches!(plan.actions[0], Action::Download { verify: Verification::None, .. }));
+        assert!(matches!(
+            plan.actions[0],
+            Action::Download {
+                verify: Verification::None,
+                ..
+            }
+        ));
         assert_eq!(plan.download_size, None);
         assert!(plan.reasons.iter().any(|r| r.contains("unverified")));
     }

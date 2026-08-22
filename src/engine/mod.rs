@@ -1,10 +1,12 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The engine orchestrates the pipeline: `search → rank → plan → execute`.
 //!
 //! It is the only component that holds providers, the privilege layer and the
 //! registry, and the only place that executes anything or writes the registry.
 //! It operates purely on the model.
-
-pub mod ranking;
 
 use std::time::{Duration, Instant};
 
@@ -14,13 +16,15 @@ use crate::cache::Cache;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Health, InstallPlan, InstallStrategy, InstalledRecord, MatchMode, PackageCandidate, PkgVersion,
-    Query, RepoHit, TrustLevel,
+    Health, InstallPlan, InstallStrategy, InstalledRecord, MatchMode, PackageCandidate, PkgVersion, Query, RepoHit,
+    TrustLevel,
 };
 use crate::privilege::Privilege;
 use crate::provider::ProviderRegistry;
 use crate::registry::Registry;
 use crate::ui::Renderer;
+
+pub mod ranking;
 
 /// Result of a search across providers: candidates plus any sources that failed
 /// (so the UI can report them without failing the whole search).
@@ -179,10 +183,7 @@ impl Engine {
     pub fn new(config: Config) -> Result<Self> {
         let providers = ProviderRegistry::from_config(&config);
         let registry = Registry::load()?;
-        let cache = Cache::load(
-            config.network.cache_ttl_secs,
-            config.network.failure_cooldown_secs,
-        );
+        let cache = Cache::load(config.network.cache_ttl_secs, config.network.failure_cooldown_secs);
         Ok(Engine {
             config,
             providers,
@@ -248,11 +249,7 @@ impl Engine {
     /// Routes by `source_id` (dispatch, not a behavioural source-branch). Empty unless the
     /// provider opts in *and* has something to offer (Nix only when a config is detected).
     /// Called only for a single-package interactive install.
-    pub async fn install_strategies(
-        &self,
-        source_id: &str,
-        candidate: &PackageCandidate,
-    ) -> Vec<InstallStrategy> {
+    pub async fn install_strategies(&self, source_id: &str, candidate: &PackageCandidate) -> Vec<InstallStrategy> {
         for provider in self.providers.iter() {
             if provider.id() == source_id {
                 return provider.install_strategies(candidate).await;
@@ -267,8 +264,7 @@ impl Engine {
     pub async fn search(&self, query: &Query) -> SearchResult {
         let timeout = Duration::from_secs(self.config.network.timeout_secs);
         let results =
-            futures::future::join_all(self.providers.iter().map(|p| self.search_one(p, query, timeout)))
-                .await;
+            futures::future::join_all(self.providers.iter().map(|p| self.search_one(p, query, timeout))).await;
 
         let mut candidates = Vec::new();
         let mut failed = Vec::new();
@@ -288,10 +284,7 @@ impl Engine {
     /// cache entry is used if present (offline resilience), otherwise the failure
     /// is returned as `(source_id, reason)`.
     async fn search_one(
-        &self,
-        provider: &dyn crate::provider::Provider,
-        query: &Query,
-        timeout: Duration,
+        &self, provider: &dyn crate::provider::Provider, query: &Query, timeout: Duration,
     ) -> std::result::Result<Vec<PackageCandidate>, (String, String)> {
         let id = provider.id().to_string();
         let fail = |reason: &str| (id.clone(), reason.to_string());
@@ -421,10 +414,7 @@ impl Engine {
     /// groups keep their first-seen (ranked) order, so the preview reads sensibly.
     /// The engine never branches on the source — it only uses the returned plan or falls
     /// back (ADR-0004/0022).
-    pub async fn plan_install_batch(
-        &self,
-        candidates: Vec<PackageCandidate>,
-    ) -> Result<Vec<BatchPlan>> {
+    pub async fn plan_install_batch(&self, candidates: Vec<PackageCandidate>) -> Result<Vec<BatchPlan>> {
         // Group by source_id, preserving the order sources first appear in.
         let groups = group_by_source(candidates, |c| c.source_id.as_str());
 
@@ -437,17 +427,26 @@ impl Engine {
             if group.len() == 1 {
                 let candidate = group.into_iter().next().expect("len checked");
                 let plan = provider.plan_install(&candidate).await?;
-                plans.push(BatchPlan { plan, candidates: vec![candidate] });
+                plans.push(BatchPlan {
+                    plan,
+                    candidates: vec![candidate],
+                });
                 continue;
             }
             let refs: Vec<&PackageCandidate> = group.iter().collect();
             match provider.plan_install_many(&refs).await? {
-                Some(plan) => plans.push(BatchPlan { plan, candidates: group }),
+                Some(plan) => plans.push(BatchPlan {
+                    plan,
+                    candidates: group,
+                }),
                 None => {
                     // Source can't batch: one plan per candidate.
                     for candidate in group {
                         let plan = provider.plan_install(&candidate).await?;
-                        plans.push(BatchPlan { plan, candidates: vec![candidate] });
+                        plans.push(BatchPlan {
+                            plan,
+                            candidates: vec![candidate],
+                        });
                     }
                 }
             }
@@ -494,11 +493,7 @@ impl Engine {
     /// (e.g. github has no update path) is collected into `unplannable` rather than
     /// aborting the batch. Symmetric with [`plan_install_batch`]; the engine never branches
     /// on the source id — only on the *operation* (ADR-0004/0025).
-    pub async fn plan_record_batch(
-        &self,
-        records: Vec<InstalledRecord>,
-        op: RecordOp,
-    ) -> Result<RecordBatch> {
+    pub async fn plan_record_batch(&self, records: Vec<InstalledRecord>, op: RecordOp) -> Result<RecordBatch> {
         let groups = group_by_source(records, |r| r.source_id.as_str());
         let mut plans = Vec::new();
         let mut unplannable = Vec::new();
@@ -510,7 +505,10 @@ impl Engine {
             if group.len() == 1 {
                 let record = group.into_iter().next().expect("len checked");
                 match plan_one_record(provider, &record, op).await {
-                    Ok(plan) => plans.push(RecordBatchPlan { plan, records: vec![record] }),
+                    Ok(plan) => plans.push(RecordBatchPlan {
+                        plan,
+                        records: vec![record],
+                    }),
                     Err(e) => unplannable.push((record.name, e.to_string())),
                 }
                 continue;
@@ -528,7 +526,10 @@ impl Engine {
                     // cannot be planned, so the rest still proceed).
                     for record in group {
                         match plan_one_record(provider, &record, op).await {
-                            Ok(plan) => plans.push(RecordBatchPlan { plan, records: vec![record] }),
+                            Ok(plan) => plans.push(RecordBatchPlan {
+                                plan,
+                                records: vec![record],
+                            }),
                             Err(e) => unplannable.push((record.name, e.to_string())),
                         }
                     }
@@ -541,11 +542,7 @@ impl Engine {
     /// Execute a batch of removal plans as one operation: prime privilege **once**, run
     /// each plan in order, and record each removal as its plan succeeds — so a mid-batch
     /// failure still leaves the registry accurate. Mirrors `install_batch`.
-    pub async fn remove_batch(
-        &mut self,
-        batch: &[RecordBatchPlan],
-        renderer: &Renderer,
-    ) -> Result<()> {
+    pub async fn remove_batch(&mut self, batch: &[RecordBatchPlan], renderer: &Renderer) -> Result<()> {
         let plans: Vec<&InstallPlan> = batch.iter().map(|b| &b.plan).collect();
         crate::exec::prime_for(&plans, &self.privilege).await?;
 
@@ -570,11 +567,7 @@ impl Engine {
     /// **post-update** coordinate — its `version` is the refreshed target the caller set;
     /// the engine stamps `installed_at`/verification from the plan (as `install_batch`
     /// does), so there is one place that shapes a written record. Mirrors `install_batch`.
-    pub async fn update_batch(
-        &mut self,
-        batch: &[RecordBatchPlan],
-        renderer: &Renderer,
-    ) -> Result<()> {
+    pub async fn update_batch(&mut self, batch: &[RecordBatchPlan], renderer: &Renderer) -> Result<()> {
         let plans: Vec<&InstallPlan> = batch.iter().map(|b| &b.plan).collect();
         crate::exec::prime_for(&plans, &self.privilege).await?;
 
@@ -606,12 +599,7 @@ impl Engine {
     /// output (UX #6 — quiet, but visibly alive), Advanced/`--json` keep the streamed
     /// action-by-action log. Only the *narration* differs; the plan itself is identical, and a
     /// failure surfaces the real output either way.
-    async fn run_plan_narrated(
-        &self,
-        plan: &InstallPlan,
-        renderer: &Renderer,
-        label: &str,
-    ) -> Result<()> {
+    async fn run_plan_narrated(&self, plan: &InstallPlan, renderer: &Renderer, label: &str) -> Result<()> {
         let outcome = if renderer.is_friendly() {
             crate::exec::run_actions_quiet(plan, &self.privilege, renderer, label).await
         } else {
@@ -633,10 +621,7 @@ impl Engine {
             return; // not a captured command failure — reported by whoever raised it
         };
         renderer.error(&crate::t!("exec.step_failed", command = command.clone()));
-        let note = self
-            .providers
-            .get(source_id)
-            .and_then(|p| p.explain_failure(output));
+        let note = self.providers.get(source_id).and_then(|p| p.explain_failure(output));
         match note {
             Some(note) => {
                 renderer.info(&note.message);
@@ -679,10 +664,7 @@ impl Engine {
     /// everything, so a mix of root (dnf) and user (flatpak) steps asks for elevation a single
     /// time. Stops at the first failure, leaving the registry accurate for what did run.
     pub async fn run_system_update(
-        &mut self,
-        system_plans: &[InstallPlan],
-        fallback: &[RecordBatchPlan],
-        renderer: &Renderer,
+        &mut self, system_plans: &[InstallPlan], fallback: &[RecordBatchPlan], renderer: &Renderer,
     ) -> Result<()> {
         let mut all: Vec<&InstallPlan> = system_plans.iter().collect();
         all.extend(fallback.iter().map(|b| &b.plan));
@@ -762,9 +744,7 @@ impl Engine {
     /// update` then `apt-get upgrade`). Returns `(all_ok, combined_output)` — a spawn failure is
     /// still a hard error. Priming happens in the caller.
     async fn run_plan_streamed(
-        &self,
-        plan: &InstallPlan,
-        reporter: &crate::ui::ProgressReporter,
+        &self, plan: &InstallPlan, reporter: &crate::ui::ProgressReporter,
     ) -> Result<(bool, String)> {
         let mut combined = String::new();
         let mut ok = true;
@@ -847,9 +827,7 @@ impl Engine {
                 return Ok(found);
             }
         }
-        Err(JiiError::Other(anyhow::anyhow!(
-            "'{name}' is not installed"
-        )))
+        Err(JiiError::Other(anyhow::anyhow!("'{name}' is not installed")))
     }
 
     /// Every enabled source that currently has `name` installed — a full fan-out, unlike
@@ -887,11 +865,7 @@ impl Engine {
     /// source offers is, if installed at all, most likely installed via that source. Returns
     /// the owning record (with its version) if present. The cross-source scan stays in
     /// `resolve_installed`, used by remove/update where correctness beats latency.
-    pub async fn installed_lookup(
-        &self,
-        name: &str,
-        recommended_source: &str,
-    ) -> Option<InstalledRecord> {
+    pub async fn installed_lookup(&self, name: &str, recommended_source: &str) -> Option<InstalledRecord> {
         // 1. Registry hint (jii installed it), verified still-present.
         if let Some(record) = self.registry.get(name)
             && self.is_installed_via(record).await
@@ -962,10 +936,7 @@ impl Engine {
     /// Rich metadata for `jii info`'s app card (#4), asked of the candidate's owning
     /// provider (optional `describe`, ADR-0022). `None` if the source is no longer enabled
     /// or offers no card. May do I/O (dnf runs `dnf5 info`) — called only on `jii info`.
-    pub async fn candidate_info(
-        &self,
-        candidate: &PackageCandidate,
-    ) -> Option<crate::model::PackageInfo> {
+    pub async fn candidate_info(&self, candidate: &PackageCandidate) -> Option<crate::model::PackageInfo> {
         match self.providers.get(&candidate.source_id) {
             Some(p) => p.describe(candidate).await,
             None => None,
@@ -1296,9 +1267,7 @@ pub(crate) fn typo_variants(query: &str) -> Vec<String> {
 /// Build a single-record plan for the given operation. The one spot that maps a
 /// [`RecordOp`] to its `Provider` method — keeps `plan_record_batch` readable.
 async fn plan_one_record(
-    provider: &dyn crate::provider::Provider,
-    record: &InstalledRecord,
-    op: RecordOp,
+    provider: &dyn crate::provider::Provider, record: &InstalledRecord, op: RecordOp,
 ) -> Result<InstallPlan> {
     match op {
         RecordOp::Remove => provider.plan_remove(record).await,

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The provider abstraction: every installation source implements [`Provider`].
 //!
 //! The core operates only through this trait and the source-agnostic model — it
@@ -11,8 +15,7 @@ use serde::de::DeserializeOwned;
 use crate::config::Config;
 use crate::error::{JiiError, Result};
 use crate::model::{
-    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query,
-    TrustLevel,
+    Action, InstallPlan, InstalledRecord, PackageCandidate, PackageInfo, PkgVersion, Query, TrustLevel,
 };
 
 pub mod apt;
@@ -74,10 +77,7 @@ pub trait Provider: Send + Sync {
     /// batching by assembling a single multi-package command; the engine never branches
     /// on the source id, it just uses the returned plan or falls back. `candidates` is
     /// non-empty and all share this provider's `source_id`.
-    async fn plan_install_many(
-        &self,
-        candidates: &[&PackageCandidate],
-    ) -> Result<Option<InstallPlan>> {
+    async fn plan_install_many(&self, candidates: &[&PackageCandidate]) -> Result<Option<InstallPlan>> {
         let _ = candidates;
         Ok(None)
     }
@@ -244,10 +244,7 @@ pub trait Provider: Send + Sync {
     /// **single-package interactive** install; may do filesystem I/O (config detection), so it
     /// is async. No core source-branch: the CLI shows whatever is returned and either runs the
     /// imperative plan or prints the manual guidance (ADR-0022 optional-method growth).
-    async fn install_strategies(
-        &self,
-        candidate: &PackageCandidate,
-    ) -> Vec<crate::model::InstallStrategy> {
+    async fn install_strategies(&self, candidate: &PackageCandidate) -> Vec<crate::model::InstallStrategy> {
         let _ = candidate;
         Vec::new()
     }
@@ -378,9 +375,7 @@ impl ProviderRegistry {
             providers.push(Box::new(dnf::Dnf::new()));
         }
         if config.is_enabled("copr") {
-            providers.push(Box::new(copr::Copr::new(
-                crate::platform::Platform::detect().arch,
-            )));
+            providers.push(Box::new(copr::Copr::new(crate::platform::Platform::detect().arch)));
         }
         if config.is_enabled("apt") {
             providers.push(Box::new(apt::Apt::new()));
@@ -469,10 +464,7 @@ pub(crate) fn http_client() -> Result<reqwest::Client> {
 /// (cargo/npm/pipx/go…), so the network + not-found + error-formatting policy lives in
 /// one place; `source_id` prefixes error messages. Providers with a different request
 /// shape (github's authed release fetch, copr's query search) use `http_client` directly.
-pub(crate) async fn get_json_opt<T: DeserializeOwned>(
-    source_id: &str,
-    url: &str,
-) -> Result<Option<T>> {
+pub(crate) async fn get_json_opt<T: DeserializeOwned>(source_id: &str, url: &str) -> Result<Option<T>> {
     let resp = http_client()?
         .get(url)
         .send()
@@ -494,9 +486,7 @@ pub(crate) async fn get_json_opt<T: DeserializeOwned>(
 /// POST a JSON `body` and deserialize the JSON response — same network/not-found/error
 /// policy as [`get_json_opt`], but for APIs that take a request body (Flathub's v2 search).
 pub(crate) async fn post_json_opt<B: serde::Serialize + ?Sized, T: DeserializeOwned>(
-    source_id: &str,
-    url: &str,
-    body: &B,
+    source_id: &str, url: &str, body: &B,
 ) -> Result<Option<T>> {
     let resp = http_client()?
         .post(url)
@@ -522,11 +512,7 @@ pub(crate) async fn post_json_opt<B: serde::Serialize + ?Sized, T: DeserializeOw
 /// `InstallPlan` shape so a model change is a one-line edit, not a per-provider one.
 /// (copr's two-step enable+install plan is genuinely different and stays local.)
 pub(crate) fn command_plan(
-    source_id: &str,
-    name: &str,
-    argv: Vec<String>,
-    needs_root: bool,
-    reasons: Vec<String>,
+    source_id: &str, name: &str, argv: Vec<String>, needs_root: bool, reasons: Vec<String>,
 ) -> InstallPlan {
     InstallPlan {
         candidate_ref: name.to_string(),
@@ -591,9 +577,7 @@ pub(crate) async fn which(bin: &str) -> bool {
 /// builder (unlike [`which`], which runs the tool). Used by managers that may live outside
 /// PATH right after their own installer ran.
 pub(crate) fn on_path(bin: &str) -> bool {
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| is_executable(&dir.join(bin)))
-    })
+    std::env::var_os("PATH").is_some_and(|paths| std::env::split_paths(&paths).any(|dir| is_executable(&dir.join(bin))))
 }
 
 /// The first of `candidates` that exists and is executable, with a leading `~` expanded.

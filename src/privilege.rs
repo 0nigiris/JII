@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Privilege escalation — the single place that runs external commands and elevates.
 //!
 //! Its one responsibility is running a command with the right elevation (`sudo` on a
@@ -49,9 +53,7 @@ impl Privilege {
             .await
             .map_err(|e| JiiError::spawn("sudo", e))?;
         if !status.success() {
-            return Err(JiiError::Other(anyhow::anyhow!(
-                "privilege escalation was declined"
-            )));
+            return Err(JiiError::Other(anyhow::anyhow!("privilege escalation was declined")));
         }
         Ok(())
     }
@@ -66,10 +68,7 @@ impl Privilege {
             .await
             .map_err(|e| JiiError::spawn(&argv[0], e))?;
         if !status.success() {
-            return Err(JiiError::Other(anyhow::anyhow!(
-                "command failed: {}",
-                argv.join(" ")
-            )));
+            return Err(JiiError::Other(anyhow::anyhow!("command failed: {}", argv.join(" "))));
         }
         Ok(())
     }
@@ -87,10 +86,7 @@ impl Privilege {
     /// when piped, managers line-buffer plain text rather than the `\r`-animated bar they draw
     /// on a TTY, so newline framing is exactly what arrives here.
     pub async fn run_streamed<F: FnMut(&str)>(
-        &self,
-        argv: &[String],
-        needs_root: bool,
-        mut on_line: F,
+        &self, argv: &[String], needs_root: bool, mut on_line: F,
     ) -> Result<(bool, String)> {
         use std::process::Stdio;
         use tokio::io::{AsyncBufReadExt, BufReader};
@@ -183,10 +179,7 @@ mod tests {
     #[tokio::test]
     async fn run_streamed_reports_failure_without_erroring() {
         let p = Privilege::detect();
-        let (ok, _) = p
-            .run_streamed(&["false".into()], false, |_| {})
-            .await
-            .unwrap();
+        let (ok, _) = p.run_streamed(&["false".into()], false, |_| {}).await.unwrap();
         assert!(!ok); // a non-zero exit is (false, output), not a hard Err
     }
 }

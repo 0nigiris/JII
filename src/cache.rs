@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! On-disk search cache with TTL and stale-on-error fallback.
 //!
 //! Search results are cached per `(source, query)`. A fresh entry (younger than the
@@ -51,8 +55,7 @@ pub struct Cache {
 impl Cache {
     /// Default path: `$XDG_CACHE_HOME/jii/search-cache.json`.
     fn default_path() -> Option<PathBuf> {
-        directories::ProjectDirs::from("", "", "jii")
-            .map(|d| d.cache_dir().join("search-cache.json"))
+        directories::ProjectDirs::from("", "", "jii").map(|d| d.cache_dir().join("search-cache.json"))
     }
 
     /// The on-disk cache file path (backs `jii cache`).

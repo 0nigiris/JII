@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! JII — Just Install It. Entry point: parse args, load config, dispatch.
 //!
 //! Wiring only. The command surface lives in [`cli`], presentation in [`ui`], and

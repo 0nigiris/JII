@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Installation registry: JSON record of what JII installed and a history log.
 //!
 //! The registry stores *intentions* — it is a hint, not the source of truth. Before
@@ -65,8 +69,8 @@ impl Registry {
     pub fn load_from(path: &Path) -> Result<Registry> {
         match std::fs::read_to_string(path) {
             Ok(text) => {
-                let mut reg: Registry = serde_json::from_str(&text)
-                    .map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
+                let mut reg: Registry =
+                    serde_json::from_str(&text).map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
                 reg.path = Some(path.to_path_buf());
                 Ok(reg)
             }
@@ -136,8 +140,7 @@ impl Registry {
             .iter()
             .find(|r| r.name == name && r.source_id == source_id)
             .and_then(|r| r.version.clone());
-        self.installed
-            .retain(|r| !(r.name == name && r.source_id == source_id));
+        self.installed.retain(|r| !(r.name == name && r.source_id == source_id));
         self.history.push(HistoryEvent {
             action: Action::Remove,
             name: name.to_string(),

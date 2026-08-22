@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Platform detection: distro, architecture, PATH, and session kind.
 //!
 //! `Platform` is a **pure host-facts value object** — it answers only *"what is this

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Confirmation prompts and the trust barrier.
 //!
 //! `default_yes` is a *trust threshold*, not a global "always yes": a candidate at
@@ -8,8 +12,8 @@
 use std::io::{self, Write};
 
 use crossterm::event::{
-    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
-    MouseButton, MouseEventKind,
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton,
+    MouseEventKind,
 };
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, queue, terminal};
@@ -43,11 +47,7 @@ impl PromptFlags {
 /// unless the user opted in via `trust.allow_untrusted_auto`) — ADR-0006. `count` only
 /// tunes the wording (a single package reads "Install?", many read "Install all?").
 pub fn confirm_install_batch(
-    renderer: &Renderer,
-    least_trusted: TrustLevel,
-    count: usize,
-    config: &Config,
-    flags: &PromptFlags,
+    renderer: &Renderer, least_trusted: TrustLevel, count: usize, config: &Config, flags: &PromptFlags,
 ) -> bool {
     if flags.no {
         return false;
@@ -64,10 +64,7 @@ pub fn confirm_install_batch(
         if (flags.auto || flags.yes) && config.trust.allow_untrusted_auto {
             return true;
         }
-        renderer.warn(&crate::t!(
-            "prompt.less_trusted",
-            level = least_trusted.label()
-        ));
+        renderer.warn(&crate::t!("prompt.less_trusted", level = least_trusted.label()));
         // Default to "no" when a less-trusted source is involved.
         return ask(renderer, &question, false);
     }
@@ -147,12 +144,7 @@ fn truncate_display(s: &str, max: usize) -> String {
 
 /// The crossterm menu itself. Enables raw mode + mouse capture, draws the items inline,
 /// and *always* restores the terminal before returning (even on error).
-fn run_menu(
-    renderer: &Renderer,
-    header: &str,
-    options: &[String],
-    default: usize,
-) -> io::Result<Option<usize>> {
+fn run_menu(renderer: &Renderer, header: &str, options: &[String], default: usize) -> io::Result<Option<usize>> {
     let palette = renderer.palette();
     let mut out = io::stdout();
 
@@ -359,8 +351,12 @@ fn ask_key(question: &str, hint: &str, default_yes: bool) -> io::Result<bool> {
             match event::read()? {
                 Event::Key(k) if k.kind == KeyEventKind::Press => match k.code {
                     // Russian «д/н» answer too — a ru-locale user shouldn't have to switch layouts.
-                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('д') | KeyCode::Char('Д') => return Ok(true),
-                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('н') | KeyCode::Char('Н') => return Ok(false),
+                    KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Char('д') | KeyCode::Char('Д') => {
+                        return Ok(true);
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('н') | KeyCode::Char('Н') => {
+                        return Ok(false);
+                    }
                     KeyCode::Enter => return Ok(default_yes),
                     KeyCode::Esc => return Ok(false),
                     KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -397,4 +393,3 @@ fn ask_line(question: &str, hint: &str, default_yes: bool) -> bool {
         _ => default_yes,
     }
 }
-

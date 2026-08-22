@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Achievements — a small, playful ledger of milestones the user hits while using JII.
 //!
 //! Purely cosmetic: nothing here changes what JII installs, ranks, or recommends. Unlocking
@@ -54,44 +58,214 @@ pub struct Achievement {
 /// extreme grinds, and finally the secret.
 pub const CATALOG: &[Achievement] = &[
     // Everyday — you bump into these just by using JII.
-    Achievement { id: "first-install", icon: "🌱", secret: false, revealed_by: None },
-    Achievement { id: "doctor", icon: "🩺", secret: false, revealed_by: None },
-    Achievement { id: "explorer", icon: "🔍", secret: false, revealed_by: None },
-    Achievement { id: "cleaner", icon: "🧹", secret: false, revealed_by: None },
-    Achievement { id: "fresh", icon: "🔄", secret: false, revealed_by: None },
-    Achievement { id: "wizard", icon: "🧙", secret: false, revealed_by: None },
-    Achievement { id: "paper-trail", icon: "🔮", secret: false, revealed_by: None },
+    Achievement {
+        id: "first-install",
+        icon: "🌱",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "doctor",
+        icon: "🩺",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "explorer",
+        icon: "🔍",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "cleaner",
+        icon: "🧹",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "fresh",
+        icon: "🔄",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "wizard",
+        icon: "🧙",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "paper-trail",
+        icon: "🔮",
+        secret: false,
+        revealed_by: None,
+    },
     // Have to hunt for these.
-    Achievement { id: "dry-runner", icon: "🧾", secret: false, revealed_by: None },
-    Achievement { id: "auditor", icon: "🛡️", secret: false, revealed_by: None },
-    Achievement { id: "sniper", icon: "🎯", secret: false, revealed_by: None },
-    Achievement { id: "haul", icon: "📦", secret: false, revealed_by: None },
-    Achievement { id: "translator", icon: "🌍", secret: false, revealed_by: None },
-    Achievement { id: "self-made", icon: "🧬", secret: false, revealed_by: None },
-    Achievement { id: "bootstrapper", icon: "🔧", secret: false, revealed_by: None },
-    Achievement { id: "night-owl", icon: "🌙", secret: false, revealed_by: None },
-    Achievement { id: "early-bird", icon: "🦉", secret: false, revealed_by: None },
-    Achievement { id: "polyglot", icon: "🗺️", secret: false, revealed_by: None },
-    Achievement { id: "centurion", icon: "🏆", secret: false, revealed_by: None },
+    Achievement {
+        id: "dry-runner",
+        icon: "🧾",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "auditor",
+        icon: "🛡️",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "sniper",
+        icon: "🎯",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "haul",
+        icon: "📦",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "translator",
+        icon: "🌍",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "self-made",
+        icon: "🧬",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "bootstrapper",
+        icon: "🔧",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "night-owl",
+        icon: "🌙",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "early-bird",
+        icon: "🦉",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "polyglot",
+        icon: "🗺️",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "centurion",
+        icon: "🏆",
+        secret: false,
+        revealed_by: None,
+    },
     // Extreme grinds.
-    Achievement { id: "millennium", icon: "💯", secret: false, revealed_by: None },
-    Achievement { id: "completionist", icon: "👑", secret: false, revealed_by: None },
+    Achievement {
+        id: "millennium",
+        icon: "💯",
+        secret: false,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "completionist",
+        icon: "👑",
+        secret: false,
+        revealed_by: None,
+    },
     // Secret — the boss fights. Each fight's endings hang off its badge and only appear
     // once you've won it at least once.
-    Achievement { id: "sans", icon: "💀", secret: true, revealed_by: None },
-    Achievement { id: "jevil", icon: "🃏", secret: true, revealed_by: None },
-    Achievement { id: "jevil-spare", icon: "😴", secret: true, revealed_by: Some("jevil") },
-    Achievement { id: "jevil-kill", icon: "⚔️", secret: true, revealed_by: Some("jevil") },
-    Achievement { id: "jevil-both", icon: "♠️", secret: true, revealed_by: Some("jevil") },
-    Achievement { id: "spamton", icon: "🎭", secret: true, revealed_by: None },
-    Achievement { id: "spamton-spare", icon: "🧵", secret: true, revealed_by: Some("spamton") },
-    Achievement { id: "spamton-kill", icon: "💥", secret: true, revealed_by: Some("spamton") },
-    Achievement { id: "spamton-both", icon: "📞", secret: true, revealed_by: Some("spamton") },
-    Achievement { id: "flowey", icon: "🌻", secret: true, revealed_by: None },
-    Achievement { id: "flowey-normal", icon: "🌼", secret: true, revealed_by: Some("flowey") },
-    Achievement { id: "flowey-hard", icon: "🥀", secret: true, revealed_by: Some("flowey") },
-    Achievement { id: "flowey-both", icon: "🌺", secret: true, revealed_by: Some("flowey") },
-    Achievement { id: "boss-slayer", icon: "👺", secret: true, revealed_by: None },
+    Achievement {
+        id: "sans",
+        icon: "💀",
+        secret: true,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "jevil",
+        icon: "🃏",
+        secret: true,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "jevil-spare",
+        icon: "😴",
+        secret: true,
+        revealed_by: Some("jevil"),
+    },
+    Achievement {
+        id: "jevil-kill",
+        icon: "⚔️",
+        secret: true,
+        revealed_by: Some("jevil"),
+    },
+    Achievement {
+        id: "jevil-both",
+        icon: "♠️",
+        secret: true,
+        revealed_by: Some("jevil"),
+    },
+    Achievement {
+        id: "spamton",
+        icon: "🎭",
+        secret: true,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "spamton-spare",
+        icon: "🧵",
+        secret: true,
+        revealed_by: Some("spamton"),
+    },
+    Achievement {
+        id: "spamton-kill",
+        icon: "💥",
+        secret: true,
+        revealed_by: Some("spamton"),
+    },
+    Achievement {
+        id: "spamton-both",
+        icon: "📞",
+        secret: true,
+        revealed_by: Some("spamton"),
+    },
+    Achievement {
+        id: "flowey",
+        icon: "🌻",
+        secret: true,
+        revealed_by: None,
+    },
+    Achievement {
+        id: "flowey-normal",
+        icon: "🌼",
+        secret: true,
+        revealed_by: Some("flowey"),
+    },
+    Achievement {
+        id: "flowey-hard",
+        icon: "🥀",
+        secret: true,
+        revealed_by: Some("flowey"),
+    },
+    Achievement {
+        id: "flowey-both",
+        icon: "🌺",
+        secret: true,
+        revealed_by: Some("flowey"),
+    },
+    Achievement {
+        id: "boss-slayer",
+        icon: "👺",
+        secret: true,
+        revealed_by: None,
+    },
 ];
 
 /// A boss fight, as the ledger sees it: the badge it grants, the paths it can end on, and the
@@ -124,10 +298,26 @@ pub const FLOWEY_SENTINEL: &str = "flowey-install";
 
 /// Every boss, in fight order. `boss-slayer` is earned by unlocking all of them.
 pub const BOSSES: &[Boss] = &[
-    Boss { id: "sans", endings: &[], sentinel: None },
-    Boss { id: "jevil", endings: MERCY_ENDINGS, sentinel: Some(JEVIL_SENTINEL) },
-    Boss { id: "spamton", endings: MERCY_ENDINGS, sentinel: Some(SPAMTON_SENTINEL) },
-    Boss { id: "flowey", endings: FLOWEY_ENDINGS, sentinel: Some(FLOWEY_SENTINEL) },
+    Boss {
+        id: "sans",
+        endings: &[],
+        sentinel: None,
+    },
+    Boss {
+        id: "jevil",
+        endings: MERCY_ENDINGS,
+        sentinel: Some(JEVIL_SENTINEL),
+    },
+    Boss {
+        id: "spamton",
+        endings: MERCY_ENDINGS,
+        sentinel: Some(SPAMTON_SENTINEL),
+    },
+    Boss {
+        id: "flowey",
+        endings: FLOWEY_ENDINGS,
+        sentinel: Some(FLOWEY_SENTINEL),
+    },
 ];
 
 /// Look up a boss by its badge id.
@@ -254,7 +444,9 @@ impl Achievements {
     fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
         use sha2::{Digest, Sha256};
         const BLOCK: usize = 64;
+
         let mut k = [0u8; BLOCK];
+
         if key.len() > BLOCK {
             k[..32].copy_from_slice(&Sha256::digest(key));
         } else {
@@ -301,12 +493,15 @@ impl Achievements {
         let text = match std::fs::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(Achievements { path: Some(path.to_path_buf()), ..Default::default() });
+                return Ok(Achievements {
+                    path: Some(path.to_path_buf()),
+                    ..Default::default()
+                });
             }
             Err(e) => return Err(JiiError::io(path, e)),
         };
-        let raw: RawStored = serde_json::from_str(&text)
-            .map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
+        let raw: RawStored =
+            serde_json::from_str(&text).map_err(|e| JiiError::Config(format!("{}: {e}", path.display())))?;
 
         let has_v2_fields = raw.counters.is_some() || raw.sources.is_some();
         let ledger = Ledger {
@@ -325,9 +520,17 @@ impl Achievements {
         };
 
         if tampered {
-            Ok(Achievements { ledger: Ledger::default(), path: Some(path.to_path_buf()), tampered: true })
+            Ok(Achievements {
+                ledger: Ledger::default(),
+                path: Some(path.to_path_buf()),
+                tampered: true,
+            })
         } else {
-            Ok(Achievements { ledger, path: Some(path.to_path_buf()), tampered: false })
+            Ok(Achievements {
+                ledger,
+                path: Some(path.to_path_buf()),
+                tampered: false,
+            })
         }
     }
 
@@ -347,7 +550,10 @@ impl Achievements {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| JiiError::io(parent, e))?;
         }
-        let out = StoredOut { ledger: &self.ledger, sig: Self::sign(&self.ledger) };
+        let out = StoredOut {
+            ledger: &self.ledger,
+            sig: Self::sign(&self.ledger),
+        };
         let text = serde_json::to_string_pretty(&out)
             .map_err(|e| JiiError::Other(anyhow::anyhow!("failed to serialize achievements: {e}")))?;
         std::fs::write(path, text).map_err(|e| JiiError::io(path, e))
@@ -496,7 +702,10 @@ mod tests {
     fn ending_badges_stay_hidden_until_the_boss_is_beaten() {
         let mut store = Achievements::default();
         let hidden_at_first = visible(&store).any(|a| a.id == "jevil-spare");
-        assert!(!hidden_at_first, "an ending badge must not show before the fight is found");
+        assert!(
+            !hidden_at_first,
+            "an ending badge must not show before the fight is found"
+        );
 
         store.unlock("jevil");
         let shown_now = visible(&store).any(|a| a.id == "jevil-spare");
@@ -550,11 +759,7 @@ mod tests {
 
         // Forge `sans` into the JSON, leaving the (now-stale) signature in place.
         let text = std::fs::read_to_string(&path).unwrap();
-        let doctored = text.replacen(
-            "\"doctor\":",
-            "\"sans\": \"2020-01-01T00:00:00Z\",\n    \"doctor\":",
-            1,
-        );
+        let doctored = text.replacen("\"doctor\":", "\"sans\": \"2020-01-01T00:00:00Z\",\n    \"doctor\":", 1);
         std::fs::write(&path, doctored).unwrap();
 
         let back = Achievements::load_from(&path).unwrap();

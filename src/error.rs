@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Error types for JII.
 //!
 //! The core uses a single [`JiiError`] enum so failures carry a clear, typed cause
@@ -116,10 +120,7 @@ mod tests {
 
     #[test]
     fn io_remedy_depends_on_kind() {
-        let not_found = JiiError::io(
-            "/no/such",
-            std::io::Error::from(std::io::ErrorKind::NotFound),
-        );
+        let not_found = JiiError::io("/no/such", std::io::Error::from(std::io::ErrorKind::NotFound));
         assert!(not_found.remedy().unwrap().contains("does not exist"));
 
         let denied = JiiError::io(
