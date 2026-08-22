@@ -220,10 +220,15 @@ impl Default for UiConfig {
 }
 
 impl Config {
+    /// JII's config directory, `$XDG_CONFIG_HOME/jii`. Also where token files live
+    /// (see `secret`), so both resolve through the same place.
+    pub fn config_dir() -> Option<PathBuf> {
+        directories::ProjectDirs::from("", "", "jii").map(|d| d.config_dir().to_path_buf())
+    }
+
     /// Default path: `$XDG_CONFIG_HOME/jii/config.toml`.
     pub fn default_path() -> Option<PathBuf> {
-        directories::ProjectDirs::from("", "", "jii")
-            .map(|d| d.config_dir().join("config.toml"))
+        Self::config_dir().map(|d| d.join("config.toml"))
     }
 
     /// Load config from `path`, falling back to defaults if it does not exist.

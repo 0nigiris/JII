@@ -467,6 +467,9 @@ allow_untrusted_auto = false
 [network]
 timeout_secs = 8
 cache_ttl_secs = 3600
+# Names the token in two places at once: the environment variable, and — lowercased —
+# the file JII reads it from, `~/.config/jii/github_token`. See ADR-0083 for why a
+# shell-profile `export` is not the recommended route.
 github_token_env = "GITHUB_TOKEN"
 
 [ui]

@@ -60,6 +60,15 @@ pub trait Provider: Send + Sync {
         false
     }
 
+    /// Where this source's API credential came from, if it needs one and found one — the
+    /// **provenance only**, never the secret ([`crate::secret::Origin`]). `jii doctor` reports
+    /// it so the user can see which of the three places their token was picked up from.
+    /// Default `None`: a source that authenticates nothing has nothing to report, and the core
+    /// therefore never has to ask "is this the GitHub one?" (ADR-0004).
+    fn credential_origin(&self) -> Option<crate::secret::Origin> {
+        None
+    }
+
     /// Find candidates for a query. Must not panic on failure — a returned `Err`
     /// lets the engine tag the source and continue with the rest.
     async fn search(&self, query: &Query) -> Result<Vec<PackageCandidate>>;

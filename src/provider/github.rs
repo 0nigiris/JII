@@ -33,6 +33,13 @@ impl Forge for GithubForge {
         format!("https://github.com/{owner}/{repo}")
     }
 
+    /// The GitHub CLI already stores a token for anyone who ran `gh auth login`. Asking it
+    /// beats asking the user to copy a secret anywhere: nothing new lands on disk, and the
+    /// token never enters the environment where other processes could read it (ADR-0083).
+    fn token_command(&self) -> Option<&'static [&'static str]> {
+        Some(&["gh", "auth", "token"])
+    }
+
     async fn latest_release(
         &self,
         client: &reqwest::Client,

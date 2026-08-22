@@ -123,10 +123,11 @@ fn scrub_pairs() -> Vec<(String, &'static str)> {
         }
     }
     for var in ["USER", "LOGNAME"] {
-        if let Ok(user) = std::env::var(var) {
-            if user.len() > 1 && !pairs.iter().any(|(n, _)| *n == user) {
-                pairs.push((user, "USER"));
-            }
+        if let Ok(user) = std::env::var(var)
+            && user.len() > 1
+            && !pairs.iter().any(|(n, _)| *n == user)
+        {
+            pairs.push((user, "USER"));
         }
     }
     pairs.sort_by_key(|(n, _)| std::cmp::Reverse(n.len()));

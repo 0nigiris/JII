@@ -788,6 +788,24 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   corrected. 324 tests.
                   **Open:** the credits name only Toby Fox and the TurboWarp Packager — the Scratch
                   project's author/source link is still needed from the owner.
+            - [x] **Outside PR review + the token it exposed (2026-08-22)** (ADR-0083, ADR-0084).
+                  Reviewed `justpav05`'s PR #12. Its one genuinely important finding: JII's own
+                  setup told the user to `export GITHUB_TOKEN=…` in `~/.bashrc`, which hands the
+                  credential to every process they start — including the unverified binaries JII
+                  installs — from a world-readable file. New `src/secret.rs`: env var → 
+                  `~/.config/jii/github_token` → the forge's own helper (`gh auth token`), with the
+                  helper on `Forge::token_command` and provenance on `Provider::credential_origin`
+                  so the core stays source-agnostic. `doctor` now names *where* the token came from
+                  and flags a 0644 token file with a `chmod` it offers to run. Also: `rust-version`
+                  corrected 1.85 → 1.88 (21 let-chains in `src/`), `rust-toolchain.toml` on stable,
+                  `rustfmt.toml` with `use_small_heuristics = "Max"` (config only — ADR-0013 still
+                  keeps `cargo fmt` out of the DoD), six dependency majors raised, `Ideas_ToDo.md`
+                  deleted. 330 tests.
+                  **Rejected from the PR:** deleting `Cargo.lock` (CI and release build `--locked`),
+                  and the whole-tree reformat riding along with licensing work.
+                  **Deferred:** `reqwest` 0.12 → 0.13 — it resplits the TLS features, and the
+                  release binaries are static musl; needs verifying against a real release build.
+                  **Still worth taking from #12:** the SPDX headers, `LICENSES/`, `REUSE.toml`.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

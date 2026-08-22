@@ -43,6 +43,16 @@ pub trait Forge: Send + Sync {
         repo: &str,
         token: Option<&str>,
     ) -> Result<Release>;
+    /// The forge's own credential helper, e.g. `["gh", "auth", "token"]` for GitHub. Consulted
+    /// **last**, only when neither the configured env var nor JII's token file supplied one
+    /// (see `crate::secret`). Default: none — a forge without a CLI simply has no third option.
+    ///
+    /// This lives on the forge, not in the core, so that knowing "GitHub has `gh`" stays a
+    /// property of the GitHub forge and never becomes an `if source == "github"` (ADR-0004).
+    fn token_command(&self) -> Option<&'static [&'static str]> {
+        None
+    }
+
     /// A health probe (rate-limit etc.) for `jii doctor`. Default: assume reachable — a forge
     /// with no cheap probe still works; per-request errors surface during search.
     async fn probe(&self, client: &reqwest::Client, token: Option<&str>) -> Probe {
@@ -85,20 +95,34 @@ pub struct ForgeAsset {
 /// arch-matching asset → a verified user-space install into `~/.local/bin`.
 pub struct ForgeProvider {
     forge: Box<dyn Forge>,
-    /// Env var holding an API token (lifts anonymous rate limits).
+    /// Env var naming the token (lifts anonymous rate limits). Also names the token file —
+    /// `GITHUB_TOKEN` → `~/.config/jii/github_token` (see [`crate::secret`]).
     token_env: String,
     /// Host architecture used to filter release assets (e.g. `"x86_64"`).
     arch: &'static str,
+    /// Resolved once per process: a search hits `token()` several times, and the third
+    /// resolution step may spawn the forge's credential helper. `None` inside means "looked,
+    /// found nothing" — so a missing token costs one lookup, not one per request.
+    token: std::sync::OnceLock<Option<crate::secret::Token>>,
 }
 
 impl ForgeProvider {
     pub fn new(forge: Box<dyn Forge>, token_env: String, arch: &'static str) -> Self {
-        ForgeProvider { forge, token_env, arch }
+        ForgeProvider { forge, token_env, arch, token: std::sync::OnceLock::new() }
     }
 
-    /// An API token from the configured env var, if set and non-empty.
-    fn token(&self) -> Option<String> {
-        std::env::var(&self.token_env).ok().filter(|s| !s.is_empty())
+    /// The resolved token, with its provenance — env var, JII's token file, or the forge's
+    /// credential helper, in that order ([`crate::secret::resolve`]). `jii doctor` reads the
+    /// provenance; everything else only wants the value below.
+    pub fn resolved_token(&self) -> Option<&crate::secret::Token> {
+        self.token
+            .get_or_init(|| crate::secret::resolve(&self.token_env, self.forge.token_command()))
+            .as_ref()
+    }
+
+    /// An API token to authenticate forge requests with, if one could be found at all.
+    fn token(&self) -> Option<&str> {
+        self.resolved_token().map(|t| t.value.as_str())
     }
 
     /// Resolve `owner/repo` to its installable candidate(s): latest release → arch-matching
@@ -108,7 +132,7 @@ impl ForgeProvider {
     async fn resolve(&self, owner: &str, repo: &str) -> Result<Vec<PackageCandidate>> {
         let client = http_client()?;
         let token = self.token();
-        let release = self.forge.latest_release(&client, owner, repo, token.as_deref()).await?;
+        let release = self.forge.latest_release(&client, owner, repo, token).await?;
 
         let Some((asset, kind)) = select_asset(&release.assets, self.arch) else {
             return Ok(Vec::new());
@@ -116,7 +140,7 @@ impl ForgeProvider {
 
         // Resolve a checksum now (network stays here) so the plan can enforce it.
         let sha256 = match find_checksums_asset(&release.assets) {
-            Some(sums) => fetch_text(&client, &sums.url, token.as_deref())
+            Some(sums) => fetch_text(&client, &sums.url, token)
                 .await
                 .ok()
                 .and_then(|text| parse_checksums(&text, &asset.name)),
@@ -149,6 +173,10 @@ impl Provider for ForgeProvider {
     fn trust(&self) -> TrustLevel {
         // A third-party binary from an arbitrary repo — always confirmed explicitly.
         TrustLevel::Untrusted
+    }
+
+    fn credential_origin(&self) -> Option<crate::secret::Origin> {
+        self.resolved_token().map(|t| t.origin.clone())
     }
 
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
@@ -194,7 +222,7 @@ impl Provider for ForgeProvider {
     async fn search_repos(&self, query: &str, page: u32) -> Result<Vec<RepoHit>> {
         let client = http_client()?;
         self.forge
-            .search_repos(&client, query, REPO_SEARCH_PER_PAGE, page, self.token().as_deref())
+            .search_repos(&client, query, REPO_SEARCH_PER_PAGE, page, self.token())
             .await
     }
 
@@ -266,7 +294,7 @@ impl Provider for ForgeProvider {
         let Ok(client) = http_client() else {
             return Probe::unreachable();
         };
-        self.forge.probe(&client, self.token().as_deref()).await
+        self.forge.probe(&client, self.token()).await
     }
 }
 

@@ -1,0 +1,13 @@
+# Not enforced by CI and not part of the Definition of Done (ADR-0013) — this file exists
+# so that anyone who *does* run `cargo fmt` produces the house style rather than a
+# thousand-line reflow of the whole tree.
+#
+# use_small_heuristics = "Max" is the important line: it raises every width heuristic to
+# max_width, which keeps compact one-line struct literals and if/else expressions intact.
+# Without it rustfmt explodes each of the 34 entries in `achievements.rs` from one line
+# into five.
+edition = "2024"
+max_width = 120
+use_small_heuristics = "Max"
+fn_params_layout = "Compressed"
+newline_style = "Unix"

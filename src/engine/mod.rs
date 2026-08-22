@@ -197,6 +197,16 @@ impl Engine {
         !self.providers.is_empty()
     }
 
+    /// Every enabled source that found an API credential, as `(source id, where it came from)`.
+    /// Provenance only — no secret crosses this boundary. `jii doctor` uses it to tell the user
+    /// whether their token was picked up, and from which of the three places (`crate::secret`).
+    pub fn credential_origins(&self) -> Vec<(&'static str, crate::secret::Origin)> {
+        self.providers
+            .iter()
+            .filter_map(|p| p.credential_origin().map(|o| (p.id(), o)))
+            .collect()
+    }
+
     /// Whether at least one enabled provider is usable here — its backing tool is present.
     /// The honest, source-based replacement for the old Fedora-only wall (ADR-0029):
     /// "supported" means "JII has a working source", a question only the provider set can

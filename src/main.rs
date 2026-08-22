@@ -20,6 +20,7 @@ mod progress;
 mod provider;
 mod recommend;
 mod registry;
+mod secret;
 mod selfupdate;
 mod shellrc;
 mod ui;

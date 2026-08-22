@@ -2852,24 +2852,54 @@ impl Cli {
     }
 
     /// Explain the optional GitHub token: what it buys you (a 60→5000 requests/hour lift) and
-    /// exactly how to create + export it. Read-only guidance — JII never mints or stores a
-    /// token. If one is already present in the environment, we just confirm it.
+    /// where to put it. Read-only guidance — JII never mints or stores a token.
+    ///
+    /// This used to say "add `export GITHUB_TOKEN=…` to your `~/.bashrc`", which is how most
+    /// of the internet phrases it and is the wrong advice from a package installer: an
+    /// exported variable is handed to every process the user starts, including the unverified
+    /// binaries JII itself installs, and `~/.bashrc` is world-readable by default. So the
+    /// recommended routes are now `gh auth login` (nothing lands on disk for us) or a 0600
+    /// file only JII reads; the env var stays documented for CI and one-off runs (ADR-0083).
     fn github_token_help(&self, config: &Config, renderer: &Renderer) {
         let palette = renderer.palette();
         let env = &config.network.github_token_env;
         renderer.heading(&crate::t!("setup.gh_header"));
         renderer.info(&crate::t!("setup.gh_benefit"));
 
-        if std::env::var(env).is_ok_and(|v| !v.is_empty()) {
-            renderer.success(&crate::t!("setup.gh_already", env = env.clone()));
+        // Already have one? Say where it's coming from and stop. Only the two places JII can
+        // check without a provider (env var, token file) — `doctor` sees `gh` too, via the
+        // providers, and skips this whole block when any of them found a credential.
+        if let Some(token) = crate::secret::resolve(env, None) {
+            renderer.success(&crate::t!(
+                "setup.gh_already",
+                origin = describe_origin(&token.origin)
+            ));
             return;
         }
 
         renderer.info("");
         renderer.info(&crate::t!("setup.gh_step_create"));
-        renderer.info(&crate::t!("setup.gh_step_export"));
-        renderer.info(&palette.dim(&format!("   export {env}=\"ghp_your_token_here\"")));
-        renderer.info(&crate::t!("setup.gh_step_reload"));
+
+        // Route A — the GitHub CLI, when it's already here. Zero secrets for JII to hold.
+        renderer.info("");
+        renderer.info(&crate::t!("setup.gh_route_cli"));
+        renderer.info(&palette.dim("   gh auth login"));
+
+        // Route B — a file only this user can read. The `umask` + here-doc form keeps the
+        // token out of shell history too, which a plain `echo … > file` would not.
+        let path = token_file_display(env);
+        renderer.info("");
+        renderer.info(&crate::t!("setup.gh_route_file", path = path.clone()));
+        renderer.info(&palette.dim(&format!("   (umask 077; cat > {path})")));
+        renderer.info(&palette.dim(&crate::t!("setup.gh_route_file_hint")));
+
+        // Route C — the environment, scoped to what it's good for and no longer recommended
+        // as a place to *keep* a token.
+        renderer.info("");
+        renderer.info(&crate::t!("setup.gh_route_env", env = env.clone()));
+        renderer.info(&palette.dim(&format!("   {env}=ghp_your_token_here jii install owner/repo")));
+        renderer.info("");
+        renderer.info(&palette.dim(&crate::t!("setup.gh_why_not_rc")));
         renderer.info(&palette.dim(&crate::t!("setup.gh_never")));
     }
 
@@ -3116,14 +3146,17 @@ impl Cli {
         // actually in play here and no token is set (otherwise the source line already shows
         // the 5000-req budget, and repeating it would just be noise).
         let gh_present = diagnostics.iter().any(|d| d.id == "github");
-        let has_token = std::env::var(&token_env).is_ok_and(|v| !v.is_empty());
-        if gh_present && !has_token {
+        // Ask the providers where their credential came from rather than reading the env var
+        // here: a token in JII's own file or in `gh` counts just as much (ADR-0083), and the
+        // core stays out of the business of knowing which source that is.
+        let token_origin = engine.credential_origins().first().map(|(_, o)| describe_origin(o));
+        if gh_present && token_origin.is_none() {
             renderer.info("");
             self.github_token_help(&config_for_fix, renderer);
         }
 
         // System checks: probe the host environment (network, common tools, PATH, Flathub).
-        let facts = gather_system_facts(&token_env).await;
+        let facts = gather_system_facts(&token_env, token_origin).await;
         let checks = system_checks(&facts);
 
         // Interactive (a TTY, not JSON, not `--no`) → we'll turn actionable items into a
@@ -4204,9 +4237,15 @@ struct SystemFacts {
     /// build tools in its closing notes.
     brew: bool,
     build_tools: bool,
-    /// The env var that holds a GitHub token, and whether it is set.
+    /// The env var that names the token (and, lowercased, its file — see `crate::secret`).
     token_env: String,
-    token_set: bool,
+    /// Where a token was found, already rendered for display, or `None` if there is none.
+    /// Provenance only: the value itself never reaches `doctor`.
+    token_origin: Option<String>,
+    /// A token file that other users on this machine can read. `Some(path)` is a finding —
+    /// the whole point of moving off `~/.bashrc` is that the secret stops being readable
+    /// by everything, and a 0644 file gives that back (ADR-0083).
+    token_file_exposed: Option<std::path::PathBuf>,
 }
 
 /// Compute the environment checks from already-gathered [`SystemFacts`]. Pure (no I/O —
@@ -4308,22 +4347,48 @@ fn system_checks(f: &SystemFacts) -> Vec<SystemCheck> {
         });
     }
 
-    // GitHub token — a rate-limit papercut, never a blocker.
-    checks.push(if f.token_set {
-        SystemCheck::pass(crate::t!("check.token_ok", env = f.token_env))
-    } else {
-        SystemCheck::warn(
+    // GitHub token — a rate-limit papercut, never a blocker. Report *where* it came from:
+    // "a token is set" used to be the whole answer, which left a user with two of them
+    // (a stale export and a fresh file) guessing which one was in play.
+    checks.push(match &f.token_origin {
+        Some(origin) => SystemCheck::pass(crate::t!("check.token_ok", origin = origin.clone())),
+        None => SystemCheck::warn(
             crate::t!("check.token_missing", env = f.token_env),
-            crate::t!("check.token_advice", env = f.token_env),
-        )
+            crate::t!("check.token_advice", path = token_file_display(&f.token_env)),
+        ),
     });
+
+    // A token file the rest of the machine can read is worth saying out loud, and is one
+    // `chmod` away from fixed — so doctor offers to run it.
+    if let Some(path) = &f.token_file_exposed {
+        let shown = path.display().to_string();
+        checks.push(SystemCheck {
+            ok: false,
+            critical: false,
+            label: crate::t!("check.token_perms", path = shown.clone()),
+            advice: Some(crate::t!("check.token_perms_advice", path = shown.clone())),
+            fix: Some(Fix::Command {
+                argv: vec!["chmod".into(), "600".into(), shown.clone()],
+                show: format!("chmod 600 {shown}"),
+            }),
+        });
+    }
 
     checks
 }
 
+/// The path a token for `env` is read from, for advice text. Falls back to the literal
+/// `~/.config/jii/...` when no config dir resolves — advice must still be copy-pasteable.
+fn token_file_display(env: &str) -> String {
+    match crate::secret::token_path(env) {
+        Some(p) => p.display().to_string(),
+        None => format!("~/.config/jii/{}", env.to_ascii_lowercase()),
+    }
+}
+
 /// Probe host facts for `doctor` (the one place these environment I/O calls live). Runs
 /// the independent tool/network probes concurrently so `doctor` stays snappy.
-async fn gather_system_facts(token_env: &str) -> SystemFacts {
+async fn gather_system_facts(token_env: &str, token_origin: Option<String>) -> SystemFacts {
     let base = directories::BaseDirs::new();
     let home = base.as_ref().map(|b| b.home_dir().to_path_buf());
     let local_bin = home
@@ -4356,7 +4421,10 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
     let brew = crate::provider::which(&crate::provider::homebrew::brew_bin()).await;
     let flathub = if flatpak { flathub_configured().await } else { false };
     let cargo_bin_relevant = cargo || cargo_bin.exists();
-    let token_set = std::env::var(token_env).is_ok_and(|v| !v.is_empty());
+    // Check the file's mode whether or not it is the token actually in use: an exposed
+    // secret sitting next to config.toml is worth reporting even when an env var wins.
+    let token_file_exposed = crate::secret::token_path(token_env)
+        .filter(|p| p.exists() && crate::secret::is_world_readable(p));
 
     SystemFacts {
         local_bin,
@@ -4372,7 +4440,21 @@ async fn gather_system_facts(token_env: &str) -> SystemFacts {
         brew,
         build_tools: cc && make,
         token_env: token_env.to_string(),
-        token_set,
+        token_origin,
+        token_file_exposed,
+    }
+}
+
+/// Render a credential's provenance for `doctor` — the *place*, never the secret.
+fn describe_origin(origin: &crate::secret::Origin) -> String {
+    match origin {
+        crate::secret::Origin::Env(var) => crate::t!("check.token_from_env", env = var.clone()),
+        crate::secret::Origin::File(path) => {
+            crate::t!("check.token_from_file", path = path.display().to_string())
+        }
+        crate::secret::Origin::Helper(cmd) => {
+            crate::t!("check.token_from_helper", cmd = cmd.clone())
+        }
     }
 }
 
@@ -4977,7 +5059,8 @@ mod tests {
             brew: true,
             build_tools: true,
             token_env: "GITHUB_TOKEN".to_string(),
-            token_set: true,
+            token_origin: Some("from the GITHUB_TOKEN environment variable".to_string()),
+            token_file_exposed: None,
         }
     }
 
@@ -5003,14 +5086,40 @@ mod tests {
     }
 
     #[test]
-    fn system_checks_flag_missing_token_with_its_env_name() {
+    fn a_missing_token_points_at_the_file_to_create_not_at_bashrc() {
         let mut f = facts_all_good();
         f.token_env = "GH_PAT".to_string();
-        f.token_set = false;
+        f.token_origin = None;
         let checks = system_checks(&f);
-        let token_check = checks.iter().find(|c| c.label.contains("GH_PAT")).unwrap();
-        assert!(!token_check.ok);
-        assert!(token_check.advice.as_deref().unwrap().contains("GH_PAT"));
+        let token_check = checks.iter().find(|c| !c.ok && c.label.contains("token")).unwrap();
+        let advice = token_check.advice.as_deref().unwrap();
+        // The file to create is named, and the old "export it in your shell profile"
+        // advice is gone for good (ADR-0083).
+        assert!(advice.contains("gh_pat"), "names the token file: {advice}");
+        assert!(!advice.contains("export"), "no shell-profile export: {advice}");
+        assert!(!advice.contains("bashrc"), "no shell-profile export: {advice}");
+    }
+
+    #[test]
+    fn a_found_token_is_reported_by_provenance_and_never_by_value() {
+        let f = facts_all_good();
+        let checks = system_checks(&f);
+        let token_check = checks.iter().find(|c| c.label.contains("token")).unwrap();
+        assert!(token_check.ok);
+        assert!(token_check.label.contains("GITHUB_TOKEN"), "says where: {}", token_check.label);
+    }
+
+    #[test]
+    fn a_world_readable_token_file_is_flagged_and_fixable() {
+        let mut f = facts_all_good();
+        f.token_file_exposed = Some(std::path::PathBuf::from("/home/x/.config/jii/github_token"));
+        let checks = system_checks(&f);
+        let perms = checks.iter().find(|c| c.label.contains("github_token")).unwrap();
+        assert!(!perms.ok);
+        match &perms.fix {
+            Some(Fix::Command { show, .. }) => assert!(show.starts_with("chmod 600 ")),
+            other => panic!("expected a chmod fix, got {other:?}"),
+        }
     }
 
     #[test]

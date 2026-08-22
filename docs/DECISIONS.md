@@ -3376,3 +3376,118 @@ previously returned 0 while printing an error; this is a fix, but it is a behavi
 anything that scripted around it. The devtest checklist's expectations for `jii list` and `jii how`
 were themselves wrong and were corrected in the same pass — a checklist that describes the bug as
 the expected result is worse than no checklist.
+
+---
+
+## ADR-0083 — A token belongs in a file JII reads, not in a shell profile everything inherits
+
+**Status.** Accepted (2026-08-22).
+
+**Context.** The first-run wizard and `jii doctor` both told the user, in step 2 of three, to add
+
+```
+export GITHUB_TOKEN="ghp_…"
+```
+
+to `~/.bashrc` (or `~/.zshrc`). That is the advice most of the internet gives, and it is the wrong
+advice coming from **this** program in particular, for two independent reasons:
+
+- An exported variable is inherited by the environment of **every process the user starts** from
+  that point on. JII's whole job is installing third-party software, some of it from sources it
+  itself labels `untrusted`. Handing a credential to every one of those binaries — readable from
+  `/proc/<pid>/environ` by anything running as that user — to save an HTTP rate limit is a bad
+  trade, and a strange one for a tool that ranks sources by trust and refuses to run as root.
+- `~/.bashrc` is mode 0644 on a default Fedora account. Any other user on the machine can read it.
+
+The report came from an outside contributor reviewing the repo, and it is correct. The token is
+optional and scopeless in our own instructions, so the blast radius is small — but the advice is
+what normalises the habit, and people reuse tokens they already have.
+
+**Decision.** JII resolves a token from three places, first hit wins, and recommends the last one
+least:
+
+1. **the configured environment variable** — kept, and still first. It is what CI sets from its
+   secret store, and what `GITHUB_TOKEN=… jii install owner/repo` sets for exactly one process.
+   The variable was never the problem; *persisting* it in a shell profile was.
+2. **`$XDG_CONFIG_HOME/jii/<var lowercased>`** — `GITHUB_TOKEN` → `~/.config/jii/github_token`, a
+   one-line file beside `config.toml` that only JII reads. Nothing exports it, so no child process
+   inherits it.
+3. **the forge's own credential helper** — `gh auth token`. Someone who has already run
+   `gh auth login` needs to do nothing at all, and the secret stays in whatever store `gh` chose.
+
+The helper is a property of the **forge** (`Forge::token_command`), not of the core, so "GitHub has
+a `gh` CLI" never becomes an `if source == "github"` (ADR-0004). Provenance is exposed through a new
+default-`None` `Provider::credential_origin`, so `jii doctor` reports *where* a token came from
+across any number of forges without naming one.
+
+**Alternatives rejected.**
+
+- *Keep the `~/.bashrc` advice and just document the risk.* Rejected: the tool's own setup flow is
+  where the habit is created. A warning under bad instructions is still bad instructions.
+- *Refuse to read a token file that is group/world-readable.* Rejected: it is the user's file and
+  their machine, and silently ignoring a token they deliberately placed is a dead end (a
+  standing UX rule here). `doctor` flags the mode instead, with a `chmod 600` it offers to run.
+- *Encrypt the token file, or reach for a keyring.* Rejected as overengineering for an optional,
+  scopeless, read-public-repos token. `gh auth login` already covers anyone who wants a real
+  credential store, and route 3 defers to it.
+- *Let JII write the token file itself (a `jii token` command).* Rejected for now: it is a new
+  command, new locale keys, and a new way to get a secret onto disk, to replace a two-token
+  shell snippet. The wizard prints `(umask 077; cat > …)` instead — 0600 by construction, and a
+  here-doc keeps the token out of shell history, which `echo … > file` would not.
+
+**Consequences.** `setup.gh_step_export` / `gh_step_reload` are gone from both locales, replaced by
+three labelled routes plus an explicit line saying why `~/.bashrc` is not among them.
+`check.token_ok` now names the provenance instead of asserting "the variable is set", which also
+fixes a real confusion: someone with a stale export *and* a fresh token file could not tell which
+one was in play. `doctor` gains one check (an exposed token file). The forge caches its resolution
+in a `OnceLock`, so the credential helper is spawned at most once per process rather than once per
+request. Anyone relying on the old advice keeps working unchanged — route 1 still reads the
+variable, wherever it was set.
+
+---
+
+## ADR-0084 — The declared MSRV was wrong; the lockfile stays; rustfmt gets a config but no gate
+
+**Status.** Accepted (2026-08-22).
+
+**Context.** An outside contributor's PR ("Cleaning up the repository", #12) bundled five separate
+changes: SPDX/REUSE licensing, a whole-tree `cargo fmt`, a `rust-toolchain.toml`, a `.gitignore`
+rewrite, and the deletion of `Cargo.lock`. Reviewing it forced decisions on four of them.
+
+**Decision.**
+
+- **`rust-version` is 1.88, not 1.85.** `src/` uses let-chains (`… && let Some(x) = …`) in 21
+  places; those stabilized in 1.88. Edition 2024 alone would only require 1.85, which is where the
+  wrong number came from. The declaration was a promise the crate could not keep: anyone on 1.85
+  got a wall of syntax errors instead of Cargo's "requires rustc 1.88". Correcting it also
+  un-suppressed a `collapsible_if` lint that clippy had been holding back because the suggested fix
+  needed an MSRV we claimed not to have — fixed in the same pass.
+- **`rust-toolchain.toml` is added, pinned to `stable`.** The contributor's argument is right:
+  without it, a contributor on rustup builds with whatever their default toolchain is. The channel
+  is `stable` rather than the 1.88 floor deliberately — pinning here pins CI too, and CI should keep
+  exercising current stable and current clippy. Holding the floor honest is `rust-version`'s job.
+- **`Cargo.lock` stays tracked.** JII is a binary crate distributed as prebuilt artifacts, `ci.yml`
+  and `release.yml` both build with `--locked` (they fail outright without the file), and ADR-0081
+  says a released tag names one immutable set of bytes — which is not true of a build that resolves
+  dependencies afresh. A package installer that silently picks up new transitive versions at build
+  time is also the wrong shape of program to be casual about. `.gitignore` carries a comment saying
+  so, because "why isn't this ignored" is a reasonable question to ask twice.
+- **`rustfmt.toml` is added; `cargo fmt` is still not run and still not gated.** ADR-0013 keeps
+  rustfmt out of the Definition of Done and that does not change here. The config exists so that
+  anyone who does run it produces the house style: `use_small_heuristics = "Max"` is the load-
+  bearing line — without it rustfmt explodes every compact struct literal, turning each of the 34
+  entries in `achievements.rs` from one line into five. Reformatting the tree, if it happens, is
+  its own commit with its own CI gate, not a rider on a licensing PR.
+
+**Dependencies.** Six majors were behind and were raised: `toml` 0.8→1, `directories` 5→6,
+`indicatif` 0.17→0.18, `sha2` 0.10→0.11, `zip` 2→8, `clap_mangen` 0.2→0.3, plus every in-range
+update. **`reqwest` 0.12→0.13 was deliberately deferred**: 0.13 renamed `rustls-tls` to `rustls` and
+split the feature set, which changes how TLS roots are selected — and JII's release binaries are
+static musl builds where getting that wrong breaks every download silently. That migration needs to
+be verified against an actual release build, so it gets its own change.
+
+**Consequences.** CI now resolves dependencies under a 1.88 floor, so `cargo add` picks
+MSRV-compatible versions on its own. `zip` 2→8 and `sha2` 0.10→0.11 are on the GitHub-release
+install path (extract, then verify); both are covered by existing unit tests that exercise the real
+round trip rather than only compiling. The rest of PR #12 — SPDX headers, `LICENSES/`, `REUSE.toml`
+— is good work and is left to land as its own PR.

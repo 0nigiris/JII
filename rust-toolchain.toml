@@ -1,0 +1,11 @@
+# Contributors on rustup get a toolchain that can actually build JII, instead of a wall of
+# syntax errors from whatever their default happened to be. `src/` uses let-chains in 21
+# places and those stabilized in **1.88** — that is the real floor, and it is what
+# `rust-version` in Cargo.toml declares (edition 2024 alone would only ask for 1.85).
+#
+# The channel is `stable`, not the pinned floor: pinning here would also pin CI, which
+# would then stop exercising current stable and current clippy. Keeping the floor honest
+# is Cargo's `rust-version` job, not this file's.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

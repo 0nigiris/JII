@@ -8,11 +8,46 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-21_
+_Last updated: 2026-08-22_
 
 ---
 
-## Most recent work (2026-08-21, batch 20) — read this first
+## Most recent work (2026-08-22, batch 21) — read this first
+
+**Reviewed an outside contributor's PR (#12, `justpav05`, "Cleaning up the repository"), took the
+parts that were right, and fixed the security problem they found. ADR-0083 and ADR-0084.**
+
+- **The token advice was the real bug.** The first-run wizard and `jii doctor` told the user to put
+  `export GITHUB_TOKEN=…` in `~/.bashrc`. An exported variable goes into the environment of every
+  process the user starts — including binaries JII itself installed from sources it labels
+  `untrusted` — and `~/.bashrc` is 0644 by default. New `src/secret.rs` resolves a token from three
+  places, first hit wins: the env var (kept — CI, and one-off `GITHUB_TOKEN=… jii …`), then
+  `~/.config/jii/github_token`, then the forge's own helper (`gh auth token`). The helper hangs off
+  `Forge::token_command`, and provenance off a default-`None` `Provider::credential_origin`, so the
+  core still never asks "is this GitHub?" (ADR-0004). Verified live, all four states: gh-authed
+  host, file at 0600, file at 0644 (flagged, with a `chmod 600` doctor offers to run), and nothing
+  anywhere. `Token`'s `Debug` is hand-written so the secret cannot reach a log; there's a test.
+- **The declared MSRV was a lie.** `rust-version = "1.85"` while `src/` has 21 let-chains, which
+  need 1.88. Corrected — and that un-suppressed a `collapsible_if` clippy lint that had been held
+  back because the fix required an MSRV we claimed not to have. `rust-toolchain.toml` added on
+  `stable` (not the floor — pinning here would pin CI off current clippy).
+- **Six dependency majors raised**: `toml` 0.8→1, `directories` 5→6, `indicatif` 0.17→0.18,
+  `sha2` 0.10→0.11, `zip` 2→8, `clap_mangen` 0.2→0.3, plus all in-range updates. **`reqwest`
+  0.12→0.13 deliberately deferred** — it renames `rustls-tls`→`rustls` and resplits the feature
+  set, which decides how TLS roots are found, and our release binaries are static musl. That one
+  needs verifying against a real release build.
+- **`rustfmt.toml` added, `cargo fmt` still not run and still not gated** (ADR-0013 stands). The
+  load-bearing line is `use_small_heuristics = "Max"`; without it rustfmt turns each of the 34
+  entries in `achievements.rs` from one line into five. That was the contributor's actual question.
+- **Rejected from the PR:** deleting `Cargo.lock` (CI and release both build `--locked` and fail
+  outright without it; ADR-0081 wants a tag to name fixed bytes), and the whole-tree reformat as a
+  rider on a licensing PR. **Still worth taking from it:** the SPDX headers, `LICENSES/` and
+  `REUSE.toml` — good work, left to land as its own PR. `Ideas_ToDo.md` deleted (stale, duplicated
+  `docs/ROADMAP.md`, nothing referenced it).
+- 330 tests, clippy clean, build clean. **Not yet released** — this is unreleased work on `master`.
+- **Still open, needs the owner:** the Scratch project's author/source link (see batch 18).
+
+## Previous work (2026-08-21, batch 20)
 
 **The owner ran `jii yes-I-am-dev-and-want-to-test` on Arch (10 pass / 2 fail) and pasted the log.
 Three real defects, two of them dead ends. Fixed and released as `v0.1.18-beta`; ADR-0082.**
