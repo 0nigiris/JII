@@ -807,6 +807,8 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   **Deferred:** `reqwest` 0.12 → 0.13 — it resplits the TLS features, and the
                   release binaries are static musl; needs verifying against a real release build.
                   **Still worth taking from #12:** the SPDX headers, `LICENSES/`, `REUSE.toml`.
+                  **Released as `v0.1.19-beta` (2026-08-24)** — version bumped in `Cargo.toml`,
+                  `data/changelog.toml` and `packaging/jii.spec`; tag pushed, release workflow ran.
       - **Next (owner to steer):** the **install-easy epic** landed; declarative-Nix **complete** through Etap C.
             **Next core work (owner directive, 2026-07-11):** unfreeze **T6 — bootstrap a missing manager**
             (offer to install e.g. Flatpak, then the app; engine today *skips* `!is_available()` sources, so

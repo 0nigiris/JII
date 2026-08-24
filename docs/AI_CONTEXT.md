@@ -8,7 +8,7 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-22_
+_Last updated: 2026-08-24_
 
 ---
 
@@ -44,7 +44,10 @@ parts that were right, and fixed the security problem they found. ADR-0083 and A
   rider on a licensing PR. **Still worth taking from it:** the SPDX headers, `LICENSES/` and
   `REUSE.toml` — good work, left to land as its own PR. `Ideas_ToDo.md` deleted (stale, duplicated
   `docs/ROADMAP.md`, nothing referenced it).
-- 330 tests, clippy clean, build clean. **Not yet released** — this is unreleased work on `master`.
+- 330 tests, clippy clean, build clean. **Released as `v0.1.19-beta`** (2026-08-24): version bumped
+  in `Cargo.toml`, `data/changelog.toml` and `packaging/jii.spec`, tag pushed, release workflow builds
+  the 12 assets. The changelog entry covers only the user-visible half — where the token is read from,
+  and what `jii doctor` now says about it.
 - **Closed, do not reopen:** the Scratch project's author/source link. The owner found the game
   on a site with no attribution and has no link to give. Credits stay as they are — Toby Fox and
   the TurboWarp Packager, with the takedown offer. Stop asking.

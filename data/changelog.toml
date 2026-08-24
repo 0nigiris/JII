@@ -13,6 +13,18 @@
 # * `date` is the release date, ISO `YYYY-MM-DD`.
 
 [[release]]
+version = "0.1.19-beta"
+date = "2026-08-24"
+en = [
+  "JII no longer tells you to put your GitHub token in `.bashrc`. An exported variable is handed to every program you start and can be read straight out of `/proc` — so JII now reads the token from a file only you can open (`~/.config/jii/github_token`), or takes it from the GitHub CLI with `gh auth token` if you are already signed in there. Setting the variable still works for a one-off run or in CI; it is just no longer the advice.",
+  "`jii doctor` now says *where* your token came from — the environment, the file, or the CLI — and never what it is. If the token file is readable by other users on the machine, it says so and offers to lock it down for you.",
+]
+ru = [
+  "JII больше не советует класть токен GitHub в `.bashrc`. Экспортированная переменная достаётся каждой программе, которую вы запускаете, и читается прямо из `/proc` — поэтому теперь JII берёт токен из файла, который можете открыть только вы (`~/.config/jii/github_token`), или у GitHub CLI командой `gh auth token`, если вы там уже вошли. Переменная по-прежнему работает для разового запуска и в CI — просто это больше не рекомендация.",
+  "`jii doctor` теперь говорит, *откуда* взялся токен — из окружения, из файла или из CLI — и никогда не показывает его сам. Если файл с токеном могут прочитать другие пользователи машины, он скажет об этом и предложит закрыть доступ.",
+]
+
+[[release]]
 version = "0.1.18-beta"
 date = "2026-08-21"
 en = [

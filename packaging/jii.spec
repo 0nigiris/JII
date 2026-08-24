@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.18-beta
+%global _tag v0.1.19-beta
 
 Name:           jii
-Version:        0.1.18~beta
+Version:        0.1.19~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,15 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Mon Aug 24 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.19~beta-1
+- Rebuild against the v0.1.19-beta release: a GitHub token is no longer advised into the
+  shell profile (ADR-0083). JII reads it from `~/.config/jii/github_token` or from
+  `gh auth token`; the environment variable still works but is no longer the advice,
+  since an exported secret is inherited by every child process and readable via /proc.
+- `jii doctor` reports the token's provenance and never its value, and flags a
+  world-readable token file with an offered `chmod 600`.
+- Declared MSRV corrected to 1.88 (the crate uses let-chains); dependencies refreshed;
+  `rust-toolchain.toml` and `rustfmt.toml` added (formatting stays ungated, ADR-0013).
 * Fri Aug 21 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.18~beta-1
 - Three findings from the Arch tester round (ADR-0082). A name that resolves nowhere
   printed nothing and exited 0: ADR-0065's bootstrap step returns on an empty
