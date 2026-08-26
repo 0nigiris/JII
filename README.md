@@ -7,7 +7,7 @@
 **A smart, universal package _installer_ for Linux.**
 
 You think about *software*. JII figures out *how* to install it — from every source on your
-machine — picks the best option, and explains *why*. (Hey reader. This project was made withn claude like 100%. Only what is mine here is ideas, decisions, tests on WM's etc. Right now I am learning rust to write down this project from 0 sooo this project will be "Archived" like some days. That means it will get like 0 updates in this period. BUT STILL WRITE ISSUES if smth happens. Thanks for undertanding)
+machine — picks the best option, and explains *why*.
 
 <br>
 
