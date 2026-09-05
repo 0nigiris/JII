@@ -587,13 +587,71 @@ pub(crate) async fn run_capture_lax(argv: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// How long `which` waits for a tool to say its version before deciding it is simply slow.
+///
+/// A Gentoo tester's run hung with no output at all on the one step that reports a total
+/// miss. That step asks *every* provider `is_available()` — and `emerge --version` loads
+/// the whole Portage stack, which on a cold tree can take longer than a person will wait.
+/// Unlike the search fan-out, those probes had no timeout at all (ADR-0086).
+const WHICH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
 /// Whether an executable is runnable (used for `is_available`).
+///
+/// Three things this is careful about:
+///
+/// * **Don't run what isn't there.** A filesystem look on `PATH` first, so the common case
+///   (most managers are absent on any given host) costs no process at all.
+/// * **Don't wait forever.** The run is bounded by [`WHICH_TIMEOUT`] and killed on drop, so
+///   one slow tool can't stall a whole command. A tool that is on `PATH` but too slow to
+///   answer counts as **present** — it exists, it's just heavy (Portage); calling it absent
+///   would silently drop the host's own package manager out of the search.
+/// * **Ask once.** The answer is memoized for the process; installing a manager mid-run
+///   invalidates it via [`forget_availability`], which the bootstrap path calls.
 pub(crate) async fn which(bin: &str) -> bool {
-    Command::new(bin)
-        .arg("--version")
-        .output()
-        .await
-        .is_ok_and(|o| o.status.success())
+    if let Some(known) = availability_cache().lock().unwrap_or_else(|e| e.into_inner()).get(bin) {
+        return *known;
+    }
+    // Homebrew and Nix are asked about by absolute path (their installers don't touch this
+    // shell's PATH), so a `/` means "look right there" rather than "search PATH".
+    let exists = if bin.contains('/') {
+        is_executable(std::path::Path::new(bin))
+    } else {
+        on_path(bin)
+    };
+    let present = if !exists {
+        false
+    } else {
+        let run = Command::new(bin).arg("--version").kill_on_drop(true).output();
+        match tokio::time::timeout(WHICH_TIMEOUT, run).await {
+            Ok(Ok(o)) => o.status.success(),
+            Ok(Err(_)) => false,
+            Err(_) => true, // on PATH, just slow to introduce itself
+        }
+    };
+    availability_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(bin.to_string(), present);
+    present
+}
+
+type AvailabilityCache = std::sync::Mutex<std::collections::HashMap<String, bool>>;
+
+fn availability_cache() -> &'static AvailabilityCache {
+    static CACHE: std::sync::OnceLock<AvailabilityCache> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+/// Forget what we know about which tools are installed.
+///
+/// Called after JII sets a manager up, so the very next check sees it. Without this the
+/// memoization in [`which`] would keep answering "flatpak isn't here" for the rest of a run
+/// that just installed Flatpak — the T6 bootstrap flow depends on a live answer.
+pub(crate) fn forget_availability() {
+    availability_cache()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
 }
 
 /// Whether `bin` is on `$PATH` — a pure filesystem check, so it works in a synchronous plan

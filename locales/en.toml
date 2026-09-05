@@ -114,6 +114,9 @@ step_failed = "This command failed: {command}"
 [install]
 searching = "Searching…"
 searching_for = "Searching for '{name}'..."
+# Shown while the broaden-on-miss round runs. It is a second pass over every source,
+# and it used to run in complete silence.
+searching_wider = "Nothing exact — looking wider…"
 not_found = "Not found: {names}"
 not_found_via = "Not found via source '{source}': {names}"
 browse_hint = "Not in your sources — browse for it and see how to install:"

@@ -389,7 +389,16 @@ impl Engine {
     ///    tried (too little signal to be a useful guess).
     ///
     /// Returns candidates ranked against whatever term matched (empty if nothing did).
+    ///
+    /// **Bounded in wall-clock time.** Each stage below is a *full* fan-out over every
+    /// source, and a name that matches nothing runs them all: one prefix round, two stem
+    /// rounds and up to sixteen typo variants — nineteen searches, sequentially. On a
+    /// healthy host that is ~20 s of silence for a name that was never going to resolve; on
+    /// a phone container with a slow source it is what a tester reported as a hang
+    /// (ADR-0086). The stages are ordered best-guess-first, so spending the budget simply
+    /// drops the tail that was least likely to help.
     pub async fn broaden_search(&self, name: &str) -> Vec<PackageCandidate> {
+        let budget = Budget::for_secs(self.config.network.timeout_secs * 2);
         let prefix_q = Query::name(name).with_match_mode(MatchMode::Prefix);
         let prefix = self.rank(name, self.search(&prefix_q).await.candidates);
         if !prefix.is_empty() {
@@ -398,6 +407,9 @@ impl Engine {
 
         let chars: Vec<char> = name.chars().collect();
         for drop in 1..=2 {
+            if budget.spent() {
+                return Vec::new();
+            }
             if chars.len().saturating_sub(drop) < 4 {
                 break;
             }
@@ -414,6 +426,9 @@ impl Engine {
         //    into unrelated prefixes. Only for terms long enough to carry signal.
         if chars.len() >= 4 {
             for variant in typo_variants(name) {
+                if budget.spent() {
+                    break;
+                }
                 let q = Query::name(&variant);
                 let hit = self.rank(&variant, self.search(&q).await.candidates);
                 if !hit.is_empty() {
@@ -1279,6 +1294,29 @@ fn group_by_source<T>(items: Vec<T>, source_of: impl Fn(&T) -> &str) -> Vec<(Str
 /// is the common slip) then **adjacent transpositions**; deduped, order-preserving, and capped so
 /// a miss on a long term stays a handful of extra searches, not dozens. Shared by the by-name
 /// broaden (`broaden_search`) and the GitHub repo picker.
+/// A wall-clock allowance for a multi-round operation.
+///
+/// Exists so "stop trying once this much time is gone" is one named thing with a test,
+/// rather than an `Instant` comparison inlined in three places.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Budget {
+    until: std::time::Instant,
+}
+
+impl Budget {
+    fn for_secs(secs: u64) -> Self {
+        Budget {
+            until: std::time::Instant::now() + Duration::from_secs(secs),
+        }
+    }
+
+    /// Whether the allowance is used up. Checked *between* rounds, never mid-round: a
+    /// round already under way keeps its own per-source timeout.
+    fn spent(&self) -> bool {
+        std::time::Instant::now() >= self.until
+    }
+}
+
 pub(crate) fn typo_variants(query: &str) -> Vec<String> {
     let chars: Vec<char> = query.chars().collect();
     let mut seen = std::collections::HashSet::new();
@@ -1328,6 +1366,13 @@ mod tests {
         assert_eq!(ids, vec!["dnf", "cargo", "npm"]);
         assert_eq!(groups[0].1, vec![("dnf", 1), ("dnf", 3)]);
         assert_eq!(groups[1].1, vec![("cargo", 2), ("cargo", 5)]);
+    }
+
+    #[test]
+    fn a_zero_budget_is_spent_before_the_first_round() {
+        // The guard that keeps a total miss from running all nineteen search rounds.
+        assert!(Budget::for_secs(0).spent());
+        assert!(!Budget::for_secs(30).spent());
     }
 
     #[test]

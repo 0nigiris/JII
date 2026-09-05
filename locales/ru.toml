@@ -109,6 +109,7 @@ step_failed = "Команда завершилась с ошибкой: {command
 [install]
 searching = "Поиск…"
 searching_for = "Ищу «{name}»..."
+searching_wider = "Точного совпадения нет — ищу шире…"
 not_found = "Не найдено: {names}"
 not_found_via = "Не найдено через источник «{source}»: {names}"
 browse_hint = "В ваших источниках нет — можно поискать вручную и посмотреть, как установить:"

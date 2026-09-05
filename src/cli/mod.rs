@@ -559,7 +559,13 @@ impl Cli {
             // and a trailing typo like `ayugramm` still reaches it. The recommend + confirm
             // below is the "did you mean" — the resolved name is shown and can be declined.
             if ranked.is_empty() {
+                // A second full round of every source, and it used to run in total silence —
+                // the terminal sat there with nothing on it. On a Gentoo container that
+                // silence was the whole visible symptom of a "hang" (ADR-0086): say what is
+                // happening, and say that it is a *wider* look, not a repeat of the first.
+                let spinner = crate::ui::Spinner::start(renderer, &crate::t!("install.searching_wider"));
                 ranked = engine.broaden_search(name).await;
+                spinner.stop().await;
             }
             if let Some(source) = pkg_source {
                 ranked.retain(|c| &c.source_id == source);
@@ -2600,6 +2606,8 @@ impl Cli {
             ));
             return false;
         }
+        // The installer just put a new binary on disk; forget what we knew about it.
+        crate::provider::forget_availability();
         if !engine.source_available(source_id).await {
             renderer.warn(&crate::t!("install.script_no_path", manager = manager));
             return false;
@@ -2699,6 +2707,9 @@ impl Cli {
         if self.global.dry_run {
             return Ok(true);
         }
+        // The manager was just installed, so anything remembered about "is it here?" is now
+        // out of date — including the answer we are about to ask for.
+        crate::provider::forget_availability();
         if !engine.source_available(source_id).await {
             return Ok(false);
         }
