@@ -16,7 +16,12 @@ dry_run_unchanged = "(dry-run: nothing was changed)"
 dry_run_not_installed = "(dry-run: nothing was installed)"
 dry_run_not_updated = "(dry-run: nothing was updated)"
 dry_run_not_removed = "(dry-run: nothing was removed)"
-needs_sudo = "  [needs sudo]"
+# What a privileged step is labelled with. Which one shows depends on the machine: the
+# helper it will really use, "as root" in a root shell, or a bare "needs root" where
+# nothing can grant it. Never the word "sudo" on a host that hasn't got it.
+needs_root_via = "  [needs {helper}]"
+as_root = "  [as root]"
+needs_root = "  [needs root]"
 usage_hint = "Usage: jii <package…>  (try `jii --help`)"
 unknown = "unknown"
 note = "note: {note}"
@@ -414,11 +419,17 @@ nix_upgrade_one = "Upgrade {name} in your Nix profile"
 nix_upgrade_many = "Upgrade in Nix profile: {names}"
 nix_upgrade_all = "Upgrade all packages in your Nix profile"
 
+[error]
+# Root is needed and nothing here can grant it. Said as a sentence before anything runs —
+# the alternative the tester actually met was `failed to run sudo: No such file or directory`.
+no_elevation = "This step needs root, and this machine has no way to ask for it: sudo, doas and pkexec are all missing."
+
 [remedy]
 unknown_source = "'{id}' is not a source JII knows. Known sources: {known}. Fix the `priority`/`disabled` list in your config (or run `jii setup`)."
 config = "Check the config file (usually ~/.config/jii/config.toml), or run `jii setup` to regenerate it."
 io_not_found = "{path} does not exist."
 io_denied = "Permission denied for {path}. Check its ownership and permissions."
+no_elevation = "Install one of them (`sudo`, or `doas` where your distro prefers it), or run the same command from a root shell: `su -c 'jii <name>'`."
 
 [library]
 cargo = "'{name}' is a Rust library on crates.io — it ships no executable, so there's nothing to install as a program."

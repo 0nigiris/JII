@@ -24,21 +24,37 @@ impl Privilege {
     }
 
     /// The concrete argv to run, with the elevation prefix when `needs_root`.
+    ///
+    /// Already root, or no helper at all: the command runs as itself. The first case is
+    /// correct (root needs nothing in front of it); the second is caught by
+    /// [`Privilege::ensure_possible`] before anything runs, so it never reaches here.
     pub fn elevated_argv(&self, argv: &[String], needs_root: bool) -> Vec<String> {
         if !needs_root {
             return argv.to_vec();
         }
-        let prefix = match self.kind {
-            ElevationKind::Sudo => "sudo",
-            ElevationKind::Pkexec => "pkexec",
+        let Some(prefix) = self.kind.helper() else {
+            return argv.to_vec();
         };
         let mut out = vec![prefix.to_string()];
         out.extend(argv.iter().cloned());
         out
     }
 
+    /// Refuse, in words, when a step needs root on a machine that cannot grant it.
+    ///
+    /// Called before the first privileged command so the run stops with an explanation
+    /// and a way out, instead of the spawn failure a tester actually saw
+    /// ("failed to run sudo: No such file or directory").
+    pub fn ensure_possible(&self, needs_root: bool) -> Result<()> {
+        if needs_root && self.kind == ElevationKind::Missing {
+            return Err(JiiError::NoElevation);
+        }
+        Ok(())
+    }
+
     /// Prime credentials once (`sudo -v`) so a batch of root commands prompts at most
-    /// once. A no-op for `pkexec`, which prompts per invocation.
+    /// once. A no-op for every other kind: `pkexec` prompts per invocation, `doas` has
+    /// no priming verb, and root has nothing to prime.
     pub async fn prime(&self) -> Result<()> {
         if self.kind != ElevationKind::Sudo {
             return Ok(());
@@ -59,6 +75,7 @@ impl Privilege {
     /// Run one command with inherited stdio (so output and prompts pass through),
     /// elevating if `needs_root`.
     pub async fn run(&self, argv: &[String], needs_root: bool) -> Result<()> {
+        self.ensure_possible(needs_root)?;
         let argv = self.elevated_argv(argv, needs_root);
         let status = Command::new(&argv[0])
             .args(&argv[1..])
@@ -95,6 +112,7 @@ impl Privilege {
         use std::process::Stdio;
         use tokio::io::{AsyncBufReadExt, BufReader};
 
+        self.ensure_possible(needs_root)?;
         let argv = self.elevated_argv(argv, needs_root);
         let mut child = Command::new(&argv[0])
             .args(&argv[1..])
@@ -161,6 +179,36 @@ mod tests {
             kind: ElevationKind::Sudo,
         };
         assert_eq!(p.elevated_argv(&argv(), false), argv());
+    }
+
+    /// A root shell runs the manager itself. Prefixing `sudo` there is what broke every
+    /// install on the tester's Arch container, which had no sudo at all.
+    #[test]
+    fn as_root_the_command_runs_bare() {
+        let p = Privilege {
+            kind: ElevationKind::AlreadyRoot,
+        };
+        assert_eq!(p.elevated_argv(&argv(), true), argv());
+        assert!(p.ensure_possible(true).is_ok());
+    }
+
+    #[test]
+    fn doas_stands_in_for_sudo_where_that_is_what_the_distro_ships() {
+        let p = Privilege {
+            kind: ElevationKind::Doas,
+        };
+        assert_eq!(p.elevated_argv(&argv(), true)[0], "doas");
+    }
+
+    /// No helper anywhere: JII must say so before running anything, and only for steps
+    /// that actually need root.
+    #[test]
+    fn no_helper_is_refused_in_words_but_only_when_root_is_needed() {
+        let p = Privilege {
+            kind: ElevationKind::Missing,
+        };
+        assert!(matches!(p.ensure_possible(true), Err(JiiError::NoElevation)));
+        assert!(p.ensure_possible(false).is_ok());
     }
 
     #[tokio::test]

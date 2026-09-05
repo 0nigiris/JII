@@ -35,13 +35,38 @@ impl Distro {
     }
 }
 
-/// How privilege elevation should be requested, based on the session.
+/// How privilege elevation should be requested on this host.
+///
+/// Two facts decide it, in this order: **are we already root** (a container, a rescue
+/// shell, `su -`), and **which helper actually exists here**. Assuming `sudo` cost a
+/// tester every install on a root-only Arch container — JII ran `sudo pacman …` and
+/// died with "failed to run sudo: No such file or directory". Being root is the easy
+/// case, not an error; and a machine with no helper at all must say so in words, not
+/// as a spawn failure (ADR-0085).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ElevationKind {
+    /// Already root — run the command directly, with no helper in front of it.
+    AlreadyRoot,
     /// Interactive terminal present — use `sudo`.
     Sudo,
+    /// `sudo` is absent but OpenBSD-style `doas` is here (Void, Alpine, Artix…).
+    Doas,
     /// Graphical session / no controlling TTY — use `pkexec`.
     Pkexec,
+    /// Root is needed and nothing on this machine can grant it.
+    Missing,
+}
+
+impl ElevationKind {
+    /// The helper binary this kind runs through, if any.
+    pub fn helper(&self) -> Option<&'static str> {
+        match self {
+            ElevationKind::Sudo => Some("sudo"),
+            ElevationKind::Doas => Some("doas"),
+            ElevationKind::Pkexec => Some("pkexec"),
+            ElevationKind::AlreadyRoot | ElevationKind::Missing => None,
+        }
+    }
 }
 
 /// Detected properties of the host, computed once and cached.
@@ -66,6 +91,9 @@ pub struct Platform {
     pub unicode: bool,
     /// Directories on `PATH`. Backs the user-space `~/.local/bin` check in `jii doctor`.
     pub path_dirs: Vec<PathBuf>,
+    /// The process's effective user id. `0` means we are already root, and every
+    /// elevation helper is then not just unnecessary but wrong to require.
+    pub euid: u32,
 }
 
 impl Platform {
@@ -81,17 +109,16 @@ impl Platform {
                 is_tty: detect_tty(),
                 unicode: detect_unicode(),
                 path_dirs: detect_path_dirs(),
+                euid: detect_euid(),
             }
         })
     }
 
     /// How to request elevation in the current session.
     pub fn elevation_kind(&self) -> ElevationKind {
-        if self.is_tty {
-            ElevationKind::Sudo
-        } else {
-            ElevationKind::Pkexec
-        }
+        choose_elevation(self.euid, self.is_tty, |bin| {
+            self.path_dirs.iter().any(|d| d.join(bin).is_file())
+        })
     }
 
     /// Whether a directory is on `PATH` (used to check `~/.local/bin` in `jii doctor`).
@@ -141,6 +168,60 @@ fn parse_arch_like(os_release: &str) -> bool {
     let id = field("ID").unwrap_or_default();
     let id_like = field("ID_LIKE").unwrap_or_default();
     id == "arch" || id_like.split_whitespace().any(|t| t == "arch")
+}
+
+/// Pick the elevation mechanism from three facts: our own uid, whether a terminal is
+/// there to type a password into, and which helpers exist. Pure, so the whole matrix is
+/// unit-tested without a container per case.
+///
+/// Order matters. Root first: a root shell needs no helper, and demanding one there is
+/// the bug this function was written for. Then, on a TTY, `sudo` → `doas` → `pkexec`
+/// (ask in the terminal the user is already looking at); with no TTY, `pkexec` first
+/// (it can raise its own graphical prompt) and the terminal helpers after.
+fn choose_elevation(euid: u32, is_tty: bool, has: impl Fn(&str) -> bool) -> ElevationKind {
+    if euid == 0 {
+        return ElevationKind::AlreadyRoot;
+    }
+    let order: &[(&str, ElevationKind)] = if is_tty {
+        &[
+            ("sudo", ElevationKind::Sudo),
+            ("doas", ElevationKind::Doas),
+            ("pkexec", ElevationKind::Pkexec),
+        ]
+    } else {
+        &[
+            ("pkexec", ElevationKind::Pkexec),
+            ("sudo", ElevationKind::Sudo),
+            ("doas", ElevationKind::Doas),
+        ]
+    };
+    order
+        .iter()
+        .find(|(bin, _)| has(bin))
+        .map(|(_, kind)| *kind)
+        .unwrap_or(ElevationKind::Missing)
+}
+
+/// Our effective uid, read from `/proc/self/status` — Linux-only, like JII, and it
+/// avoids pulling `libc` in for one number. The `Uid:` line is
+/// `real<TAB>effective<TAB>saved<TAB>fs`; the *effective* one is what the kernel
+/// checks. Unreadable `/proc` degrades to "not root", the safe answer: JII then asks
+/// for elevation it may not need, rather than skipping it when it does.
+fn detect_euid() -> u32 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| parse_euid(&s))
+        .unwrap_or(1)
+}
+
+fn parse_euid(status: &str) -> Option<u32> {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("Uid:"))?
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()
 }
 
 fn detect_tty() -> bool {
@@ -224,5 +305,41 @@ ID_LIKE="fedora"
         assert!(!parse_arch_like("ID=fedora\n"));
         assert!(!parse_arch_like("ID=ubuntu\nID_LIKE=debian\n"));
         assert!(!parse_arch_like(""));
+    }
+
+    /// The tester's Arch container: uid 0 and no `sudo` anywhere. JII used to ask for
+    /// sudo regardless and die on the spawn.
+    #[test]
+    fn root_needs_no_helper_even_with_none_installed() {
+        assert_eq!(choose_elevation(0, true, |_| false), ElevationKind::AlreadyRoot);
+        assert_eq!(choose_elevation(0, false, |_| true), ElevationKind::AlreadyRoot);
+    }
+
+    #[test]
+    fn a_terminal_prefers_sudo_then_doas_then_pkexec() {
+        assert_eq!(choose_elevation(1000, true, |_| true), ElevationKind::Sudo);
+        assert_eq!(choose_elevation(1000, true, |b| b != "sudo"), ElevationKind::Doas);
+        assert_eq!(choose_elevation(1000, true, |b| b == "pkexec"), ElevationKind::Pkexec);
+    }
+
+    #[test]
+    fn without_a_terminal_pkexec_leads_but_the_others_still_count() {
+        assert_eq!(choose_elevation(1000, false, |_| true), ElevationKind::Pkexec);
+        assert_eq!(choose_elevation(1000, false, |b| b == "sudo"), ElevationKind::Sudo);
+    }
+
+    #[test]
+    fn a_user_with_no_helper_at_all_is_named_not_a_spawn_error() {
+        assert_eq!(choose_elevation(1000, true, |_| false), ElevationKind::Missing);
+        assert_eq!(choose_elevation(1000, false, |_| false), ElevationKind::Missing);
+    }
+
+    #[test]
+    fn euid_is_the_second_field_of_the_uid_line() {
+        let status = "Name:\tjii\nUid:\t1000\t1000\t1000\t1000\nGid:\t1000\n";
+        assert_eq!(parse_euid(status), Some(1000));
+        // A setuid process: real 1000, effective 0 — the effective one is what counts.
+        assert_eq!(parse_euid("Uid:\t1000\t0\t0\t0\n"), Some(0));
+        assert_eq!(parse_euid("Name:\tjii\n"), None);
     }
 }

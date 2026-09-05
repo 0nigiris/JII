@@ -40,6 +40,13 @@ pub enum JiiError {
     #[error("")]
     AlreadyReported,
 
+    /// A step needs root and this machine has no way to ask for it: not root already,
+    /// and none of `sudo`, `doas`, `pkexec` installed. Raised **before** the first
+    /// privileged command, so the user reads a sentence instead of the spawn failure
+    /// "failed to run sudo: No such file or directory" (ADR-0085).
+    #[error("{}", crate::t!("error.no_elevation"))]
+    NoElevation,
+
     /// Any other error, wrapped for convenience.
     #[error(transparent)]
     Other(#[from] anyhow::Error),
@@ -86,6 +93,7 @@ impl JiiError {
             JiiError::StepFailed { .. } => None,
             // Already explained by the command that raised it, remedy included.
             JiiError::AlreadyReported => None,
+            JiiError::NoElevation => Some(crate::t!("remedy.no_elevation")),
             // `Other` wraps opaque text from many call sites; string-sniffing it would be
             // fragile and often wrong, so we don't guess a remedy here.
             JiiError::Other(_) => None,

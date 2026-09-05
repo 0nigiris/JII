@@ -209,7 +209,52 @@ esac
 
 # --- 3. Detect the native package manager + escalation ----------------------
 # NATIVE_KIND: rpm | deb (a package we publish and can install here) | aur | "" (none).
-if command -v dnf >/dev/null 2>&1; then
+#
+# The system's *identity* decides this, not whatever happens to be on PATH. A tester ran
+# this on Arch, Gentoo and Void inside a phone container that leaked Termux's `apt-get`
+# into PATH: the script announced "Install jii system-wide with apt" and then downloaded
+# a .deb — on Arch. `/etc/os-release` cannot lie about that. PATH is asked only to
+# confirm the manager that distro is supposed to have; an unrecognized ID falls back to
+# probing, so a distro we have never heard of still gets its native install.
+os_field() {
+  [ -r /etc/os-release ] || return 1
+  # Read it, never `.`-source it: os-release is shell syntax that fish (and a restricted
+  # sh) choke on, and sourcing would also dump its variables into our environment.
+  sed -n "s/^$1=//p" /etc/os-release | head -n1 | tr -d '"' | tr 'A-Z' 'a-z'
+}
+DISTRO_ID=$(os_field ID || echo "")
+DISTRO_LIKE=$(os_field ID_LIKE || echo "")
+
+# Match on ID first, then on any ID_LIKE token, so derivatives (Nobara, Mint, Manjaro,
+# CachyOS…) land with their parent family.
+mgr_for_family() {
+  for _t in "$DISTRO_ID" $DISTRO_LIKE; do
+    case "$_t" in
+      fedora | rhel | centos | rocky | almalinux) echo "dnf rpm"; return 0 ;;
+      debian | ubuntu | raspbian | linuxmint) echo "apt deb"; return 0 ;;
+      suse | opensuse | opensuse-leap | opensuse-tumbleweed | sles) echo "zypper rpm"; return 0 ;;
+      arch) echo "pacman aur"; return 0 ;;
+      # Distros whose native packaging JII does not publish. Listed on purpose: falling
+      # through to the PATH probe is exactly what put a .deb on Arch.
+      gentoo | void | alpine | nixos | slackware) echo "none none"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+NATIVE_MGR=""; NATIVE_KIND=""
+if FAMILY=$(mgr_for_family); then
+  _mgr=${FAMILY% *}; _kind=${FAMILY#* }
+  if [ "$_mgr" != "none" ]; then
+    # The distro says it has this manager — still confirm it is really here (a minimal
+    # container may ship without it) before offering a native install.
+    _bin=$_mgr
+    [ "$_mgr" = "apt" ] && _bin="apt-get"
+    if command -v "$_bin" >/dev/null 2>&1; then
+      NATIVE_MGR="$_mgr"; NATIVE_KIND="$_kind"
+    fi
+  fi
+elif command -v dnf >/dev/null 2>&1; then
   NATIVE_MGR="dnf"; NATIVE_KIND="rpm"
 elif command -v apt-get >/dev/null 2>&1; then
   NATIVE_MGR="apt"; NATIVE_KIND="deb"
@@ -217,14 +262,15 @@ elif command -v zypper >/dev/null 2>&1; then
   NATIVE_MGR="zypper"; NATIVE_KIND="rpm"
 elif command -v pacman >/dev/null 2>&1; then
   NATIVE_MGR="pacman"; NATIVE_KIND="aur"
-else
-  NATIVE_MGR=""; NATIVE_KIND=""
 fi
 
 if [ "$(id -u)" -eq 0 ]; then
   ESC=""; CAN_ESC=1
 elif command -v sudo >/dev/null 2>&1; then
   ESC="sudo"; CAN_ESC=1
+elif command -v doas >/dev/null 2>&1; then
+  # Void, Alpine, Artix and friends ship doas instead of sudo.
+  ESC="doas"; CAN_ESC=1
 else
   ESC=""; CAN_ESC=0
 fi
@@ -282,8 +328,11 @@ ask_default_yes() {
 
 # --- 6. Choose method (auto → ask or fall back) -----------------------------
 if [ "$METHOD" = "auto" ]; then
+  # Don't promise a sudo prompt to someone who is already root — the question should
+  # describe what will actually happen on this machine.
+  if [ -n "$ESC" ]; then ESC_NOTE=" (needs $ESC)"; else ESC_NOTE=""; fi
   if [ "$NATIVE_OK" -eq 1 ] \
-    && ask_default_yes "Install jii system-wide with $NATIVE_MGR (needs sudo)?  [Y = system / n = portable in ~/.local/bin] "; then
+    && ask_default_yes "Install jii system-wide with $NATIVE_MGR$ESC_NOTE?  [Y = system / n = portable in ~/.local/bin] "; then
     METHOD="native"
   else
     METHOD="portable"
@@ -365,7 +414,7 @@ portable_install() {
   install -m 0755 "$SRC" "$BIN_DIR/jii"
   ok "Installed to $BIN_DIR/jii"
 
-  # PATH hint (portable only — the native path lands in /usr/bin, already on PATH).
+  # PATH (portable only — the native path lands in /usr/bin, already on PATH).
   # Either way say something, so the user always knows whether `jii` is runnable now
   # (some distros, e.g. openSUSE, already put ~/.local/bin on PATH — then just confirm it).
   case ":$PATH:" in
@@ -374,10 +423,62 @@ portable_install() {
       ;;
     *)
       PORTABLE_RUN="$BIN_DIR/jii doctor"
-      bullet "$BIN_DIR is not on your PATH yet — add it to run \`jii\` by name:"
-      bullet "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
+      add_to_path
       ;;
   esac
+}
+
+# Put $BIN_DIR on PATH for next time — offering to do it rather than leaving the user
+# with homework. Two things went wrong for a tester here: the printed line used `source`,
+# which does not exist in dash (Void's /bin/sh: "source: not found"), and it always named
+# ~/.bashrc whatever shell they were in. The rc file now follows $SHELL, and the command
+# we print is POSIX `.`.
+add_to_path() {
+  _shell=$(basename "${SHELL:-sh}")
+  case "$_shell" in
+    fish)
+      RC="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
+      # fish is not POSIX: its own builtin is both the idiomatic and the only correct form.
+      LINE="fish_add_path $BIN_DIR"
+      RELOAD="exec fish"
+      ;;
+    zsh)
+      RC="${ZDOTDIR:-$HOME}/.zshrc"
+      LINE="export PATH=\"$BIN_DIR:\$PATH\""
+      RELOAD=". $RC"
+      ;;
+    bash)
+      RC="$HOME/.bashrc"
+      LINE="export PATH=\"$BIN_DIR:\$PATH\""
+      RELOAD=". $RC"
+      ;;
+    *)
+      # ksh, dash, ash, or an unknown login shell: ~/.profile is the one file they all read.
+      RC="$HOME/.profile"
+      LINE="export PATH=\"$BIN_DIR:\$PATH\""
+      RELOAD=". $RC"
+      ;;
+  esac
+
+  if [ -f "$RC" ] && grep -Fq "$BIN_DIR" "$RC" 2>/dev/null; then
+    bullet "$BIN_DIR is already added in $RC — open a new terminal (or run \`$RELOAD\`) to pick it up."
+    return 0
+  fi
+
+  if ask_default_yes "Add $BIN_DIR to your PATH in $(basename "$RC")?  [Y/n] "; then
+    mkdir -p "$(dirname "$RC")"
+    printf '\n# Added by the JII installer\n%s\n' "$LINE" >>"$RC" 2>/dev/null && {
+      ok "Added to $RC"
+      bullet "Run \`$RELOAD\` (or open a new terminal) and \`jii\` works by name."
+      PORTABLE_RUN="$BIN_DIR/jii doctor"
+      return 0
+    }
+    warn "Could not write $RC."
+  fi
+  bullet "$BIN_DIR is not on your PATH — add it to run \`jii\` by name:"
+  # `echo`, not `printf '%s\n'` — the escape survives into the rendered hint and split
+  # the suggested command across two lines.
+  bullet "  echo '$LINE' >> $RC && $RELOAD"
 }
 
 # --- 9. Do it ---------------------------------------------------------------

@@ -14,7 +14,9 @@ dry_run_unchanged = "(dry-run: ничего не изменено)"
 dry_run_not_installed = "(dry-run: ничего не установлено)"
 dry_run_not_updated = "(dry-run: ничего не обновлено)"
 dry_run_not_removed = "(dry-run: ничего не удалено)"
-needs_sudo = "  [нужен sudo]"
+needs_root_via = "  [нужен {helper}]"
+as_root = "  [от root]"
+needs_root = "  [нужен root]"
 usage_hint = "Использование: jii <пакет…>  (см. `jii --help`)"
 unknown = "неизвестно"
 note = "примечание: {note}"
@@ -412,11 +414,15 @@ nix_upgrade_one = "Обновить {name} в вашем профиле Nix"
 nix_upgrade_many = "Обновление в профиле Nix: {names}"
 nix_upgrade_all = "Обновить все пакеты в вашем профиле Nix"
 
+[error]
+no_elevation = "Этот шаг требует прав root, а попросить их на этой машине нечем: ни sudo, ни doas, ни pkexec не установлены."
+
 [remedy]
 unknown_source = "«{id}» — не известный JII источник. Известные источники: {known}. Исправьте список `priority`/`disabled` в конфиге (или выполните `jii setup`)."
 config = "Проверьте файл конфигурации (обычно ~/.config/jii/config.toml) или выполните `jii setup`, чтобы пересоздать его."
 io_not_found = "{path} не существует."
 io_denied = "Отказано в доступе к {path}. Проверьте владельца и права."
+no_elevation = "Установите любой из них (`sudo` или `doas`, если так принято в вашем дистрибутиве) либо выполните ту же команду из-под root: `su -c 'jii <название>'`."
 
 [library]
 cargo = "«{name}» — это библиотека Rust на crates.io: она не содержит исполняемого файла, поэтому устанавливать как программу нечего."

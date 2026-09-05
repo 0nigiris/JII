@@ -1035,7 +1035,7 @@ impl Cli {
         let palette = renderer.palette();
         for bp in batch {
             let sudo = if bp.plan.needs_root() {
-                palette.dim(&crate::t!("common.needs_sudo"))
+                palette.dim(&root_label())
             } else {
                 String::new()
             };
@@ -1404,7 +1404,7 @@ impl Cli {
         let palette = renderer.palette();
         for bp in batch {
             let sudo = if bp.plan.needs_root() {
-                palette.dim(&crate::t!("common.needs_sudo"))
+                palette.dim(&root_label())
             } else {
                 String::new()
             };
@@ -1750,7 +1750,7 @@ impl Cli {
         if renderer.is_friendly() && !self.global.dry_run {
             for plan in &system.plans {
                 let why = plan.reasons.first().cloned().unwrap_or_default();
-                let sudo = if plan.needs_root() { crate::t!("common.needs_sudo") } else { String::new() };
+                let sudo = if plan.needs_root() { root_label() } else { String::new() };
                 renderer.info(&format!("  {why}{sudo}"));
             }
         } else {
@@ -4025,6 +4025,20 @@ impl Cli {
 
 /// The names covered by a remove/update batch, flattened across plans (each plan may
 /// cover several records when the source merged them).
+/// How to label a step that needs root, in the words of *this* machine.
+///
+/// It used to be the fixed string "[needs sudo]", which was a lie on three kinds of
+/// host at once: a root shell (nothing is needed), a `doas` distro, and a container
+/// with no helper at all. Names the mechanism that will actually be used.
+fn root_label() -> String {
+    use crate::platform::ElevationKind;
+    match crate::platform::Platform::detect().elevation_kind() {
+        ElevationKind::AlreadyRoot => crate::t!("common.as_root"),
+        ElevationKind::Missing => crate::t!("common.needs_root"),
+        kind => crate::t!("common.needs_root_via", helper = kind.helper().unwrap_or("root")),
+    }
+}
+
 fn record_batch_names(batch: &[crate::engine::RecordBatchPlan]) -> Vec<String> {
     batch
         .iter()

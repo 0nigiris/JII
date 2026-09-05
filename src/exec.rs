@@ -22,6 +22,9 @@ use crate::ui::{Renderer, Spinner, describe_action};
 /// of plans prompts for a password at most once (`sudo -v` up front).
 pub async fn prime_for(plans: &[&InstallPlan], privilege: &Privilege) -> Result<()> {
     if plans.iter().any(|p| p.needs_root()) {
+        // Refuse here, before the first step prints anything, when this machine has no
+        // way to become root at all — the alternative is a spawn failure mid-install.
+        privilege.ensure_possible(true)?;
         privilege.prime().await?;
     }
     Ok(())
