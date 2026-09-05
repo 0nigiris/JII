@@ -302,6 +302,7 @@ gh_benefit = "JII installs release binaries from GitHub and searches repos there
 gh_already = "A token is already in place — {origin}. Nothing to do."
 gh_step_create = "Create a token → https://github.com/settings/tokens  ('Generate new token (classic)'). No scopes are needed to read public repositories — leave every box unchecked."
 gh_route_cli = "Best, if you have the GitHub CLI — JII asks it for the token, so nothing new is stored anywhere:"
+gh_route_jii = "Simplest — JII stores it for you, in a file only you can read (nothing is echoed, nothing reaches your shell history):"
 gh_route_file = "Otherwise, put it in a file only you can read ({path}) — paste the token, then press Ctrl+D:"
 gh_route_file_hint = "The leading umask makes the file 0600, and the here-doc keeps the token out of your shell history."
 gh_route_env = "For CI, or a single command — set it for that one run only:"
@@ -433,6 +434,20 @@ config = "Check the config file (usually ~/.config/jii/config.toml), or run `jii
 io_not_found = "{path} does not exist."
 io_denied = "Permission denied for {path}. Check its ownership and permissions."
 no_elevation = "Install one of them (`sudo`, or `doas` where your distro prefers it), or run the same command from a root shell: `su -c 'jii <name>'`."
+
+[ghtoken]
+# `jii ghtoken` — the command that spares the user the umask/here-doc recipe.
+prompt = "Paste your GitHub token and press Enter (nothing is shown as you type):"
+saved = "Token saved to {path} — readable only by you (mode 0600)."
+empty = "Nothing was entered, so nothing was saved."
+none = "No GitHub token — GitHub is limited to ~60 requests/hour."
+none_hint = "Run `jii ghtoken` to store one, or `gh auth login` if you use the GitHub CLI."
+forgotten = "Removed {path}."
+nothing_to_forget = "There was no stored token at {path}."
+no_config_dir = "Could not work out where to keep the token (no config directory)."
+# Shown when the token came in as an argument: by then it is already in the history file,
+# so this is a clean-up note, not a refusal.
+argument_warning = "A token given as an argument is written to your shell history and is visible in `ps` while the command runs. Next time run plain `jii ghtoken` and paste it at the prompt; to clear this one, remove the line from your shell's history file."
 
 [library]
 cargo = "'{name}' is a Rust library on crates.io — it ships no executable, so there's nothing to install as a program."

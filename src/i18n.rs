@@ -187,6 +187,66 @@ mod tests {
         assert!(!en.is_empty(), "locale files must not be empty");
     }
 
+    /// A string with `{placeholders}` must never be looked up without arguments.
+    ///
+    /// `t!("setup.gh_why_not_rc")` shipped exactly that way: users read "Deliberately not
+    /// `export {env}`", braces and all, on every distro the tester tried. The single-argument
+    /// arm of `t!` substitutes nothing, so the mistake is invisible until someone reads the
+    /// output. Scans the source for that shape and names the offender.
+    #[test]
+    fn a_string_with_placeholders_is_never_looked_up_without_arguments() {
+        let en = flatten(EN);
+        let with_placeholder: std::collections::HashSet<&String> = en
+            .iter()
+            .filter(|(_, v)| v.contains('{') && v.contains('}'))
+            .map(|(k, _)| k)
+            .collect();
+
+        let mut offenders: Vec<String> = Vec::new();
+        for file in source_files(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")) {
+            // Comment lines are dropped first — including this test's own doc comment, which
+            // quotes the offending call as prose and would otherwise report itself.
+            let text: String = std::fs::read_to_string(&file)
+                .unwrap_or_default()
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // Every `t!("some.key")` whose closing paren follows the string directly — i.e.
+            // the no-arguments arm of the macro.
+            for (at, _) in text.match_indices("t!(\"") {
+                let rest = &text[at + 4..];
+                let Some(end) = rest.find('"') else { continue };
+                let key = &rest[..end];
+                if rest[end + 1..].trim_start().starts_with(')') && with_placeholder.contains(&key.to_string()) {
+                    offenders.push(format!("{}: {key}", file.display()));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "these keys carry {{placeholders}} but are looked up with no arguments:\n  {}",
+            offenders.join("\n  ")
+        );
+    }
+
+    /// Every `.rs` file under `dir`, recursively.
+    fn source_files(dir: std::path::PathBuf) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            return out;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                out.extend(source_files(path));
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+        out
+    }
+
     #[test]
     fn every_boss_and_ending_has_its_text() {
         // Adding a fight means adding a row to BOSSES, badges to the catalog *and* text here.

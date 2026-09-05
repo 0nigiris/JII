@@ -189,6 +189,24 @@ pub enum Commands {
         #[command(subcommand)]
         action: Option<CacheAction>,
     },
+    /// Store, inspect or forget the GitHub token JII uses, so you never have to create the
+    /// file by hand. With no argument it asks for the token and reads it without echoing —
+    /// the safe way, since a token typed as an argument is kept in your shell history.
+    /// `--show` says where the current token comes from (never what it is); `--forget`
+    /// deletes the stored one.
+    #[command(name = "ghtoken", alias = "gh-token")]
+    GhToken {
+        /// The token. Prefer omitting it and pasting at the prompt: an argument lands in
+        /// your shell history, and JII will say so.
+        token: Option<String>,
+        /// Say where the token JII would use comes from — environment, file, or `gh` — and
+        /// never print the token itself.
+        #[arg(long, conflicts_with_all = ["token", "forget"])]
+        show: bool,
+        /// Delete the token file JII stores.
+        #[arg(long, conflicts_with = "token")]
+        forget: bool,
+    },
     /// Run the first-run setup wizard again (choose mode, optional system check).
     Setup,
     /// Remove JII itself (same as `jii remove jii`).
@@ -273,6 +291,7 @@ impl Cli {
     fn onboarding_task_summary(&self) -> Option<String> {
         match &self.command {
             Some(Commands::Setup)
+            | Some(Commands::GhToken { .. })
             | Some(Commands::Lang { .. })
             | Some(Commands::Cache { .. })
             | Some(Commands::Doctor { .. })
@@ -326,7 +345,7 @@ impl Cli {
         // sentinel that JII picks up on its very next run to grant the hidden `sans`
         // achievement. Consumed once, best-effort, and silent in JSON mode.
         if crate::achievements::Achievements::take_sentinel() {
-            self.grant_achievement("sans", &renderer);
+            self.grant_achievement("sans");
         }
 
         // The boss-fight installers drop their own sentinels, whose contents record how the fight
@@ -424,6 +443,9 @@ impl Cli {
             },
             Some(Commands::Lang { code }) => self.lang(code.as_deref(), config, &renderer),
             Some(Commands::Cache { action }) => self.cache(action.as_ref(), &renderer),
+            Some(Commands::GhToken { token, show, forget }) => {
+                self.gh_token(token.as_deref(), *show, *forget, config, &renderer)
+            }
             Some(Commands::Setup) => self.setup(config, &renderer, false, true).await,
             Some(Commands::Uninstall) => self.self_uninstall(config, &renderer).await,
             Some(Commands::Completions { shell }) => {
@@ -915,7 +937,7 @@ impl Cli {
 
         if self.global.dry_run {
             renderer.info(&crate::t!("common.dry_run_not_installed"));
-            self.grant_achievement("dry-runner", renderer);
+            self.grant_achievement("dry-runner");
             return Ok(());
         }
 
@@ -1389,7 +1411,7 @@ impl Cli {
         // 4. One escalation, one run; records cleared as each plan succeeds.
         engine.remove_batch(&batch.plans, renderer).await?;
         renderer.success(&crate::t!("remove.removed", names = names.join(", ")));
-        self.grant_achievement("cleaner", renderer);
+        self.grant_achievement("cleaner");
         Ok(())
     }
 
@@ -1569,7 +1591,7 @@ impl Cli {
 
         engine.update_batch(&batch.plans, renderer).await?;
         renderer.success(&crate::t!("update.updated", names = names.join(", ")));
-        self.grant_achievement("fresh", renderer);
+        self.grant_achievement("fresh");
         Ok(())
     }
 
@@ -1641,7 +1663,7 @@ impl Cli {
             "selfupdate.updated",
             version = selfupdate::normalize_tag(&latest.tag)
         ));
-        self.grant_achievement("self-made", renderer);
+        self.grant_achievement("self-made");
         // "Updated" alone doesn't tell you what you got — show the release notes (ADR-0079).
         self.show_update_changelog(install.exe(), selfupdate::current_version(), renderer)
             .await;
@@ -1787,7 +1809,7 @@ impl Cli {
             .run_system_update(&system.plans, &fallback.plans, renderer)
             .await?;
         renderer.success(&crate::t!("update.complete"));
-        self.grant_achievement("fresh", renderer);
+        self.grant_achievement("fresh");
         Ok(())
     }
 
@@ -1867,7 +1889,7 @@ impl Cli {
             return Ok(());
         }
         // A search that actually surfaced something counts as exploring (unlocks silently in JSON).
-        self.grant_achievement("explorer", renderer);
+        self.grant_achievement("explorer");
         if renderer.is_json() {
             renderer.json_value(&serde_json::json!(ranked));
             return Ok(());
@@ -2438,7 +2460,7 @@ impl Cli {
                         if engine.source_available(eco.id).await {
                             engine.finish_bootstrap(eco.id, renderer).await?;
                             renderer.success(&crate::t!("install.bootstrap_ready", manager = label));
-                            self.grant_achievement("bootstrapper", renderer);
+                            self.grant_achievement("bootstrapper");
                         } else {
                             renderer.info(&crate::t!("providers.not_set_up", label = label, id = eco.id));
                         }
@@ -2455,7 +2477,7 @@ impl Cli {
             // path. Shown in full, run only on an explicit answer (ADR-0066).
             Bootstrap::Script { cmd, shell } => {
                 if self.offer_script_bootstrap(engine, eco.id, label, cmd, shell, renderer).await {
-                    self.grant_achievement("bootstrapper", renderer);
+                    self.grant_achievement("bootstrapper");
                 }
                 Ok(())
             }
@@ -2545,7 +2567,7 @@ impl Cli {
             decided.insert(cand.source_id.clone(), ok);
             if ok && !self.global.dry_run {
                 // JII just set up a manager that wasn't here before — the T6 bootstrap path.
-                self.grant_achievement("bootstrapper", renderer);
+                self.grant_achievement("bootstrapper");
             }
             if ok {
                 survivors.push(cand);
@@ -2721,6 +2743,76 @@ impl Cli {
         Ok(true)
     }
 
+    /// `jii ghtoken` — put the GitHub token where JII reads it, without the user having to
+    /// know about umasks and here-docs (the owner's ask).
+    ///
+    /// The default form takes **no argument** and reads the token from stdin without echoing
+    /// it. That is deliberate: a token passed as an argument is written to the shell history
+    /// file and shows up in `ps` while the command runs, which is the same class of exposure
+    /// ADR-0083 removed from `~/.bashrc`. The argument form still works — the owner asked for
+    /// it — but it says what it costs and tells the user how to clear it.
+    ///
+    /// The file is created 0600 under a 0700 directory; the token is never echoed, logged, or
+    /// printed back.
+    fn gh_token(
+        &self,
+        token: Option<&str>,
+        show: bool,
+        forget: bool,
+        config: Config,
+        renderer: &Renderer,
+    ) -> crate::error::Result<()> {
+        let env = config.network.github_token_env.clone();
+        let Some(path) = crate::secret::token_path(&env) else {
+            renderer.error(&crate::t!("ghtoken.no_config_dir"));
+            return Err(crate::error::JiiError::AlreadyReported);
+        };
+
+        if show {
+            // Ask the providers, exactly as `doctor` does, so the answer covers a token that
+            // lives in the environment or in `gh` and not only JII's own file.
+            let engine = Engine::new(config)?;
+            match engine.credential_origins().first() {
+                Some((_, origin)) => renderer.success(&describe_origin(origin)),
+                None => {
+                    renderer.warn(&crate::t!("ghtoken.none"));
+                    renderer.info(&crate::t!("ghtoken.none_hint"));
+                }
+            }
+            return Ok(());
+        }
+
+        if forget {
+            match std::fs::remove_file(&path) {
+                Ok(()) => renderer.success(&crate::t!("ghtoken.forgotten", path = path.display().to_string())),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    renderer.info(&crate::t!("ghtoken.nothing_to_forget", path = path.display().to_string()));
+                }
+                Err(e) => return Err(crate::error::JiiError::io(path, e)),
+            }
+            return Ok(());
+        }
+
+        let value = match token {
+            Some(t) => {
+                // Said plainly, and only once: the token is already in the history file by the
+                // time this runs, so this is a "here is how to clean up", not a refusal.
+                renderer.warn(&crate::t!("ghtoken.argument_warning"));
+                t.trim().to_string()
+            }
+            None => crate::ui::prompt::read_secret(renderer, &crate::t!("ghtoken.prompt"))
+                .map_err(|e| crate::error::JiiError::io(path.clone(), e))?,
+        };
+        if value.is_empty() {
+            renderer.error(&crate::t!("ghtoken.empty"));
+            return Err(crate::error::JiiError::AlreadyReported);
+        }
+
+        crate::secret::store(&path, &value).map_err(|e| crate::error::JiiError::io(path.clone(), e))?;
+        renderer.success(&crate::t!("ghtoken.saved", path = path.display().to_string()));
+        Ok(())
+    }
+
     /// `jii lang [code]` — show or persist the interface language. With no argument it prints
     /// the saved setting and the choices; with `en`/`ru`/`auto` it writes `[ui] locale` to the
     /// config so the choice sticks across runs (the global `--lang` stays a per-run override).
@@ -2751,7 +2843,7 @@ impl Cli {
                 // The active language is fixed for this process, so confirm in the language
                 // just chosen (it takes effect for real on the next run).
                 renderer.success(&crate::i18n::tr_in(&c, "lang.set", &[("lang", c.clone())]));
-                self.grant_achievement("translator", renderer);
+                self.grant_achievement("translator");
             }
         }
         Ok(())
@@ -2858,7 +2950,7 @@ impl Cli {
         renderer.success(&crate::t!("setup.complete"));
         // Only a wizard run carried through to the end earns the hat — declining at the first
         // question returns above, before this point.
-        self.grant_achievement("wizard", renderer);
+        self.grant_achievement("wizard");
         Ok(())
     }
 
@@ -2896,9 +2988,16 @@ impl Cli {
         renderer.info(&crate::t!("setup.gh_route_cli"));
         renderer.info(&palette.dim("   gh auth login"));
 
-        // Route B — a file only this user can read. The `umask` + here-doc form keeps the
-        // token out of shell history too, which a plain `echo … > file` would not.
+        // Route B — hand it to JII and let it do the file work. This is the route most
+        // people should take: it writes the same 0600 file as the recipe below, and reads
+        // the token without echoing it, so nothing lands in shell history either.
         let path = token_file_display(env);
+        renderer.info("");
+        renderer.info(&crate::t!("setup.gh_route_jii"));
+        renderer.info(&palette.dim("   jii ghtoken"));
+
+        // Route C — the same file, written by hand. Kept because it is worth knowing what
+        // `jii ghtoken` actually does, and it works from a script.
         renderer.info("");
         renderer.info(&crate::t!("setup.gh_route_file", path = path.clone()));
         renderer.info(&palette.dim(&format!("   (umask 077; cat > {path})")));
@@ -2910,7 +3009,9 @@ impl Cli {
         renderer.info(&crate::t!("setup.gh_route_env", env = env.clone()));
         renderer.info(&palette.dim(&format!("   {env}=ghp_your_token_here jii install owner/repo")));
         renderer.info("");
-        renderer.info(&palette.dim(&crate::t!("setup.gh_why_not_rc")));
+        // The `{env}` here is the same variable named just above — it was going out
+        // unsubstituted, so the tester's log reads "Deliberately not `export {env}`".
+        renderer.info(&palette.dim(&crate::t!("setup.gh_why_not_rc", env = env.clone())));
         renderer.info(&palette.dim(&crate::t!("setup.gh_never")));
     }
 
@@ -2974,7 +3075,7 @@ impl Cli {
             renderer.info(&format!("  {ok} {}", crate::t!("how.version_line", version = version)));
             renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
         }
-        self.grant_achievement("paper-trail", renderer);
+        self.grant_achievement("paper-trail");
         Ok(())
     }
 
@@ -3013,7 +3114,7 @@ impl Cli {
                 renderer.info(&format!("  {ok} {}", crate::t!("how.trust_line", trust = trust)));
             }
             renderer.info(&palette.dim(&crate::t!("how.not_by_jii", package = package)));
-            self.grant_achievement("paper-trail", renderer);
+            self.grant_achievement("paper-trail");
             return Ok(());
         }
 
@@ -3038,7 +3139,7 @@ impl Cli {
             crate::t!("how.trust_line", trust = best.trust.display())
         ));
         renderer.info(&palette.dim(&crate::t!("how.would_hint", package = package)));
-        self.grant_achievement("paper-trail", renderer);
+        self.grant_achievement("paper-trail");
         Ok(())
     }
 
@@ -3049,7 +3150,7 @@ impl Cli {
         // verification, and concerns per install. Folded in from the former `jii audit`.
         if audit {
             let out = self.audit_view(&engine, renderer);
-            self.grant_achievement("auditor", renderer);
+            self.grant_achievement("auditor");
             return out;
         }
         let items = engine.registry().installed();
@@ -3095,7 +3196,7 @@ impl Cli {
     /// offered as a yes/no question and, on "yes", applied on the spot. It stays read-only in
     /// `--json`, under `-n/--no`, or with no TTY (Analyze → Explain → Ask → Apply).
     async fn doctor(&self, config: Config, renderer: &Renderer) -> crate::error::Result<()> {
-        self.grant_achievement("doctor", renderer);
+        self.grant_achievement("doctor");
         // Capture what the system checks (and the questionnaire) need before `config` moves
         // into the engine.
         let token_env = config.network.github_token_env.clone();
@@ -3558,18 +3659,19 @@ impl Cli {
     /// Grant an achievement as a side effect of a real action, showing a one-time toast the
     /// first time it's earned. Best-effort and cosmetic: any failure to load or persist the
     /// ledger is swallowed so it can never break the surrounding command. Silent in JSON mode.
-    fn grant_achievement(&self, id: &str, renderer: &Renderer) {
+    /// Earned **quietly**, on purpose. A "✓ Achievement unlocked" toast in the middle of a
+    /// `doctor` or a `search` is noise in the one place the user is reading for an answer —
+    /// the owner's words: it looks childish, and achievements belong in `jii achievements`.
+    /// They are still awarded; that command is where they show (ADR-0087). The boss fights
+    /// keep their toast, where the badge *is* the payoff.
+    fn grant_achievement(&self, id: &str) {
         let Ok(mut store) = crate::achievements::Achievements::load() else {
             return;
         };
-        let mut newly = Vec::new();
         if store.unlock(id) {
-            newly.push(id.to_string());
+            let mut newly = Vec::new();
             self.maybe_completionist(&mut store, &mut newly);
             let _ = store.save();
-        }
-        for id in &newly {
-            self.achievement_toast(id, renderer);
         }
     }
 

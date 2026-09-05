@@ -381,6 +381,56 @@ fn ask_key(question: &str, hint: &str, default_yes: bool) -> io::Result<bool> {
     result
 }
 
+/// Read a secret from the terminal **without echoing it**.
+///
+/// Used by `jii ghtoken` so a token can be pasted instead of passed as an argument, where it
+/// would land in the shell history and in `ps` — the same exposure ADR-0083 took out of
+/// `~/.bashrc`. Nothing typed is drawn, nothing is stored anywhere but the caller's `String`.
+///
+/// Without a terminal (a pipe, `jii ghtoken < token.txt`, CI) it reads one line from stdin,
+/// which is the scripted equivalent and needs no echo suppression to begin with. Cancelling
+/// with Esc or Ctrl+C yields an empty string; the caller treats that as "no token given".
+pub fn read_secret(renderer: &Renderer, prompt: &str) -> io::Result<String> {
+    if !Platform::detect().is_tty {
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        return Ok(line.trim().to_string());
+    }
+
+    renderer.info(prompt);
+    let mut out = io::stdout();
+    let _ = out.flush();
+    terminal::enable_raw_mode()?;
+    let mut secret = String::new();
+    let outcome = loop {
+        match event::read() {
+            Ok(Event::Key(k)) if k.kind == KeyEventKind::Press => match k.code {
+                KeyCode::Enter => break Ok(()),
+                KeyCode::Esc => {
+                    secret.clear();
+                    break Ok(());
+                }
+                KeyCode::Backspace => {
+                    secret.pop();
+                }
+                KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    secret.clear();
+                    break Ok(());
+                }
+                KeyCode::Char(c) => secret.push(c),
+                _ => {}
+            },
+            Ok(_) => {}
+            Err(e) => break Err(e),
+        }
+    };
+    // Leave raw mode whatever happened, so a failure can't stick the user's terminal.
+    let _ = terminal::disable_raw_mode();
+    let _ = writeln!(out);
+    let _ = out.flush();
+    outcome.map(|()| secret.trim().to_string())
+}
+
 /// Line-based yes/no fallback (Enter to submit) for terminals without raw mode.
 fn ask_line(question: &str, hint: &str, default_yes: bool) -> bool {
     print!("{question} {hint} ");

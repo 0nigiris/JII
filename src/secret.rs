@@ -97,6 +97,39 @@ fn from_helper(argv: &[&str]) -> Option<String> {
 
 /// Resolve a token for `var`, consulting `helper` (a forge's credential command) last.
 /// See the module docs for the order and why it is that order.
+/// Write a token to `path`, readable by nobody else.
+///
+/// The mode is set **before** the bytes land: created 0600 under a 0700 directory, rather
+/// than written first and chmod-ed after, which would leave a window where the token sits
+/// world-readable on disk. This is the same thing the documented
+/// `(umask 077; cat > …)` recipe does — `jii ghtoken` exists so nobody has to know that.
+pub fn store(path: &std::path::Path, token: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    // An existing file keeps its old mode through `create`, so restate it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = f.set_permissions(std::fs::Permissions::from_mode(0o600));
+    }
+    writeln!(f, "{}", token.trim())
+}
+
 pub fn resolve(var: &str, helper: Option<&[&str]>) -> Option<Token> {
     if let Ok(v) = std::env::var(var)
         && !v.trim().is_empty()
