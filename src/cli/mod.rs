@@ -14,9 +14,35 @@ use crate::selfupdate;
 use crate::ui::Renderer;
 use crate::ui::prompt::{self, PromptFlags};
 
+/// The long form behind `jii --version`: what this is, what it was built for, and where
+/// its two files live.
+///
+/// `-V` keeps clap's terse `jii 0.1.19-beta` — scripts read that, and it must not change
+/// shape. `--version` is the one a person types, so it can afford to answer the questions
+/// that usually follow it ("built for which arch?", "where is the config?").
+///
+/// Leaked on purpose: clap wants a `&'static str`, this is built once per process, and the
+/// process is about to print it and exit.
+fn long_version() -> &'static str {
+    static TEXT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    TEXT.get_or_init(|| {
+        let config = crate::config::Config::default_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "~/.config/jii/config.toml".to_string());
+        format!(
+            "{}\n{}\n\n  built for   {} · linux\n  config      {}\n  docs        https://github.com/0nigiris/JII",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_DESCRIPTION"),
+            std::env::consts::ARCH,
+            config,
+        )
+    })
+    .as_str()
+}
+
 /// Just Install It — a smart universal package installer for Linux.
 #[derive(Debug, Parser)]
-#[command(name = "jii", version, about)]
+#[command(name = "jii", version, long_version = long_version(), about)]
 pub struct Cli {
     #[command(flatten)]
     pub global: GlobalArgs,

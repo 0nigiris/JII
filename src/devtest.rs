@@ -46,6 +46,9 @@ fn checklist() -> Vec<Step> {
         Step { title: "Dead-end UX (not found)", args: &["totally-nonexistent-xyz321", "--no"], expect: "A clear 'not found' with browse links — never a bare dead end, never a crash. Silence here is a failure, and so is exit 0." },
         Step { title: "Version-pin rejection", args: &["npm@1.0", "--no"], expect: "A clear 'version pins not supported yet' error — the pin must NOT be silently ignored." },
         Step { title: "Sources view", args: &["sources"], expect: "Active/unavailable sources for THIS machine; irrelevant distro managers hidden." },
+        // Last on purpose: it is the longest step and the only one that touches the whole
+        // machine, so a tester who stops early has still covered everything else.
+        Step { title: "Update the whole system", args: &["update", "-y"], expect: "Every source JII knows updates in turn — the system manager included — with a per-source summary at the end. Nothing to update is a valid pass; what must not happen is a source failing silently." },
     ]
 }
 
