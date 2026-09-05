@@ -194,10 +194,80 @@ fi
 # the sidecar (jii-0.1.5~beta-…), but GitHub rewrites '~' to '.' in uploaded asset
 # names (jii-0.1.5.beta-…), so `sha256sum -c` looks for a file that isn't on disk and
 # fails spuriously even though the bytes are correct. Compare the hash, ignore the name.
+# The first available SHA-256 tool, printed as a bare hex digest. Systems differ: coreutils
+# has sha256sum, busybox and the BSDs ship shasum, a minimal container may have only openssl.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1; exit}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1; exit}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$1" | awk '{print $NF; exit}'
+  fi
+}
+
+have_sha256() {
+  command -v sha256sum >/dev/null 2>&1 ||
+    command -v shasum >/dev/null 2>&1 ||
+    command -v openssl >/dev/null 2>&1
+}
+
+# 0 = verified, 1 = mismatch, 2 = nothing here can hash the file.
+#
+# The third case used to be indistinguishable from the second: with no sha256sum the digest
+# came back empty, the comparison failed, and the script refused the download as corrupt.
+# A missing tool and a bad file deserve different words — and different answers.
 verify_sha256() {
+  have_sha256 || return 2
   _want=$(awk '{print $1; exit}' "$2" 2>/dev/null)
-  _got=$(sha256sum "$1" 2>/dev/null | awk '{print $1; exit}')
+  _got=$(sha256_of "$1")
   [ -n "$_want" ] && [ "$_want" = "$_got" ]
+}
+
+# Verify a downloaded asset, and say the right thing for each of the three outcomes.
+# A mismatch is fatal. A machine with no way to hash is not: it is offered the tool, and
+# if that cannot be installed it is asked — explicitly, defaulting to no — whether to go
+# on unverified. Refusing outright would strand it; going on quietly would be worse.
+checked_download() {
+  # `|| _rc=$?` and not a bare call: the script runs under `set -e`, which would kill it on
+  # the non-zero status before `case` ever saw it — silently, with no message at all.
+  _rc=0
+  verify_sha256 "$1" "$1.sha256" || _rc=$?
+  case $_rc in
+    0) ok "Checksum verified" ;;
+    1) err "checksum verification failed — refusing to install." ;;
+    *)
+      warn "No SHA-256 tool here (sha256sum, shasum or openssl), so the download can't be verified."
+      if [ -n "$NATIVE_MGR" ] && [ "$CAN_ESC" -eq 1 ] &&
+        ask_default_yes "Install coreutils with $NATIVE_MGR so the checksum can be verified?  [Y/n] "; then
+        install_native_package coreutils && verify_sha256 "$1" "$1.sha256" &&
+          { ok "Checksum verified"; return 0; }
+      fi
+      ask_default_no "Continue without verifying the download?  [y/N] " ||
+        err "stopping: the download was not verified."
+      warn "Continuing unverified at your request."
+      ;;
+  esac
+}
+
+# Run a command with elevation, showing it in full first — the same contract JII itself
+# keeps: nothing privileged happens that the user did not see written out.
+run_priv() {
+  bullet "  ${ESC:+$ESC }$*"
+  # shellcheck disable=SC2086
+  $ESC "$@"
+}
+
+# Install one package with the host's own manager (used only to fetch a missing tool
+# this script needs). Returns non-zero if it can't.
+install_native_package() {
+  case "$NATIVE_MGR" in
+    dnf) run_priv dnf install -y "$1" ;;
+    apt) run_priv apt-get install -y "$1" ;;
+    zypper) run_priv zypper --non-interactive install "$1" ;;
+    pacman) run_priv pacman -S --noconfirm "$1" ;;
+    *) return 1 ;;
+  esac
 }
 
 # --- 2. Detect architecture -------------------------------------------------
@@ -326,6 +396,18 @@ ask_default_yes() {
   esac
 }
 
+# The mirror of ask_default_yes: Enter means **no**. For questions where the safe answer
+# is to stop — continuing with an unverified download, above.
+ask_default_no() {
+  _ans=$(
+    { printf '%s' "$1" >/dev/tty && IFS= read -r _r </dev/tty && printf '%s' "$_r"; } 2>/dev/null
+  ) || return 1
+  case "$_ans" in
+    [Yy] | [Yy][Ee][Ss]) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # --- 6. Choose method (auto → ask or fall back) -----------------------------
 if [ "$METHOD" = "auto" ]; then
   # Don't promise a sudo prompt to someone who is already root — the question should
@@ -367,9 +449,7 @@ native_install() {
   }
   ok_bar "Downloaded $ASSET"
   if dl "$URL.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
-    verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
-      || err "checksum verification failed — refusing to install."
-    ok "Checksum verified"
+    checked_download "$TMP/$ASSET"
   fi
 
   case "$NATIVE_MGR" in
@@ -398,13 +478,23 @@ portable_install() {
   ok_bar "Downloaded $ASSET"
 
   if dl "$BASE/$ASSET.sha256" "$TMP/$ASSET.sha256" 2>/dev/null; then
-    verify_sha256 "$TMP/$ASSET" "$TMP/$ASSET.sha256" \
-      || err "checksum verification failed — refusing to install."
-    ok "Checksum verified"
+    checked_download "$TMP/$ASSET"
   else
     warn "No checksum published for this asset; skipping verification."
   fi
 
+  # tar is the one tool the portable path cannot do without. Offer it rather than dying on
+  # "tar: not found" — the owner's ask: install what's missing *if the user wants it*, and
+  # never mention what is already there.
+  if ! command -v tar >/dev/null 2>&1; then
+    warn "tar is not installed, and the portable package is a .tar.gz."
+    if [ -n "$NATIVE_MGR" ] && [ "$CAN_ESC" -eq 1 ] &&
+      ask_default_yes "Install tar with $NATIVE_MGR?  [Y/n] "; then
+      install_native_package tar || err "could not install tar; install it and re-run this script."
+    else
+      err "install tar and re-run this script."
+    fi
+  fi
   tar -xzf "$TMP/$ASSET" -C "$TMP"
   # The tarball holds a top-level dir jii-<tag>-<arch>-linux/ with the binary inside.
   SRC=$(find "$TMP" -type f -name jii -perm -u+x | head -n1)
