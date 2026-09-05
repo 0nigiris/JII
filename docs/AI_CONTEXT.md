@@ -52,7 +52,7 @@ Void) in phone containers and pasted the whole log. Nine real defects, all fixed
 - **Achievements are earned quietly** (ADR-0087) — `jii achievements` is where they show; boss
   fights keep their toast. `jii --version` grew a real body; `-V` stays terse for scripts. The
   tester checklist gained a 13th step (whole-system update).
-- 344 tests, clippy clean, build clean. **Not yet released** — unreleased work on `master`.
+- 344 tests, clippy clean, build clean. **Released as `v0.1.20-beta`** (2026-09-05).
 - **Still open from the round, not started:** semantic search (`jii search markdown` → editors);
   a broader "friendly output is prettier and more minimal" pass; and the owner's idea of pointing
   at `upac` (github.com/justpav05/upac) where no native package exists — that one needs his call,

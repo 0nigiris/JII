@@ -13,6 +13,30 @@
 # * `date` is the release date, ISO `YYYY-MM-DD`.
 
 [[release]]
+version = "0.1.20-beta"
+date = "2026-09-05"
+en = [
+  "**Installing as root works again.** On a machine without `sudo` — a container, a rescue shell — every install failed with \"failed to run sudo: No such file or directory\", even when you already *were* root and needed no help at all. JII now looks at who it is and what the machine actually has: root runs the command directly, `doas` is used where your distro ships that instead, and a system with no way to become root says so in one sentence before anything starts, rather than breaking halfway through.",
+  "**The installer no longer guesses your distro from your PATH.** On Arch, Gentoo and Void it could offer \"install system-wide with apt\" and then download a **.deb** — because something else on the machine had put an `apt` on the path. It reads what the system says about itself now. It also offers to put `~/.local/bin` on your PATH for you, in the file your shell actually reads (the old advice used `source`, which simply does not exist in some shells and left people with a `jii` they couldn't run), and a missing `sha256sum` is no longer reported as a corrupt download.",
+  "**A search that finds nothing now ends.** Looking for a name that exists nowhere could run for a very long time with a blank screen — on one system long enough to look frozen. Every check is bounded now, the wider second search says that it is happening, and the whole thing finishes in seconds.",
+  "**One progress bar stays one line.** On a narrow terminal — a phone, a split window — the bar was wider than the screen, wrapped, and could not be erased, so a single install left hundreds of half-drawn lines behind. It now fits whatever width you have.",
+  "**When a package needs a manager that can't be set up here, JII moves on instead of giving up.** It used to skip the package with a confusing note and still report success. Now it installs from the next source that works on your machine — never from an unverified one — or tells you exactly how to set that manager up yourself, and a run that installed nothing no longer claims otherwise.",
+  "**Suggestions for the rest of the world.** `jii doctor`'s codec/VLC/font/Steam suggestions existed only for Fedora and Arch; Debian, Ubuntu, Mint and openSUSE now get their own, and a distro based on another inherits its parent's.",
+  "**New `jii ghtoken`** — stores your GitHub token for you, without showing it and without it reaching your shell history. `jii ghtoken --show` says where the token being used comes from (never what it is), `--forget` removes it.",
+  "Achievements are quieter: they no longer interrupt a `search` or a `doctor`, and live in `jii achievements`. `jii --version` says a bit more about your install.",
+]
+ru = [
+  "**Установка из-под root снова работает.** На машине без `sudo` — в контейнере, в аварийной оболочке — любая установка падала с «failed to run sudo: No such file or directory», даже когда вы уже *были* root и никакая помощь не требовалась. Теперь JII смотрит, кто он и что на машине есть: root выполняет команду напрямую, `doas` используется там, где дистрибутив ставит его вместо sudo, а система, в которой стать root нечем, говорит об этом одной фразой до начала, а не ломается на середине.",
+  "**Установщик больше не угадывает дистрибутив по PATH.** На Arch, Gentoo и Void он мог предложить «установить системно через apt» и скачать **.deb** — потому что на машине откуда-то был `apt`. Теперь он читает то, что система говорит о себе сама. Ещё он сам предложит прописать `~/.local/bin` в PATH — в тот файл, который читает именно ваша оболочка (старый совет использовал `source`, которого в некоторых оболочках просто нет, и человек оставался с `jii`, который не запускается). А отсутствие `sha256sum` больше не выдаётся за испорченную закачку.",
+  "**Поиск, который ничего не нашёл, теперь заканчивается.** Запрос несуществующего имени мог выполняться очень долго при пустом экране — на одной системе достаточно долго, чтобы выглядеть зависанием. Теперь все проверки ограничены по времени, расширенный поиск сообщает о себе, и всё завершается за секунды.",
+  "**Одна полоса прогресса остаётся одной строкой.** На узком терминале — на телефоне, в разделённом окне — полоса была шире экрана, переносилась и не стиралась, так что одна установка оставляла после себя сотни недорисованных строк. Теперь она вписывается в любую ширину.",
+  "**Если пакету нужен менеджер, который здесь не поставить, JII идёт дальше, а не сдаётся.** Раньше он пропускал пакет с невнятной припиской и всё равно сообщал об успехе. Теперь он ставит из следующего источника, который работает на вашей машине, — и никогда из непроверенного, — либо объясняет, как поставить этот менеджер самому; а запуск, ничего не установивший, больше не делает вид, что всё получилось.",
+  "**Советы не только для Fedora.** Подсказки `jii doctor` про кодеки, VLC, шрифты и Steam были только для Fedora и Arch; теперь свои есть у Debian, Ubuntu, Mint и openSUSE, а дистрибутив, основанный на другом, наследует советы родителя.",
+  "**Новая команда `jii ghtoken`** — сохранит ваш токен GitHub за вас, не показывая его и не отправляя в историю оболочки. `jii ghtoken --show` скажет, откуда берётся используемый токен (но не какой он), `--forget` удалит.",
+  "Достижения стали тише: они больше не влезают в вывод `search` или `doctor` и живут в `jii achievements`. `jii --version` рассказывает о сборке чуть больше.",
+]
+
+[[release]]
 version = "0.1.19-beta"
 date = "2026-08-24"
 en = [

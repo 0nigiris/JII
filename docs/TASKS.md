@@ -813,6 +813,7 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   "prettier, more minimal friendly output" pass, and pointing at `upac` where no
                   native package exists — the last needs the owner's call, as it advertises a third
                   party.
+                  **Released as `v0.1.20-beta` (2026-09-05).**
             - [x] **Outside PR review + the token it exposed (2026-08-22)** (ADR-0083, ADR-0084).
                   Reviewed `justpav05`'s PR #12. Its one genuinely important finding: JII's own
                   setup told the user to `export GITHUB_TOKEN=…` in `~/.bashrc`, which hands the

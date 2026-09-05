@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.19-beta
+%global _tag v0.1.20-beta
 
 Name:           jii
-Version:        0.1.19~beta
+Version:        0.1.20~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,20 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Sat Sep 05 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.20~beta-1
+- Rebuild against the v0.1.20-beta release: a five-distro tester round, nine fixes
+  (ADR-0085…0088). Elevation reads the euid and what is installed (AlreadyRoot/doas/
+  Missing) instead of assuming sudo; install.sh identifies the distro from /etc/os-release
+  rather than PATH (it was offering apt and a .deb on Arch), offers to add ~/.local/bin to
+  the right shell rc, and no longer reports a missing sha256sum as a corrupt download.
+- Bounded every availability probe and the broaden-on-miss pass, which together could run
+  unbounded and silent; the progress line is trimmed to the terminal width (a wrapped line
+  cannot be erased, so one bar became hundreds).
+- A candidate whose manager can't be set up falls back to the next source that works here
+  (never an unverified one) and exits non-zero when JII was the one that failed.
+- Recommendations for Debian/Ubuntu and openSUSE; entries match the distro family.
+- New `jii ghtoken`; achievements no longer print outside `jii achievements`; fuller
+  `jii --version`.
 * Mon Aug 24 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.19~beta-1
 - Rebuild against the v0.1.19-beta release: a GitHub token is no longer advised into the
   shell profile (ADR-0083). JII reads it from `~/.config/jii/github_token` or from
