@@ -142,19 +142,28 @@ impl Spinner {
                 // none, fall back to elapsed time: past a few seconds "it's alive" isn't enough,
                 // "how long has this been going" is the actual question.
                 let reading = progress_read.lock().ok().and_then(|g| *g);
+                // The whole line must fit one row. `\r\x1b[2K` erases only the row the cursor
+                // is on, so a line that wraps leaves its earlier rows on screen and every
+                // repaint adds more — which is how one progress bar became several hundred
+                // lines of debris on a tester's phone terminal (ADR-0086). Fall back to 80
+                // columns when the width is unknown.
+                let cols = crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
                 let line = if let Some(p) = reading {
                     // Size the bar to the *live* terminal width so it fills the line like
-                    // dnf/pacman and re-fits when the window is resized. The prefix
-                    // ("  {frame} {label}  ") is fixed chrome; the bar gets what's left, minus
-                    // a one-column right margin. Fall back to 80 when the width is unknown.
+                    // dnf/pacman and re-fits when the window is resized. The label is the
+                    // part that gives: on a narrow terminal it is trimmed so the bar — the
+                    // thing being watched — always survives.
+                    const CHROME: usize = 6; // "  " + frame + " " + "  "
+                    let room = cols.saturating_sub(CHROME + bar_min_width(p) + 1);
+                    let label = fit(&label, room, unicode);
                     let prefix = format!("  {frame} {label}  ");
-                    let cols = crossterm::terminal::size().map(|(c, _)| c as usize).unwrap_or(80);
                     let budget = cols.saturating_sub(prefix.chars().count() + 1);
                     format!("{prefix}{}", render_bar(p, unicode, color, budget))
                 } else {
                     let secs = started.elapsed().as_secs();
                     let elapsed = if secs >= 3 { format!(" ({secs}s)") } else { String::new() };
-                    format!("  {frame} {label}{elapsed}")
+                    let room = cols.saturating_sub(4 + elapsed.chars().count() + 1);
+                    format!("  {frame} {}{elapsed}", fit(&label, room, unicode))
                 };
                 eprint!("\r\x1b[2K{line}");
                 let _ = std::io::stderr().flush();
@@ -227,15 +236,61 @@ impl ProgressReporter {
 /// it be the one thing that may wrap rather than vanish entirely.
 const MIN_BAR_CELLS: usize = 6;
 
+/// The fixed tail of a bar: `  45%`, plus `  [3/41]` when the manager counts steps.
+fn bar_suffix(p: crate::progress::Progress) -> String {
+    match p.steps {
+        Some((done, total)) => format!("  {:>3}%  [{done}/{total}]", p.percent),
+        None => format!("  {:>3}%", p.percent),
+    }
+}
+
+/// What the spinner reserves for a bar before it trims its label — the minimum cells plus
+/// the full tail, so the step counter is kept where the terminal can afford it.
+///
+/// The label is what gives on a narrow terminal, because the bar is the thing being watched.
+/// Where not even this fits, the label goes to nothing and [`render_bar`] degrades within
+/// whatever budget is left; it never returns more columns than it was given.
+fn bar_min_width(p: crate::progress::Progress) -> usize {
+    MIN_BAR_CELLS + bar_suffix(p).chars().count()
+}
+
+/// Trim `text` to at most `max` columns, ending in an ellipsis when it had to cut.
+///
+/// Pure and char-based (not byte-based), so a multi-byte label is never cut mid-character.
+/// `max` under the ellipsis width yields an empty string: at that point there is no room
+/// to say anything, and the caller's bar is the part worth keeping.
+fn fit(text: &str, max: usize, unicode: bool) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let ellipsis = if unicode { "…" } else { "..." };
+    let keep = max.saturating_sub(ellipsis.chars().count());
+    if keep == 0 {
+        return String::new();
+    }
+    let head: String = text.chars().take(keep).collect();
+    format!("{head}{ellipsis}")
+}
+
 /// Render a `████████░░░░  45%  [3/41]` bar that fills `budget` columns — the width left on the
 /// line after the spinner's fixed prefix. The trailing `  NN%` (and optional `  [done/total]`)
 /// is reserved first; the bar cells fill whatever remains, so it stretches with the terminal
 /// like dnf/pacman instead of sitting at a fixed width. Unicode blocks on a capable terminal,
 /// ASCII `#`/`-` otherwise; the filled run is green when colour is on. Pure, for unit testing.
 fn render_bar(p: crate::progress::Progress, unicode: bool, color: bool, budget: usize) -> String {
-    let suffix = match p.steps {
-        Some((done, total)) => format!("  {:>3}%  [{done}/{total}]", p.percent),
-        None => format!("  {:>3}%", p.percent),
+    // **Never wider than `budget`.** The caller sized that from the real terminal, and a bar
+    // that overruns it wraps — which `\r\x1b[2K` cannot erase, so every repaint leaves the
+    // old rows behind (ADR-0086). So degrade instead of overflowing: full tail with the step
+    // counter, then percent only, then percent with no bar at all.
+    let full = bar_suffix(p);
+    let short = format!("  {:>3}%", p.percent);
+    let suffix = if budget >= MIN_BAR_CELLS + full.chars().count() {
+        full
+    } else if budget >= MIN_BAR_CELLS + short.chars().count() {
+        short
+    } else {
+        // No room for even a minimal bar: the number is the part worth keeping.
+        return if budget >= short.chars().count() { short } else { String::new() };
     };
     let cells = budget.saturating_sub(suffix.chars().count()).max(MIN_BAR_CELLS);
     let filled = ((p.percent as usize * cells) / 100).min(cells);
@@ -536,9 +591,81 @@ mod tests {
     }
 
     #[test]
+    fn the_whole_progress_line_fits_a_phone_terminal() {
+        // The tester's case, reproduced arithmetically: a ~100-character label and a 40-column
+        // terminal. The rendered row must not exceed the terminal, or `\r\x1b[2K` cannot erase
+        // it and every repaint leaves debris behind.
+        let label = "installing gstreamer1-plugins-bad-free, gstreamer1-plugins-ugly, \
+                     gstreamer1-plugin-openh264 via dnf";
+        let p = crate::progress::Progress { percent: 100, steps: Some((33, 33)) };
+        for cols in [24usize, 40, 80, 120] {
+            const CHROME: usize = 6;
+            let room = cols.saturating_sub(CHROME + bar_min_width(p) + 1);
+            let trimmed = fit(label, room, true);
+            let prefix = format!("  X {trimmed}  ");
+            let budget = cols.saturating_sub(prefix.chars().count() + 1);
+            // Colour off, so the measured width is the visible width.
+            let width = prefix.chars().count() + render_bar(p, true, false, budget).chars().count();
+            assert!(width <= cols, "{width} columns rendered into {cols}");
+        }
+    }
+
+    #[test]
+    fn a_long_label_is_trimmed_so_the_line_fits_one_row() {
+        // The tester's phone: a ~95-character label ("installing gstreamer1-plugins-bad-free,
+        // …, gstreamer1-plugin-openh264 via dnf") on a ~40-column terminal. The wrapped line
+        // could not be erased, so each repaint left the previous rows behind.
+        let long = "installing gstreamer1-plugins-bad-free, gstreamer1-plugins-ugly via dnf";
+        let cut = fit(long, 24, true);
+        assert_eq!(cut.chars().count(), 24);
+        assert!(cut.ends_with('…'));
+        assert!(long.starts_with(cut.trim_end_matches('…')));
+    }
+
+    #[test]
+    fn a_label_that_already_fits_is_untouched() {
+        assert_eq!(fit("installing htop", 40, true), "installing htop");
+        assert_eq!(fit("installing htop", 15, true), "installing htop");
+    }
+
+    #[test]
+    fn without_unicode_the_ellipsis_is_ascii_and_never_splits_a_character() {
+        assert_eq!(fit("abcdefgh", 5, false), "ab...");
+        // Multi-byte input must be cut on character boundaries, not bytes.
+        assert_eq!(fit("установка пакета", 6, true), "устан…");
+        // No room even for the ellipsis: say nothing rather than something malformed.
+        assert_eq!(fit("abcdefgh", 1, false), "");
+    }
+
+    #[test]
     fn bar_keeps_a_minimum_on_a_narrow_terminal() {
-        // Budget below suffix + minimum: the bar stops shrinking at MIN_BAR_CELLS, it doesn't vanish.
-        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 2);
+        // A budget just under suffix + minimum: the bar stops shrinking at MIN_BAR_CELLS
+        // rather than dwindling to nothing.
+        let p = Progress { percent: 100, steps: None };
+        let s = render_bar(p, true, false, MIN_BAR_CELLS + 6);
         assert_eq!(s.chars().filter(|&c| c == '█').count(), MIN_BAR_CELLS);
+    }
+
+    #[test]
+    fn a_bar_never_overruns_the_budget_it_was_given() {
+        // The invariant the whole fix rests on. A bar wider than the room it was given wraps,
+        // and a wrapped line cannot be erased — that is how one line became several hundred.
+        for steps in [None, Some((3, 41)), Some((33, 33))] {
+            for percent in [0u8, 45, 100] {
+                let p = Progress { percent, steps };
+                for budget in 0..40usize {
+                    let width = render_bar(p, true, false, budget).chars().count();
+                    assert!(width <= budget, "{width} columns into a budget of {budget}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_bar_with_no_room_for_itself_still_shows_the_number() {
+        // Two columns is not a bar. Print the reading, not a malformed row.
+        let s = render_bar(Progress { percent: 100, steps: None }, true, false, 6);
+        assert_eq!(s.trim(), "100%");
+        assert!(!s.contains('█'));
     }
 }
