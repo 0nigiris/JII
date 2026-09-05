@@ -3437,10 +3437,10 @@ impl Cli {
             .collect();
 
         let catalog = crate::recommend::Catalog::load().ok();
-        let distro_id = crate::platform::Platform::detect().distro.id();
+        let distro_ids = &crate::platform::Platform::detect().distro_ids;
         let all_suggestions = catalog
             .as_ref()
-            .map(|c| c.for_distro(distro_id))
+            .map(|c| c.for_distro(distro_ids))
             .unwrap_or_default();
 
         // Analyse the system first (#1): drop suggestions the user has already done, so
@@ -3653,8 +3653,8 @@ impl Cli {
             Ok(c) => c,
             Err(_) => return, // a broken catalog must never break `doctor`
         };
-        let distro_id = crate::platform::Platform::detect().distro.id();
-        let entries = catalog.for_distro(distro_id);
+        let distro_ids = &crate::platform::Platform::detect().distro_ids;
+        let entries = catalog.for_distro(distro_ids);
         if entries.is_empty() {
             return;
         }

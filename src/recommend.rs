@@ -61,9 +61,13 @@ pub struct Recommendation {
 }
 
 impl Recommendation {
-    /// Whether this entry applies to a given distro id (empty `distros` = every distro).
-    fn applies_to(&self, distro_id: &str) -> bool {
-        self.distros.is_empty() || self.distros.iter().any(|d| d == distro_id)
+    /// Whether this entry applies to a host's distro *family* — its `ID` plus every
+    /// `ID_LIKE` token (empty `distros` = every distro).
+    ///
+    /// Matching the bare `ID` was too strict: Linux Mint saw none of Debian's entries and
+    /// Nobara none of Fedora's, though both name their parent in `/etc/os-release`.
+    fn applies_to(&self, distro_ids: &[String]) -> bool {
+        self.distros.is_empty() || self.distros.iter().any(|d| distro_ids.iter().any(|id| id == d))
     }
 
     /// Identifiers whose installed presence means this suggestion is already done. The
@@ -121,10 +125,24 @@ impl Catalog {
 
     /// The entries that apply to `distro_id`, in catalog order (authoring order is the
     /// display order, so the most foundational entries — e.g. enabling a repo — come first).
-    pub fn for_distro(&self, distro_id: &str) -> Vec<&Recommendation> {
-        self.recommendation
-            .iter()
-            .filter(|r| r.applies_to(distro_id))
+    pub fn for_distro(&self, distro_ids: &[String]) -> Vec<&Recommendation> {
+        let matching: Vec<&Recommendation> =
+            self.recommendation.iter().filter(|r| r.applies_to(distro_ids)).collect();
+
+        // Grouped by category, categories in the order they first appear. Both renderers
+        // print a header whenever the category changes, so an entry that applies to every
+        // distro — Steam — would otherwise open a second `[gaming]` section wherever the
+        // per-distro blocks happen to leave it in the file. Authoring order still decides
+        // everything else, so the foundational entries (enabling a repo) stay first.
+        let mut order: Vec<&str> = Vec::new();
+        for r in &matching {
+            if !order.contains(&r.category.as_str()) {
+                order.push(&r.category);
+            }
+        }
+        order
+            .into_iter()
+            .flat_map(|cat| matching.iter().copied().filter(move |r| r.category == cat))
             .collect()
     }
 }
@@ -156,9 +174,10 @@ mod tests {
         // Titles must be unique *within a distro* (that's all a user ever sees at once);
         // the same title across distros — "VLC media player" for Fedora and Arch — is fine.
         let catalog = Catalog::load().unwrap();
-        for distro in ["fedora", "arch"] {
+        for distro in ["fedora", "arch", "debian", "ubuntu", "opensuse"] {
+            let family = vec![distro.to_string()];
             let mut titles: Vec<&str> =
-                catalog.for_distro(distro).iter().map(|r| r.title.as_str()).collect();
+                catalog.for_distro(&family).iter().map(|r| r.title.as_str()).collect();
             titles.sort_unstable();
             let before = titles.len();
             titles.dedup();
@@ -180,9 +199,9 @@ mod tests {
             note: None,
             check: None,
         };
-        assert!(r.applies_to("fedora"));
-        assert!(r.applies_to("arch"));
-        assert!(r.applies_to(""));
+        assert!(r.applies_to(&["fedora".to_string()]));
+        assert!(r.applies_to(&["arch".to_string()]));
+        assert!(r.applies_to(&[]));
     }
 
     #[test]
@@ -311,12 +330,42 @@ mod tests {
     }
 
     #[test]
+    fn entries_come_grouped_by_category() {
+        // Each category must appear exactly once, or the renderer opens a second section
+        // with the same header — which a cross-distro entry at the end of the file did.
+        let catalog = Catalog::load().unwrap();
+        for family in [vec!["fedora"], vec!["arch"], vec!["ubuntu", "debian"], vec!["opensuse"]] {
+            let family: Vec<String> = family.iter().map(|s| s.to_string()).collect();
+            let mut seen: Vec<&str> = Vec::new();
+            let mut last: Option<&str> = None;
+            for r in catalog.for_distro(&family) {
+                if last != Some(r.category.as_str()) {
+                    assert!(
+                        !seen.contains(&r.category.as_str()),
+                        "category '{}' reopens for {family:?}",
+                        r.category
+                    );
+                    seen.push(&r.category);
+                    last = Some(&r.category);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn distro_filter_selects_matching_entries() {
         let catalog = Catalog::load().unwrap();
-        let fedora = catalog.for_distro("fedora");
+        let fedora = catalog.for_distro(&["fedora".to_string()]);
         assert!(!fedora.is_empty(), "fedora entries expected");
         // A distro named by no entry gets only the universal (empty-distros) ones.
-        let alien = catalog.for_distro("plan9");
+        let alien = catalog.for_distro(&["plan9".to_string()]);
         assert!(alien.iter().all(|r| r.distros.is_empty()));
+
+        // A derivative inherits its parent's entries through ID_LIKE — the reason
+        // `applies_to` takes a family and not one id.
+        let nobara = catalog.for_distro(&["nobara".to_string(), "fedora".to_string()]);
+        assert_eq!(nobara.len(), fedora.len(), "a Fedora derivative sees Fedora's entries");
+        let mint = catalog.for_distro(&["linuxmint".to_string(), "ubuntu".to_string(), "debian".to_string()]);
+        assert!(!mint.is_empty(), "a Debian derivative must see Debian's entries");
     }
 }

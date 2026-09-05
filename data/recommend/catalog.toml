@@ -60,17 +60,6 @@ distros = ["fedora"]
 packages = ["google-noto-emoji-fonts", "google-noto-sans-cjk-fonts"]
 
 [[recommendation]]
-id = "steam"
-title = "Steam"
-why = "The main PC games store; pairs with Proton to run many Windows titles."
-category = "gaming"
-distros = ["fedora"]
-packages = ["steam:flatpak"]
-note = "The Flatpak build is sandboxed and the least fuss on Fedora."
-# Installed Flatpak app-id (differs from the "steam" install spec).
-check = "com.valvesoftware.Steam"
-
-[[recommendation]]
 id = "wine"
 title = "Wine"
 why = "Run many Windows applications and games directly on Linux."
@@ -116,12 +105,93 @@ category = "fonts"
 distros = ["arch"]
 packages = ["noto-fonts", "noto-fonts-emoji", "noto-fonts-cjk"]
 
-# Steam via Flatpak is the same everywhere, so it applies to every distro (empty distros).
+# Steam through Flatpak is the same install everywhere, so this applies to every distro
+# (empty `distros`). It used to exist twice — once for Fedora, once for Arch, with the same
+# `steam:flatpak` spec — which is why nobody else was ever offered it.
 [[recommendation]]
 id = "steam-flatpak"
 title = "Steam (Flatpak)"
 why = "The main PC games store; the Flatpak build is sandboxed and cross-distro."
 category = "gaming"
-distros = ["arch"]
+distros = []
 packages = ["steam:flatpak"]
+# Installed Flatpak app-id (differs from the "steam" install spec).
 check = "com.valvesoftware.Steam"
+
+# --- Debian / Ubuntu (and derivatives: Mint, Pop!_OS, Zorin, elementary…) ----
+# Matched by family, so a derivative that declares ID_LIKE=debian/ubuntu gets these too.
+# Debian ships no restricted codecs by default and Ubuntu keeps them in a single
+# meta-package, which is why the two entries differ in name but not in intent.
+
+[[recommendation]]
+id = "multimedia-codecs-deb"
+title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+why = "Lets most players and browsers decode H.264/H.265/AAC and friends."
+category = "media"
+distros = ["debian", "ubuntu"]
+packages = ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly", "gstreamer1.0-libav"]
+
+[[recommendation]]
+id = "vlc-deb"
+title = "VLC media player"
+why = "Plays practically any media file without hunting for codecs."
+category = "media"
+distros = ["debian", "ubuntu"]
+packages = ["vlc"]
+
+[[recommendation]]
+id = "fonts-core-deb"
+title = "Common fonts (emoji + broad Unicode coverage)"
+why = "Emoji and non-Latin text render instead of showing empty boxes."
+category = "fonts"
+distros = ["debian", "ubuntu"]
+packages = ["fonts-noto-core", "fonts-noto-color-emoji", "fonts-noto-cjk"]
+
+[[recommendation]]
+id = "wine-deb"
+title = "Wine"
+why = "Run many Windows applications and games directly on Linux."
+category = "gaming"
+distros = ["debian", "ubuntu"]
+packages = ["wine"]
+
+# --- openSUSE (Leap and Tumbleweed) -----------------------------------------
+# Like Fedora, openSUSE ships no patent-encumbered codecs; unlike Fedora, the community
+# repo (Packman) is added with a zypper command rather than a release package, so it is a
+# `manual` entry the way RPM Fusion is.
+
+[[recommendation]]
+id = "packman"
+title = "Packman repository"
+why = "The community repo openSUSE points at for codecs and the media apps it can't ship itself."
+category = "repos"
+distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
+manual = "sudo zypper --non-interactive addrepo --refresh --priority 90 https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/ packman"
+note = "A third-party repository — you are extending who you trust for packages. Official instructions: https://en.opensuse.org/Additional_package_repositories#Packman. On Leap, replace openSUSE_Tumbleweed in the URL with your release (e.g. openSUSE_Leap_15.6)."
+
+[[recommendation]]
+id = "multimedia-codecs-suse"
+title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+why = "Play the video and audio formats openSUSE omits by default, in browsers and media players alike."
+category = "media"
+distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
+packages = ["gstreamer-plugins-good", "gstreamer-plugins-bad", "gstreamer-plugins-ugly", "gstreamer-plugins-libav"]
+requires = "packman"
+note = "Needs Packman enabled first — doctor enables it for you when you accept this."
+
+[[recommendation]]
+id = "vlc-suse"
+title = "VLC media player"
+why = "Plays practically any media file without hunting for codecs."
+category = "media"
+distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
+packages = ["vlc"]
+requires = "packman"
+
+[[recommendation]]
+id = "fonts-core-suse"
+title = "Common fonts (emoji + broad Unicode coverage)"
+why = "Emoji and non-Latin text render instead of showing empty boxes."
+category = "fonts"
+distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
+packages = ["noto-sans-fonts", "noto-coloremoji-fonts", "noto-sans-cjk-fonts"]

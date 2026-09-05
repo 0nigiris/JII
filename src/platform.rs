@@ -9,32 +9,6 @@
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// A Linux distribution family, parsed from `/etc/os-release`.
-///
-/// A detected host fact, not a support gate. No distro is privileged over another;
-/// the durable `id`/`id_like` family predicate is introduced when a real consumer
-/// needs it (T6 bootstrap), not speculatively (ADR-0029).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Distro {
-    Fedora,
-    /// Any other recognized `ID`.
-    Other(String),
-    Unknown,
-}
-
-impl Distro {
-    /// The `/etc/os-release` `ID` string ("fedora", "ubuntu", …), or `""` when unknown.
-    /// This is a plain fact, not a support gate (ADR-0029); its first consumer is the
-    /// recommend-catalog, which filters entries by distro id.
-    pub fn id(&self) -> &str {
-        match self {
-            Distro::Fedora => "fedora",
-            Distro::Other(id) => id,
-            Distro::Unknown => "",
-        }
-    }
-}
-
 /// How privilege elevation should be requested on this host.
 ///
 /// Two facts decide it, in this order: **are we already root** (a container, a rescue
@@ -72,10 +46,6 @@ impl ElevationKind {
 /// Detected properties of the host, computed once and cached.
 #[derive(Debug, Clone)]
 pub struct Platform {
-    /// Detected distro family. A host fact only — the core never branches on it. Read by
-    /// the recommend-catalog (to filter entries by distro) and, later, config-seeding /
-    /// bootstrap (T6).
-    pub distro: Distro,
     /// Whether this is an Arch-family host (Arch, Manjaro, EndeavourOS, CachyOS, Artix…),
     /// by `ID`/`ID_LIKE`. A host fact, read by the AUR source/ecosystem so `jii yay`/`jii paru`
     /// and AUR search are offered **only** where they apply — never on Fedora/Debian/etc.
@@ -91,6 +61,13 @@ pub struct Platform {
     pub unicode: bool,
     /// Directories on `PATH`. Backs the user-space `~/.local/bin` check in `jii doctor`.
     pub path_dirs: Vec<PathBuf>,
+    /// This host's distro *family*: the `ID` followed by every `ID_LIKE` token, most
+    /// specific first. A host fact only — the core never branches on it. Read by the
+    /// recommend-catalog, which used to match on `ID` alone: Linux Mint saw none of
+    /// Debian's suggestions and Nobara none of Fedora's, though each names its parent
+    /// right there in `/etc/os-release` (ADR-0029 stands — entries declare their distros,
+    /// this only widens what counts as a match).
+    pub distro_ids: Vec<String>,
     /// The process's effective user id. `0` means we are already root, and every
     /// elevation helper is then not just unnecessary but wrong to require.
     pub euid: u32,
@@ -103,12 +80,12 @@ impl Platform {
         PLATFORM.get_or_init(|| {
             let os_release = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
             Platform {
-                distro: parse_distro(&os_release),
                 arch_like: parse_arch_like(&os_release),
                 arch: std::env::consts::ARCH,
                 is_tty: detect_tty(),
                 unicode: detect_unicode(),
                 path_dirs: detect_path_dirs(),
+                distro_ids: parse_distro_ids(&os_release),
                 euid: detect_euid(),
             }
         })
@@ -127,47 +104,35 @@ impl Platform {
     }
 }
 
-/// Parse a distro family from the contents of `/etc/os-release`.
+/// `ID` first, then each `ID_LIKE` token — the host's distro family, most specific first.
 ///
-/// Split out so it can be unit-tested without touching the filesystem.
-fn parse_distro(os_release: &str) -> Distro {
-    let field = |key: &str| -> Option<String> {
-        os_release.lines().find_map(|line| {
-            let (k, v) = line.split_once('=')?;
-            if k.trim() == key {
-                Some(v.trim().trim_matches('"').to_string())
-            } else {
-                None
-            }
-        })
-    };
-
-    let id = field("ID").unwrap_or_default();
-    let id_like = field("ID_LIKE").unwrap_or_default();
-
-    if id == "fedora" || id_like.split_whitespace().any(|t| t == "fedora") {
-        Distro::Fedora
-    } else if id.is_empty() {
-        Distro::Unknown
-    } else {
-        Distro::Other(id)
-    }
-}
-
-/// Whether `/etc/os-release` describes an Arch-family host. Arch itself sets `ID=arch` (and
-/// no `ID_LIKE`); derivatives (Manjaro, EndeavourOS, CachyOS, Artix, Garuda…) set
-/// `ID_LIKE=arch` (sometimes among others), so a single `arch` token in either field is the
-/// reliable, derivative-proof signal. Split out for unit-testing without touching the FS.
-fn parse_arch_like(os_release: &str) -> bool {
+/// Split out so it can be unit-tested without touching the filesystem. Values are
+/// lowercased and de-duplicated (a few distros repeat their own id in `ID_LIKE`).
+fn parse_distro_ids(os_release: &str) -> Vec<String> {
     let field = |key: &str| -> Option<String> {
         os_release.lines().find_map(|line| {
             let (k, v) = line.split_once('=')?;
             (k.trim() == key).then(|| v.trim().trim_matches('"').to_ascii_lowercase())
         })
     };
-    let id = field("ID").unwrap_or_default();
-    let id_like = field("ID_LIKE").unwrap_or_default();
-    id == "arch" || id_like.split_whitespace().any(|t| t == "arch")
+    let mut out = Vec::new();
+    if let Some(id) = field("ID").filter(|s| !s.is_empty()) {
+        out.push(id);
+    }
+    for token in field("ID_LIKE").unwrap_or_default().split_whitespace() {
+        if !out.iter().any(|seen| seen == token) {
+            out.push(token.to_string());
+        }
+    }
+    out
+}
+
+/// Whether `/etc/os-release` describes an Arch-family host. Arch itself sets `ID=arch` (and
+/// no `ID_LIKE`); derivatives (Manjaro, EndeavourOS, CachyOS, Artix, Garuda…) set
+/// `ID_LIKE=arch` (sometimes among others), so an `arch` token anywhere in the family is the
+/// reliable, derivative-proof signal.
+fn parse_arch_like(os_release: &str) -> bool {
+    parse_distro_ids(os_release).iter().any(|id| id == "arch")
 }
 
 /// Pick the elevation mechanism from three facts: our own uid, whether a terminal is
@@ -260,31 +225,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_fedora_by_id() {
-        let os = r#"NAME="Fedora Linux"
-ID=fedora
-VERSION_ID=44
-"#;
-        assert_eq!(parse_distro(os), Distro::Fedora);
-    }
-
-    #[test]
-    fn parses_fedora_by_id_like() {
-        let os = r#"ID=nobara
-ID_LIKE="fedora"
-"#;
-        assert_eq!(parse_distro(os), Distro::Fedora);
-    }
-
-    #[test]
-    fn parses_other_distro() {
-        let os = "ID=ubuntu\nID_LIKE=debian\n";
-        assert_eq!(parse_distro(os), Distro::Other("ubuntu".to_string()));
-    }
-
-    #[test]
-    fn unknown_when_empty() {
-        assert_eq!(parse_distro(""), Distro::Unknown);
+    fn a_derivative_carries_its_parent_in_the_family() {
+        assert_eq!(parse_distro_ids("ID=fedora\n"), vec!["fedora"]);
+        assert_eq!(
+            parse_distro_ids("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n"),
+            vec!["linuxmint", "ubuntu", "debian"]
+        );
+        // A derivative that repeats its own id in ID_LIKE must not list it twice.
+        assert_eq!(parse_distro_ids("ID=arch\nID_LIKE=arch\n"), vec!["arch"]);
+        assert!(parse_distro_ids("").is_empty());
     }
 
     #[test]
