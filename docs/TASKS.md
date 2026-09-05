@@ -789,6 +789,30 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   **Settled (2026-08-22):** the credits name Toby Fox and the TurboWarp Packager
                   and carry a takedown offer. The Scratch project's own author is unknown — the
                   game was found on a site that credited none — so there is no link to add. Closed.
+            - [x] **Five-distro tester round: nine defects (2026-09-05)** (ADR-0085…0088).
+                  The owner ran the checklist on Ubuntu, Fedora, Arch, openSUSE, Gentoo and Void in
+                  phone containers. **Elevation** assumed `sudo` exists — a root Arch container with
+                  none died on every install; `ElevationKind` now answers from euid *and* what is
+                  installed (`AlreadyRoot`/`Doas`/`Missing`), and `Missing` is refused in words
+                  first. **install.sh** identified the distro from PATH, where a leaked Termux
+                  `apt-get` made it download a .deb on Arch; it reads `/etc/os-release` now, offers
+                  to put `~/.local/bin` on PATH itself (in the rc file matching `$SHELL` — `source`
+                  is not a command in dash, which ended the Void run), and no longer reports a
+                  missing `sha256sum` as a corrupt download. **Gentoo "hung"** on a total miss:
+                  `is_available()` had no timeout outside the search fan-out, and broadening ran up
+                  to nineteen sequential fan-outs, all of it silent. **A progress bar became several
+                  hundred lines** on a narrow phone terminal — a wrapped line cannot be erased.
+                  **A manager that couldn't be set up took its package down with it** and still
+                  exited 0; JII now falls back down the ranking (never to an unverified source).
+                  **Only Fedora and Arch had recommendations**; Debian/Ubuntu and openSUSE added,
+                  Steam de-duplicated to one cross-distro entry, matching now on the distro family.
+                  **`export {env}`** printed literally in the token help, with a new test to catch
+                  the shape. New `jii ghtoken`; achievements are silent outside `jii achievements`;
+                  a fuller `--version`; a 13th checklist step (whole-system update). 344 tests.
+                  **Not acted on:** semantic search (`jii search markdown` → editors), a broader
+                  "prettier, more minimal friendly output" pass, and pointing at `upac` where no
+                  native package exists — the last needs the owner's call, as it advertises a third
+                  party.
             - [x] **Outside PR review + the token it exposed (2026-08-22)** (ADR-0083, ADR-0084).
                   Reviewed `justpav05`'s PR #12. Its one genuinely important finding: JII's own
                   setup told the user to `export GITHUB_TOKEN=…` in `~/.bashrc`, which hands the

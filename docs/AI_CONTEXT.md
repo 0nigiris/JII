@@ -8,11 +8,57 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-08-24_
+_Last updated: 2026-09-05_
 
 ---
 
-## Most recent work (2026-08-22, batch 21) — read this first
+## Most recent work (2026-09-05, batch 22) — read this first
+
+**The owner ran the tester checklist on five distros (Ubuntu, Fedora, Arch, openSUSE, Gentoo,
+Void) in phone containers and pasted the whole log. Nine real defects, all fixed; four ADRs
+(0085–0088). Unreleased on `master`.**
+
+- **`sudo` was assumed to exist** (ADR-0085). Root Arch container, no sudo: every install died with
+  `failed to run sudo: No such file or directory`. `ElevationKind` now answers from euid *and* what
+  is installed — `AlreadyRoot`, `Doas`, `Missing` — and `Missing` is refused in words before the
+  first step, not as a spawn error mid-run. `[needs sudo]` names the real mechanism now.
+- **install.sh trusted PATH to identify the distro.** The containers leaked Termux's `apt-get` into
+  PATH, so the script offered apt and downloaded a **.deb on Arch**. The manager now comes from
+  `/etc/os-release` ID/ID_LIKE, PATH only confirming it. **Watch for this shape:** a `command -v`
+  probe standing in for a fact the system states outright.
+- **The PATH advice was bash-only** and cost the Void run its whole session (`source` is not a
+  command in dash). The installer offers to add the line itself, to the rc file matching `$SHELL`.
+- **Gentoo "hung"** on the total-miss step (ADR-0086) — three separate unbounded things: no timeout
+  on `is_available()` anywhere but the search fan-out (`emerge --version` loads all of Portage), a
+  broaden pass of up to *nineteen* sequential fan-outs, and no spinner during any of it.
+- **One progress bar became several hundred lines** on a phone (ADR-0086). `\r\x1b[2K` erases one
+  row; a wrapped line cannot be erased. The label is trimmed to fit and `render_bar` now guarantees
+  it never exceeds its budget.
+- **"Skipped htop." with exit 0** when a manager couldn't be set up (ADR-0088). JII now falls back
+  down the ranking to a source that works here — never an unverified one — and exits non-zero when
+  it was JII that failed rather than the user declining.
+- **Only Fedora and Arch had recommendations at all.** Debian/Ubuntu and openSUSE entries added;
+  "Steam" existed twice with the identical `steam:flatpak` spec and is now one cross-distro entry.
+  Entries match the distro *family* (ID + ID_LIKE), so Mint gets Debian's and Nobara gets Fedora's.
+- **`export {env}` printed literally** in the token help, on every distro. The key carries a
+  placeholder but was looked up through the no-argument arm of `t!`. A new test scans the source
+  for that shape.
+- **install.sh reported a missing `sha256sum` as a corrupt download.** Now tries shasum/openssl,
+  offers to install coreutils, and asks (defaulting to no) before continuing unverified. `tar` gets
+  the same treatment. Note `set -eu`: read a function's status with `|| rc=$?` or the script dies
+  before the `case` sees it.
+- **New: `jii ghtoken`** — stores the token without echoing it (0600 in a 0700 dir), `--show` names
+  its provenance and never its value, `--forget` deletes it. The owner's ask.
+- **Achievements are earned quietly** (ADR-0087) — `jii achievements` is where they show; boss
+  fights keep their toast. `jii --version` grew a real body; `-V` stays terse for scripts. The
+  tester checklist gained a 13th step (whole-system update).
+- 344 tests, clippy clean, build clean. **Not yet released** — unreleased work on `master`.
+- **Still open from the round, not started:** semantic search (`jii search markdown` → editors);
+  a broader "friendly output is prettier and more minimal" pass; and the owner's idea of pointing
+  at `upac` (github.com/justpav05/upac) where no native package exists — that one needs his call,
+  since it advertises a third party.
+
+## Previous work (2026-08-22, batch 21)
 
 **Reviewed an outside contributor's PR (#12, `justpav05`, "Cleaning up the repository"), took the
 parts that were right, and fixed the security problem they found. ADR-0083 and ADR-0084.**

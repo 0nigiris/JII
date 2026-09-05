@@ -3491,3 +3491,158 @@ MSRV-compatible versions on its own. `zip` 2→8 and `sha2` 0.10→0.11 are on t
 install path (extract, then verify); both are covered by existing unit tests that exercise the real
 round trip rather than only compiling. The rest of PR #12 — SPDX headers, `LICENSES/`, `REUSE.toml`
 — is good work and is left to land as its own PR.
+
+---
+
+## ADR-0085 — Elevation is two questions, not one: are we root, and what is installed here
+
+**Status.** Accepted (2026-09-05).
+
+**Context.** The owner ran the tester checklist on five distros in phone containers. On Arch the
+REAL-install step failed outright:
+
+    Install htop (3.5.3-1) via pacman  [needs sudo]
+    x failed to run sudo: No such file or directory (os error 2)
+
+The session was `root` and the image had no `sudo` at all. `Platform::elevation_kind` answered from
+exactly one fact — is there a TTY — and returned `Sudo` or `Pkexec`; neither our own uid nor the
+presence of the helper entered into it. So JII prefixed `sudo` onto a command it could have run
+directly, and reported the failure as a spawn error two layers below the decision that caused it.
+
+**Decision.** `ElevationKind` answers from two facts: the effective uid, and which helper actually
+exists on this host. It gains three variants:
+
+- **`AlreadyRoot`** — uid 0. The command runs bare. Being root is the *easy* case; requiring a
+  helper there is the bug.
+- **`Doas`** — `sudo` absent but OpenBSD-style `doas` present (Void, Alpine, Artix).
+- **`Missing`** — not root, and none of sudo/doas/pkexec. Refused **in words**, before the first
+  privileged step runs, via a new `JiiError::NoElevation` with a remedy — rather than as a spawn
+  failure halfway through a run that already printed "Installing…".
+
+Order: root first; then, on a TTY, `sudo` → `doas` → `pkexec` (ask in the terminal the user is
+already looking at); with no TTY, `pkexec` first (it can raise its own prompt) and the terminal
+helpers after. The chooser is a pure function of `(euid, is_tty, has_binary)`, so the whole matrix
+is unit-tested without a container per case. The uid is read from `/proc/self/status` — Linux-only,
+like JII, and it avoids taking a `libc` dependency for one number.
+
+The plan preview stops saying `[needs sudo]` unconditionally. It names what will really be used:
+`[needs doas]`, `[as root]`, or a bare `[needs root]` where nothing can grant it.
+
+**Alternatives.** *Probe `sudo` and fall back on failure* — the failure arrives mid-install, after
+output has been printed and possibly after other steps have run; and it cannot distinguish "no
+sudo" from "wrong password". *Require root for the whole process* — squarely against JII's rule
+that it is never fully run as root.
+
+**Consequences.** Root containers — the common case for testing and for CI images — install without
+a helper. Void and Alpine work through `doas` without configuration. A host that genuinely cannot
+elevate says so in one sentence with a way forward, instead of an errno.
+
+---
+
+## ADR-0086 — Unbounded work, done in silence, is indistinguishable from a hang
+
+**Status.** Accepted (2026-09-05).
+
+**Context.** Three symptoms from the same tester round, which turned out to be one idea:
+
+1. **Gentoo hung** on the total-miss step. No output, no spinner; the tester pressed Ctrl+C. It was
+   never reached the state where anything gets printed.
+2. **A Fedora install on a phone printed several hundred progress lines**, each cut mid-escape,
+   instead of one bar being redrawn.
+3. Even on a healthy Fedora desktop, a name that resolves nowhere took **21 seconds**, most of it
+   with nothing on screen.
+
+**Decision.** Three bounds, and one rule about the terminal.
+
+- **`is_available()` gets a timeout, a PATH pre-check, and a memo.** Thirteen of its fourteen call
+  sites ran the tool with no timeout at all, and `emerge --version` loads the whole Portage stack —
+  on a cold tree, longer than anyone waits. `which` now looks on `PATH` first (most managers are
+  absent on any given host, and that costs no process), bounds the run at 3s with kill-on-drop, and
+  memoizes per process. **A tool that is on `PATH` but too slow to answer counts as present**:
+  calling it absent would silently drop the host's own package manager out of every search. The T6
+  bootstrap path invalidates the memo after installing a manager, so "is it here *now*?" stays live
+  where that matters.
+- **Broadening gets a wall-clock budget.** A total miss ran one prefix round, two stem rounds and
+  up to sixteen typo variants — nineteen full fan-outs over every source, sequentially. The stages
+  are ordered best-guess-first, so a budget of `2 × network.timeout_secs` drops the tail nobody was
+  going to wait for, not the useful part. Checked *between* rounds only; a round already under way
+  keeps its own per-source timeout.
+- **The progress line may never exceed the terminal width.** `\r\x1b[2K` erases only the row the
+  cursor is on. A line that wraps leaves its earlier rows on screen, and at ~11 repaints a second
+  the debris is immediate — which is exactly symptom 2, from a ~100-character package list on a
+  ~40-column phone terminal. The spinner reserves what the bar needs and trims its *label*: the bar
+  is the thing being watched, so the label is what gives. `render_bar` owns the invariant "never
+  wider than the budget given" and degrades — full tail with the step counter, then the percentage
+  alone, then the number with no bar — instead of overflowing.
+- **And the terminal keeps talking.** The "Searching…" spinner stopped before the broaden pass
+  began, so the slowest half of a miss was also the silent half. It now says it is looking wider.
+
+**Alternatives.** *Kill the slow tool outright* — a manager that is merely heavy is not broken, and
+dropping it makes JII wrong rather than slow. *A global deadline on the whole command* — too blunt:
+a real install of a large package legitimately takes minutes.
+
+**Consequences.** A total miss is bounded at roughly `prefix round + 2 × timeout + one round in
+flight` — about 15s on the default 5s timeout, where it was unbounded. Repeated availability
+questions within a run are free. And the standing UX rule gets its sharpest statement yet: **a
+quiet terminal must never look hung** — not because silence is unfriendly, but because the tester
+could not tell the difference between "working" and "wedged", and chose Ctrl+C.
+
+---
+
+## ADR-0087 — Achievements are earned quietly
+
+**Status.** Accepted (2026-09-05).
+
+**Context.** Every command that granted a badge printed `✓ Achievement unlocked  🩺  House Call`
+inline. The owner's verdict: "убрать эти сообщения… Выглядит слишком нейросетно и детски. Пусть
+ачивки будут только внутри команды JII achievements."
+
+**Decision.** `grant_achievement` no longer prints anything. Badges are still awarded and persisted;
+`jii achievements` is where they are seen. The boss fights keep their toast (`grant_boss`): there
+the badge *is* the payoff of something the user deliberately went looking for, not an interruption
+of work they came to do.
+
+**Alternatives.** *A `--no-achievements` flag* — a setting to fix output nobody asked for is worse
+than not printing it. *Print at the end of a run* — still noise in the middle of an answer.
+
+**Consequences.** `doctor`, `search` and `how` output is that much shorter, which is the direction
+the owner wants overall ("минималистичнее"). The one cost is discoverability, covered by the
+command's presence in `--help` and by the badges being there whenever the user does look.
+
+---
+
+## ADR-0088 — A manager that can't be set up must not take the package down with it
+
+**Status.** Accepted (2026-09-05).
+
+**Context.** On openSUSE and Gentoo the tester's install step ended:
+
+    htop is available via Snap, which isn't set up on this system yet.
+    ✗ Couldn't find a package to set up Snap on this system — skipping Snap.
+    Skipped htop.
+    (exit: 0)
+
+His note: "Я нихуя не понял что тут произошло." Three faults. The message passed `app = manager`,
+so it named Snap where the app belonged, then contradicted itself one line down. Nothing said what
+to do next. And a run that installed nothing reported success.
+
+**Decision.** The runner-up candidates are kept alongside the winner (index-aligned, best first)
+and handed to the bootstrap step. When a manager cannot be set up — or the user declines — JII
+walks down the ranking for a source that works *on this machine* and says plainly that it is doing
+so. **Unverified sources are never eligible for this fall-back**: automatic promotion of a
+name-squat is precisely what the trust barrier exists to prevent, and on the tester's own box the
+unverified `htop` on crates.io is an HTML-to-PDF converter. Where nothing qualifies, the app is
+still skipped — but with the command that would set the manager up by hand and a pointer at
+`jii search`.
+
+Exit status distinguishes intent from failure: "JII offered and could not" is a failure and exits
+non-zero; the user answering "no" stays a plain zero, because a decision is not a failure.
+
+**Alternatives.** *Re-run the whole search restricted to installed sources* — a second fan-out for
+information already ranked and in hand. *Fall back to anything at all, including unverified* —
+faster to write and wrong; see the crates.io `htop`.
+
+**Consequences.** The install flow carries one more parallel vector through one function. In
+exchange, the most confusing outcome in the whole checklist becomes a sentence that says what
+happened, what JII did instead, and what the user can do — and a run that installed nothing can no
+longer claim success.

@@ -264,6 +264,8 @@ jii doctor           diagnose sources + host, then interactively set up what's m
 jii list             what JII installed  (add --audit for signatures, trust & concerns)
 jii history          installation history
 jii achievements     playful badges you've unlocked using JII (some are secret…)
+jii ghtoken          store a GitHub token (nothing echoed, nothing in shell history);
+                     --show says where the current one comes from, --forget deletes it
 jii changelog        what changed in JII — this version, any past one, or --all (offline)
 jii lang [en|ru]     show or set the interface language (auto = follow the system)
 jii cache [clear]    show the search-cache path, or delete it
