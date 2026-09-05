@@ -558,6 +558,8 @@ impl Cli {
         let single = specs.len() == 1;
         let effective_auto = self.global.auto || engine.config().install.auto;
         let mut chosen: Vec<PackageCandidate> = Vec::new();
+        // Index-aligned with `chosen`: the runner-up candidates for each app, best first.
+        let mut alternates: Vec<Vec<PackageCandidate>> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         let mut chose_interactively = false;
         for spec in &specs {
@@ -748,6 +750,9 @@ impl Cli {
                 best
             };
             chosen.push(best);
+            // Keep what came second, third… If the winner turns out to need a manager this
+            // machine can't set up, these are the way out of the dead end (ADR-0088).
+            alternates.push(ranked);
         }
 
         // 1a-bis. T6 (ADR-0065): a chosen candidate may come from an ecosystem manager that isn't
@@ -756,8 +761,9 @@ impl Cli {
         //   binary. Set the manager up first (then the app installs through it) instead of building
         //   a command that would fail; a declined or script-only manager drops its apps with a note.
         //   github has no `ecosystem()`, so it never routes here — it stays the plain binary.
-        chosen = self
-            .bootstrap_missing_managers(&engine, chosen, &config, renderer, assume_yes)
+        let blocked;
+        (chosen, blocked) = self
+            .bootstrap_missing_managers(&engine, chosen, alternates, &config, renderer, assume_yes)
             .await?;
         // No early return on an empty `chosen` here. When *nothing* resolved, `chosen` was
         // already empty on the way in, and returning at this point skipped step 2 below — so
@@ -886,7 +892,10 @@ impl Cli {
             // failed — it printed a red ✗ — and must exit non-zero, so a script wrapping jii
             // can tell. The message is already on screen; `AlreadyReported` carries only the
             // status. An empty `chosen` with no misses is an ordinary "nothing to do".
-            return if not_found.is_empty() {
+            // `blocked` covers the third case: the package *was* found, but its only source
+            // needed a manager JII could not set up here (the tester's openSUSE run, which
+            // said "Skipped htop." and then exited 0 as if all were well).
+            return if not_found.is_empty() && !blocked {
                 Ok(())
             } else {
                 Err(crate::error::JiiError::AlreadyReported)
@@ -2499,10 +2508,11 @@ impl Cli {
         &self,
         engine: &Engine,
         chosen: Vec<PackageCandidate>,
+        alternates: Vec<Vec<PackageCandidate>>,
         config: &Config,
         renderer: &Renderer,
         assume_yes: bool,
-    ) -> crate::error::Result<Vec<PackageCandidate>> {
+    ) -> crate::error::Result<(Vec<PackageCandidate>, bool)> {
         let eco = engine.ecosystem_catalog().await;
         let status_of = |id: &str| eco.iter().find(|e| e.id == id);
 
@@ -2511,7 +2521,7 @@ impl Cli {
             .iter()
             .any(|c| status_of(&c.source_id).is_some_and(|e| !e.installed))
         {
-            return Ok(chosen);
+            return Ok((chosen, false));
         }
 
         let effective_auto = self.global.auto || config.install.auto;
@@ -2519,8 +2529,13 @@ impl Cli {
         // Decide once per manager (a batch may want several apps from the same one).
         let mut decided: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
         let mut survivors: Vec<PackageCandidate> = Vec::with_capacity(chosen.len());
+        let mut alternates = alternates.into_iter();
+        // Set when JII offered to set a manager up and could not — as opposed to the user
+        // declining, which is an answer, not a failure.
+        let mut blocked = false;
 
         for cand in chosen {
+            let others = alternates.next().unwrap_or_default();
             let Some(status) = status_of(&cand.source_id) else {
                 survivors.push(cand); // not an ecosystem manager (e.g. github) — unaffected
                 continue;
@@ -2559,8 +2574,13 @@ impl Cli {
                     if !self.global.dry_run && !prompt::confirm(renderer, &question, true, &flags) {
                         false
                     } else {
-                        self.set_up_manager(engine, &cand.source_id, manager, names, config.clone(), renderer)
-                            .await?
+                        // A "no" above is the user's decision; a `false` here is JII failing to
+                        // do what it offered. Only the second makes the run a failure.
+                        let done = self
+                            .set_up_manager(engine, &cand.source_id, manager, names, config.clone(), renderer)
+                            .await?;
+                        blocked |= !done;
+                        done
                     }
                 }
             };
@@ -2571,11 +2591,60 @@ impl Cli {
             }
             if ok {
                 survivors.push(cand);
-            } else {
-                renderer.info(&crate::t!("install.bootstrap_skipped_app", app = cand.name.clone()));
+                continue;
+            }
+            // The manager isn't here and couldn't be set up. Don't stop at "skipped" — that is
+            // the dead end the tester hit and could not read ("Я нихуя не понял что тут
+            // произошло"). Look down the ranking for a source that *works on this machine*.
+            //
+            // Unverified sources are not eligible: falling back to them silently is exactly
+            // what "auto never installs untrusted" forbids, and on the tester's box the
+            // unverified `htop` on crates.io is an HTML-to-PDF converter. If nothing
+            // qualifies, say so with the command that would set the manager up by hand.
+            match self.first_usable_alternate(engine, &others).await {
+                Some(next) => {
+                    renderer.info(&crate::t!(
+                        "install.bootstrap_fallback",
+                        app = cand.name.clone(),
+                        manager = manager,
+                        source = next.source_id.clone()
+                    ));
+                    survivors.push(next);
+                }
+                None => {
+                    renderer.info(&crate::t!("install.bootstrap_skipped_app", app = cand.name.clone()));
+                    renderer.info(&crate::t!(
+                        "install.bootstrap_by_hand",
+                        manager = manager,
+                        id = cand.source_id.clone()
+                    ));
+                }
             }
         }
-        Ok(survivors)
+        Ok((survivors, blocked))
+    }
+
+    /// The best runner-up that could actually install here: its manager is present, and its
+    /// trust is not "unverified".
+    ///
+    /// Both conditions matter. The first because offering a source whose CLI is missing just
+    /// moves the dead end one step along; the second because an automatic fall-back to an
+    /// unverified name-squat is precisely what the trust barrier exists to prevent — the
+    /// user asked for `htop`, not for whatever a stranger published under that name.
+    async fn first_usable_alternate(
+        &self,
+        engine: &Engine,
+        others: &[PackageCandidate],
+    ) -> Option<PackageCandidate> {
+        for candidate in others {
+            if candidate.trust == crate::model::TrustLevel::Untrusted {
+                continue;
+            }
+            if engine.source_available(&candidate.source_id).await {
+                return Some(candidate.clone());
+            }
+        }
+        None
     }
 
     /// Offer to run an ecosystem manager's own upstream installer script (Homebrew, Nix).
@@ -2709,7 +2778,10 @@ impl Cli {
         renderer: &Renderer,
     ) -> crate::error::Result<bool> {
         let Some((pkg, from)) = engine.first_bootstrap_package(names).await else {
-            renderer.error(&crate::t!("install.bootstrap_no_pkg", manager = manager, app = manager));
+            // Was `app = manager`, which printed "skipping Snap" where the app's own name
+            // belonged — and then "Skipped htop." underneath it. The message no longer names
+            // an app at all; the caller says what happened to it.
+            renderer.error(&crate::t!("install.bootstrap_no_pkg", manager = manager));
             return Ok(false);
         };
         renderer.info(&crate::t!(

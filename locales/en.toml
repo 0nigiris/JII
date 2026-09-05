@@ -136,7 +136,12 @@ shell_confirm = "Add it for you?"
 shell_added = "Added to {file} — it takes effect in new terminals (JII works with it right now)."
 shell_manual = "Not added. Add this line yourself when you want it in your shell:\n  {line}"
 shell_failed = "Couldn't write to the shell startup file: {error}"
-bootstrap_no_pkg = "Couldn't find a package to set up {manager} on this system — skipping {app}."
+bootstrap_no_pkg = "No package on this system sets up {manager}, so JII can't install it for you."
+# Taken when the first choice needed a manager this machine can't set up: JII moves down the
+# ranking rather than leaving the user with nothing (never an unverified source, though).
+bootstrap_fallback = "Using {source} for {app} instead, since {manager} can't be set up here."
+# The last word when nothing else can serve. A skipped app must still leave a way forward.
+bootstrap_by_hand = "To use {manager} anyway, install it yourself and run `jii sources add {id}` — or look at what else offers this package with `jii search`."
 bootstrap_failed = "{manager} didn't install — skipping {app}."
 bootstrap_skipped_app = "Skipped {app}."
 run_starting = "starting {cmd}…"
