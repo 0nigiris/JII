@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The hidden tester checklist: `jii yes-I-am-dev-and-want-to-test`.
 //!
 //! Built for **external testers** running JII in a fresh VM (see `docs/TESTING.md`; the

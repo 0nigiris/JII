@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The recommend-catalog: curated, distro-aware system-onboarding suggestions.
 //!
 //! This is a **data subsystem**, not core logic and not a `Provider`. The catalog is

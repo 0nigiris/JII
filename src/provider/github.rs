@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! GitHub — a [`Forge`] implementation for GitHub Releases.
 //!
 //! Supplies only the GitHub-specific bits: the API base, the "latest release" call and its

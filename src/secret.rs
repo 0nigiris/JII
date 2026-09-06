@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Reading API tokens without asking anyone to leave a credential in a shell profile.
 //!
 //! JII used to tell people to put `export GITHUB_TOKEN=…` in `~/.bashrc`. That works, and it

@@ -73,6 +73,7 @@ has it.
 - [Status](#-status)
 - [FAQ](#faq)
 - [Architecture & docs](#architecture--docs)
+- [Related projects](#related-projects)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -585,9 +586,30 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 ### Tech
 
 Rust · async (`tokio`) · single crate (modular, not a workspace) · JSON state (SQLite later) ·
-provider-trait architecture (17 native sources; declarative data-driven sources planned) · fully
-localized UI (en/ru) · 300 unit tests, clippy-clean CI · static musl binaries built in CI for
+provider-trait architecture (18 native sources; declarative data-driven sources planned) · fully
+localized UI (en/ru) · 355 unit tests, clippy-clean CI · static musl binaries built in CI for
 x86_64 + aarch64.
+
+---
+
+## Related projects
+
+### upac — atomic installs with rollback
+
+[**upac**](https://github.com/SmoothTeam/upac) ([Codeberg mirror](https://codeberg.org/justpav05/upac))
+is a package manager for Linux built around [composefs](https://github.com/containers/composefs):
+every install, update and removal is an atomic deploy, and the system can always be rolled back to
+a previous commit. It is split into a library (`libupac.so`, a stable C ABI meant to be embedded
+into other package managers) and a CLI frontend (`up`), both in Rust.
+
+It answers a question JII deliberately does not: **undoing a change to the system.** JII decides
+*where* software should come from and explains *why*; upac makes the act of putting it there
+reversible. Today upac installs from local package files (`up pkg install -f <path>`) rather than
+resolving names over a network, so the two do not overlap — and if you have wanted `jii` to be able
+to roll back an install, that is the project to watch.
+
+Different authors, no shared code. Listed here because it is being built alongside JII and solves
+a real problem this one does not.
 
 ---
 

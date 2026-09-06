@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Void Linux provider (the XBPS package manager).
 //!
 //! Self-gates on `xbps-install` (absent elsewhere → drops out; no distro check, ADR-0029).

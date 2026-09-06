@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Ranking: order candidates so the best is first.
 //!
 //! Deterministic and explainable — no hidden ML. The primary key is the configured

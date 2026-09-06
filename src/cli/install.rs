@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The install flow: search → rank → offer → plan → one confirmation → one execution.
 //!
 //! Everything a `jii <name>` does, in one place. The shape is fixed by three commitments:

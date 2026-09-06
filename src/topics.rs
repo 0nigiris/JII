@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Topic search: answering what a person *meant*, when what they typed isn't a package name.
 //!
 //! Every source searches by name, so `jii search markdown` used to answer with a library

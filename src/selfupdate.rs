@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Self-management: JII updating and removing **itself**.
 //!
 //! JII already knows how to install software the right way; it should treat itself the

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Nix provider (the Nix package manager — Nixpkgs, on any distro incl. NixOS).
 //!
 //! Unlike apt/pacman/zypper, Nix is **not** distro-bound and installs into the user's Nix

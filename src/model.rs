@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Core data model shared across the whole pipeline: `search → rank → plan → execute`.
 //!
 //! These types are source-agnostic on purpose — the engine and UI operate only on

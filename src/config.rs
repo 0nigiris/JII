@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Configuration: typed struct, sane defaults, TOML loading and validation.
 //!
 //! Precedence is CLI flag > env > config > default; this module owns the

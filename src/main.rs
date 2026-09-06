@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! JII — Just Install It. The binary: parse args, load config, dispatch, report.
 //!
 //! Wiring only, and deliberately the whole of it — everything else is the `jii` library

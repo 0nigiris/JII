@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Forge-based release providers.
 //!
 //! A **forge** is a code host that publishes downloadable releases — GitHub, and (via the

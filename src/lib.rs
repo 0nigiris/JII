@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! JII — Just Install It: a smart universal package installer for Linux.
 //!
 //! This is the library half of the crate; `src/main.rs` is a thin binary over it. Both live

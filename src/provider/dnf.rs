@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! DNF provider (Fedora, dnf5).
 //!
 //! Uses `dnf5 repoquery` with an explicit `--queryformat` so we parse stable,

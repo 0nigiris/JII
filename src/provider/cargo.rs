@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Cargo provider (crates.io — Rust's package registry).
 //!
 //! `cargo install <crate>` builds a crate's executables from source into

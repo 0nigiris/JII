@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Release notes — the data behind `jii changelog` and the "here's what you just got"
 //! summary printed after `jii update jii`.
 //!

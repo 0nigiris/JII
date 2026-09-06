@@ -1,0 +1,56 @@
+# REUSE (https://reuse.software) — machine-checkable licensing for this repository.
+#
+# Two licences, split on one question: **is this file part of the program?**
+#
+#   GPL-3.0-or-later   Everything that is. Source, the embedded data catalogs
+#                      (`data/`, `locales/` — they are compiled into the binary with
+#                      `include_str!`), the packaging recipes, the installer, CI, and the
+#                      lockfile that pins what the binary is built from.
+#   CC-BY-SA-4.0       Prose about the program: the README and everything under `docs/`,
+#                      plus the images that illustrate them.
+#
+# This file exists so the repository can be checked automatically (`reuse lint`), which is
+# what a distribution packager runs before accepting a package. Files carry an SPDX header
+# where a comment is possible; this file covers the ones where it isn't.
+version = 1
+
+# ── The program ──────────────────────────────────────────────────────────────────
+# Data compiled into the binary. Licensing these differently from the code would put a
+# share-alike attribution licence inside a GPL binary for no benefit at all.
+[[annotations]]
+path = ["data/**", "locales/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 0nigiris"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Build, packaging and CI: part of producing the program.
+[[annotations]]
+path = [
+  "Cargo.toml",
+  "Cargo.lock",
+  "rustfmt.toml",
+  "rust-toolchain.toml",
+  ".gitignore",
+  ".editorconfig",
+  ".github/**",
+  "packaging/**",
+  "scripts/**",
+  "install.sh",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 0nigiris"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Agent instructions: how contributors (human or AI) are told to work on the program.
+[[annotations]]
+path = ".claude/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 0nigiris"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# ── Prose about the program ──────────────────────────────────────────────────────
+[[annotations]]
+path = ["README.md", "AGENTS.md", "CLAUDE.md", "LICENSE", "docs/**", "assets/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 0nigiris"
+SPDX-License-Identifier = "CC-BY-SA-4.0"

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! pipx provider (PyPI — Python applications in isolated venvs).
 //!
 //! Mirrors cargo/npm: search resolves an exact package via the PyPI JSON API and plans

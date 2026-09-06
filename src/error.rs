@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Error types for JII.
 //!
 //! The core uses a single [`JiiError`] enum so failures carry a clear, typed cause

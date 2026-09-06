@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Plan executor: the one place that turns a previewed [`InstallPlan`] into effects.
 //!
 //! Every [`Action`] variant has a focused handler here — there is deliberately no

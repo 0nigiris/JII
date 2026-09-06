@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The provider abstraction: every installation source implements [`Provider`].
 //!
 //! The core operates only through this trait and the source-agnostic model — it

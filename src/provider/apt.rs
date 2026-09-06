@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! APT provider (Debian, Ubuntu and derivatives).
 //!
 //! Self-gates on `apt-get` (absent on Fedora/Arch → this provider simply drops out),

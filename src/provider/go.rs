@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Go provider (`go install` — commands from the Go module ecosystem).
 //!
 //! `go install <module>@latest` builds a module's command into `$GOBIN` (or

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The user's shell startup file — locating it, and adding a manager's setup line to it.
 //!
 //! A script-installed manager (Homebrew) ends by telling the *user* to paste a line into their

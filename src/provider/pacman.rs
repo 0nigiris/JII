@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Pacman provider (Arch Linux and derivatives — Manjaro, EndeavourOS…).
 //!
 //! Self-gates on `pacman` (absent elsewhere → drops out; no distro check, ADR-0029).

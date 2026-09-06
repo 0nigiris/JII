@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Privilege escalation — the single place that runs external commands and elevates.
 //!
 //! Its one responsibility is running a command with the right elevation (`sudo` on a

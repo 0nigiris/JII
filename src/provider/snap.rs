@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Snap provider (snapd — the Snap Store).
 //!
 //! Unlike the registry-user-space providers (cargo/npm/pipx/go/brew), snap installs

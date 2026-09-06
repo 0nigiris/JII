@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! On-disk search cache with TTL and stale-on-error fallback.
 //!
 //! Search results are cached per `(source, query)`. A fresh entry (younger than the

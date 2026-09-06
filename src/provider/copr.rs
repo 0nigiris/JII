@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! COPR provider (Fedora's community build service).
 //!
 //! COPR has no package search — only a *project* search — so this resolves a query

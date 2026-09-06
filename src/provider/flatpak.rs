@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Flatpak provider.
 //!
 //! Uses `flatpak search --columns=…` for stable machine output. All plans use

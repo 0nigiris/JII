@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Command-line surface: clap definitions, global flags, and dispatch.
 //!
 //! The command set is intentionally the full, stable surface from
@@ -28,8 +32,12 @@ fn long_version() -> &'static str {
         let config = crate::config::Config::default_path()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "~/.config/jii/config.toml".to_string());
+        // The companion line is deliberately here and not in a "not found" message: upac
+        // installs package *files* atomically with rollback, it does not resolve names over
+        // the network yet, so it cannot answer "JII couldn't find this" — and pointing at it
+        // there would be advertising dressed as help (ADR-0093).
         format!(
-            "{}\n{}\n\n  built for   {} · linux\n  config      {}\n  docs        https://github.com/0nigiris/JII",
+            "{}\n{}\n\n  built for   {} · linux\n  config      {}\n  docs        https://github.com/0nigiris/JII\n  companion   upac — atomic installs with rollback · https://github.com/SmoothTeam/upac",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_DESCRIPTION"),
             std::env::consts::ARCH,

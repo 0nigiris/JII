@@ -35,3 +35,12 @@ jobs:
       # fileops, elevation prefixing) and need no Fedora tooling.
       - name: Test
         run: cargo test --locked
+
+  reuse:
+    name: licensing (REUSE)
+    runs-on: ubuntu-latest
+    # Every file says who owns it and under what licence, machine-checkably. This is what a
+    # distribution packager runs before accepting a package, so it is a gate, not a report.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fsfe/reuse-action@v5

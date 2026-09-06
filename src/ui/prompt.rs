@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Confirmation prompts and the trust barrier.
 //!
 //! `default_yes` is a *trust threshold*, not a global "always yes": a candidate at

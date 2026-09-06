@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! `jii doctor` — diagnose the host, then offer to fix what it found.
 //!
 //! Three layers, in order: each source's live health (asked of the providers), the host

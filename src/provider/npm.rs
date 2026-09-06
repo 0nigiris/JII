@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! npm provider (the npm registry — Node.js packages).
 //!
 //! Mirrors the cargo provider: search resolves an exact package via the npm registry

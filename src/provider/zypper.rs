@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Zypper provider (openSUSE, SLE).
 //!
 //! Self-gates on `zypper` (absent elsewhere → drops out; no distro check, ADR-0029).

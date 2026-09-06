@@ -3801,3 +3801,37 @@ share `Cli`'s flags and helpers, which is exactly what an `impl` block is for. *
 drive JII as a caller instead of spawning a process, and a few helpers had to become `pub(super)`
 to cross the new module lines — a small, visible list of what the flows actually share. Nothing
 about the runtime changed.
+
+---
+
+## ADR-0093 — Machine-checkable licensing, split on "is this the program?"
+
+**Status.** Accepted (2026-09-06). Adopts the licensing half of the closed PR #12 (justpav05).
+
+**Context.** PR #12 bundled a repository cleanup with SPDX headers, a `LICENSES/` directory and a
+`REUSE.toml`. The PR was closed because it also rewrote unrelated code, but the licensing part was
+worth keeping: `reuse lint` is what a distribution packager runs before accepting a package, and
+JII wants to be packaged.
+
+Its licence split needed correcting. The PR put `data/**` and `locales/**` under CC-BY-SA-4.0 —
+but those files are `include_str!`-ed into the binary, so that licenses a share-alike attribution
+work *into* a GPL program for no benefit. It also licensed `Cargo.lock` as a creative work, and
+annotated several paths (`.githooks/**`, `.cargo/**`) that do not exist in this repository.
+
+**Decision.** One question decides every file: **is it part of the program?**
+
+- **GPL-3.0-or-later** — source, the embedded catalogs (`data/`, `locales/`), packaging recipes,
+  the installer, CI, `Cargo.lock`, and the agent instructions under `.claude/`.
+- **CC-BY-SA-4.0** — prose *about* the program: `README.md`, `AGENTS.md`, `CLAUDE.md`, everything
+  under `docs/`, and the images in `assets/`.
+
+Every file that can carry a comment carries an SPDX header; `REUSE.toml` covers the rest.
+`reuse lint` runs as its own CI job, and it is a gate, not a report.
+
+**Alternatives.** *One licence for everything* — simplest, and it would put the README under the
+GPL, which is odd for prose and unhelpful to anyone quoting the docs. *Skip REUSE* — the headers
+are the cost; being packageable without a licence audit is the return.
+
+**Consequences.** A new file needs a header, and CI says so immediately. The two-licence split is
+now written down in `REUSE.toml` itself, so the next person does not have to guess which half a
+file belongs to.

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Presentation layer: all user-facing output goes through here so `--json` and
 //! `--no-color` are honored in one place and the rest of the code stays quiet.
 

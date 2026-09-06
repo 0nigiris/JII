@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Gentoo provider (the Portage package manager, `emerge`).
 //!
 //! Self-gates on `emerge` (absent elsewhere → drops out; no distro check, ADR-0029). Covers

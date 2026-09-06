@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The engine orchestrates the pipeline: `search → rank → plan → execute`.
 //!
 //! It is the only component that holds providers, the privilege layer and the

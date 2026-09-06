@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 0nigiris
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
 # JII installer.
 #
 #   curl -fsSL https://sudonit.com/install.sh | sh

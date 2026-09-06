@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Source-agnostic progress reading from a manager's live output.
 //!
 //! JII's core never branches on the source id (ADR-0004), and neither does this: it reads

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Homebrew provider (Linuxbrew — `brew`, the Homebrew formula ecosystem on Linux).
 //!
 //! `brew install <formula>` installs into Homebrew's own prefix (`/home/linuxbrew`

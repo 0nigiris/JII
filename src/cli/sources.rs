@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! `jii sources` — showing, enabling, disabling, adding and removing installation sources.
 //!
 //! Enabling and disabling are config edits. *Adding* and *removing* are not: `jii sources

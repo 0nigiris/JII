@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Localization (i18n).
 //!
 //! User-facing strings live in `locales/<lang>.toml`, **not** in Rust code — the code holds

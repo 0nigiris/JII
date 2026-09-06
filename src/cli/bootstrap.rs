@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Setting up a package manager that isn't here yet.
 //!
 //! A `can_search` source answers over the network, so Flatpak can rank first on a machine

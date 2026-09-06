@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! The house voice: how JII talks to a person.
 //!
 //! A package manager traditionally prints fields — columns, ids, flags — and leaves the

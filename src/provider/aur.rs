@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! AUR provider (the Arch User Repository, via an AUR helper — `yay` or `paru`).
 //!
 //! The AUR is **Arch-family only**: it is meaningless on Fedora/Debian/openSUSE, so every

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Installation registry: JSON record of what JII installed and a history log.
 //!
 //! The registry stores *intentions* — it is a hint, not the source of truth. Before

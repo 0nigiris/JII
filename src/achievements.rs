@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 0nigiris
+//
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Achievements — a small, playful ledger of milestones the user hits while using JII.
 //!
 //! Purely cosmetic: nothing here changes what JII installs, ranks, or recommends. Unlocking

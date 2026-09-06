@@ -1,4 +1,7 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 0nigiris
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
 # Bump every downstream packaging recipe to a released version.
 #
 #   packaging/bump.sh 0.1.20-beta
