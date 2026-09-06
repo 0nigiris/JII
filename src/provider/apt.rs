@@ -48,6 +48,11 @@ impl Provider for Apt {
         TrustLevel::Official
     }
 
+    /// The distro's own packaging — the default answer, and the one that keeps working.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::SystemNative
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

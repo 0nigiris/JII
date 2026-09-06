@@ -3646,3 +3646,81 @@ faster to write and wrong; see the crates.io `htop`.
 exchange, the most confusing outcome in the whole checklist becomes a sentence that says what
 happened, what JII did instead, and what the user can do — and a run that installed nothing can no
 longer claim success.
+
+---
+
+## ADR-0089 — JII speaks in sentences; the machinery goes underneath
+
+**Status.** Accepted (2026-09-06).
+
+**Context.** The owner's complaint about the product, in his own words: it must not look "как
+типичный пакетный менеджер который пишет сухо и прячет важную информацию среди тонны текста
+лишнего." Two screens proved him right. `jii search htop` printed six aligned rows in which the
+official Fedora package and an HTML-to-PDF converter that merely shares the name looked equally
+plausible. `jii doctor`'s suggestions printed one line per entry, each carrying title, rationale,
+a `·`, the command, and — wrapped below — a caveat; at 200 columns the command that actually does
+the thing sat past the right edge of most terminals.
+
+Four candidate voices were mocked up and put to him. He rejected the framing of the prose one —
+"говори тут не как человек к человеку а как просто программа. Не нашёл например а найдено" — and
+then added the constraint that decided the design: "И должен быть ВСЕГДА ВЫБОР."
+
+**Decision.** Five rules, and `src/ui/story.rs` is the only place that knows how to obey them.
+
+1. **Impersonal.** "Found six", "Will install", "Done" — never "I found", "I suggest". A program
+   claiming a first person is the tell of something pretending to be a person.
+2. **There is always a choice.** Wherever JII decided something on the user's behalf, the
+   alternatives are numbered on screen and the prompt takes a number (`prompt::decide` → `Pick`).
+   This replaced the arrow-key chooser: a menu answers *which line*, prose answers *why*.
+3. **What matters is prose; the rest is dim.** The reason a source won is a sentence, wrapped to
+   the terminal. Versions, ids and trust words are indented and quiet.
+4. **Quiet by default.** One live line while working, one line of outcome after. Nothing is said
+   twice: when the offer already told the story, the friendly preview is suppressed.
+5. **Never a dead end.** The next command is always on screen.
+
+The reason a source wins or loses is asked of the source: `Provider::nature() -> SourceNature`
+(system-native, community-repo, sandboxed, self-contained, built-from-source, language-registry,
+upstream-binary), and presentation maps the *character* onto words. So JII can say "snap has the
+newer version but carries its own runtime" while the core still never writes `if source == "snap"`
+(ADR-0004). The trait method has **no default**: a new provider must decide what it is, and the
+compiler asks.
+
+Counted phrases are three keys (`.one`/`.few`/`.many`) resolved by the active language's plural
+rule (`tn!`). "Найдено 3 вариантов" is the single most obvious sign of a translated program.
+
+**Alternatives.** *A verdict card in box-drawing characters* — striking at 80 columns, broken at
+40, and it hides the alternatives it is supposed to offer. *A denser table with a visual trust
+weight* — still a table; the reader still has to know what "community" costs them. *Three-line
+minimalism* — respects the expert and abandons everyone else, and it takes the choice away.
+
+**Consequences.** `candidate_line`, `show_alternatives`, `Palette::mark_star` and the arrow-key
+chooser for install are gone; `search`, `install`, `info` and `doctor` render through one module,
+so a source reads identically wherever it appears. `jii search` now offers to install what it
+found — a search that answers the question should not make the user retype it — and is asked only
+on a real terminal, so a piped `jii search` stays a question. Every new provider costs one more
+decision, which is the point.
+
+---
+
+## ADR-0090 — The recommendation catalog carries its own translations
+
+**Status.** Accepted (2026-09-06).
+
+**Context.** User-facing strings live in `locales/*.toml` (ADR-0050) and a test enforces en/ru key
+parity. `data/recommend/catalog.toml` predates that rule and is *data*: eighteen entries whose
+`title`, `why` and `note` are prose. Nothing translated them, so a Russian session printed a
+Russian program listing English advice — "Play the video and audio formats Fedora omits by
+default" under the heading «Звук и видео».
+
+**Decision.** The prose travels with the entry: `title_ru`, `why_ru`, `note_ru` alongside the
+English fields, and `Recommendation::title()/why()/note()` resolve against the active language
+with English as the fallback. A test asserts every entry carries the Russian rendering, and that a
+note exists in both languages or neither — the catalog's half of the parity guarantee.
+
+**Alternatives.** *Move the prose into `locales/*.toml` keyed by entry id* — splits one entry
+across three files, and the catalog stops being readable as the curated document it is; a
+contributor adding a distro's entries would have to touch two locale files to say one thing.
+*Leave it English* — the shape was fixed and the words were still foreign.
+
+**Consequences.** Adding a catalog entry now means writing it twice. That is the price of the
+guarantee, and it is the same price `locales/*.toml` already charges.

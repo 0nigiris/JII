@@ -315,6 +315,197 @@ fn run_menu(
     }
 }
 
+/// The answer to an offer. Rule 2 of the house voice: wherever JII picked something, the
+/// person can take that pick, take a *different* one by number, or take nothing — always,
+/// without having to re-run the command with different flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pick {
+    /// Go with the recommendation.
+    Best,
+    /// Go with a specific alternative instead (0-based index into what was shown).
+    Other(usize),
+    /// Install nothing.
+    None,
+}
+
+/// Ask the offer's question: yes, no, or a number.
+///
+/// One keypress answers it — `y`/`д`/Enter takes the recommendation, `n`/`н`/Esc takes
+/// nothing, and a digit takes that line. `shown` is how many numbered lines are on screen
+/// (at most [`MAX_NUMBERED`](crate::ui::story::MAX_NUMBERED), which is why a single digit is
+/// enough); `best` is the recommended one, so the hint can name the *other* numbers.
+///
+/// Non-interactive contexts have nobody to ask: `--no` declines, `--yes`/`--auto` and a
+/// missing terminal take the recommendation — the same contract [`confirm`] has always had.
+pub fn decide(renderer: &Renderer, question: &str, shown: usize, best: usize, flags: &PromptFlags) -> Pick {
+    if flags.no {
+        return Pick::None;
+    }
+    if flags.yes || flags.auto || renderer.is_json() || !Platform::detect().is_tty {
+        return Pick::Best;
+    }
+    let hint = if shown <= 1 {
+        crate::t!("offer.answer_only")
+    } else {
+        // Name the numbers that are *not* the recommendation — typing the recommended
+        // number is just "yes", and offering it as a third way to say the same thing is noise.
+        let range = if best == 0 {
+            format!("2\u{2013}{shown}")
+        } else {
+            format!("1\u{2013}{shown}")
+        };
+        crate::t!("offer.answer", range = range)
+    };
+    match decide_key(question, &hint, shown) {
+        Ok(pick) => pick,
+        // No raw mode (a limited terminal): fall back to a line, still honouring numbers.
+        Err(_) => decide_line(question, &hint, shown),
+    }
+}
+
+/// Single-keypress form of [`decide`]. Restores the terminal whatever happens, and echoes
+/// the answer, since raw mode does not.
+fn decide_key(question: &str, hint: &str, shown: usize) -> io::Result<Pick> {
+    let mut out = io::stdout();
+    write!(out, "{question} {hint} ")?;
+    out.flush()?;
+
+    terminal::enable_raw_mode()?;
+    let result = (|| -> io::Result<(Pick, char)> {
+        loop {
+            if let Event::Key(k) = event::read()?
+                && k.kind == KeyEventKind::Press
+            {
+                match k.code {
+                    KeyCode::Char('y' | 'Y' | 'д' | 'Д') => return Ok((Pick::Best, 'y')),
+                    KeyCode::Enter => return Ok((Pick::Best, 'y')),
+                    KeyCode::Char('n' | 'N' | 'н' | 'Н') | KeyCode::Esc => {
+                        return Ok((Pick::None, 'n'));
+                    }
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Ok((Pick::None, 'n'));
+                    }
+                    KeyCode::Char(c @ '1'..='9') => {
+                        let n = c as usize - '0' as usize;
+                        if n <= shown {
+                            return Ok((Pick::Other(n - 1), c));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })();
+    let _ = terminal::disable_raw_mode();
+    match result {
+        Ok((pick, echo)) => {
+            let _ = writeln!(out, "{echo}");
+            let _ = out.flush();
+            Ok(pick)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Line-input fallback for [`decide`], for terminals where raw mode is unavailable.
+fn decide_line(question: &str, hint: &str, shown: usize) -> Pick {
+    use std::io::BufRead;
+    print!("{question} {hint} ");
+    let _ = io::stdout().flush();
+    let mut line = String::new();
+    if io::stdin().lock().read_line(&mut line).is_err() {
+        return Pick::Best;
+    }
+    let answer = line.trim().to_lowercase();
+    if answer.is_empty() || answer.starts_with(['y', 'д']) {
+        return Pick::Best;
+    }
+    if answer.starts_with(['n', 'н']) {
+        return Pick::None;
+    }
+    match answer.parse::<usize>() {
+        Ok(n) if n >= 1 && n <= shown => Pick::Other(n - 1),
+        _ => Pick::Best,
+    }
+}
+
+/// One step of a walk-through: take it, skip it, or stop being asked and take everything
+/// that is left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    Yes,
+    Skip,
+    /// Accept this one and every remaining step without asking again.
+    All,
+}
+
+/// Ask one step of a walk-through (`jii doctor`'s suggestions).
+///
+/// A list of eight things, each needing a yes, is eight questions — and the eighth is
+/// answered without reading. So the third answer exists: `a` takes the rest. Enter accepts,
+/// `n`/Esc skips, and `--yes`/`--auto` answer [`Step::All`] straight away, which is what
+/// "yes to everything" has always meant.
+pub fn step(renderer: &Renderer, question: &str, flags: &PromptFlags) -> Step {
+    if flags.no {
+        return Step::Skip;
+    }
+    if flags.yes || flags.auto {
+        return Step::All;
+    }
+    if renderer.is_json() || !Platform::detect().is_tty {
+        return Step::Skip;
+    }
+    let hint = crate::t!("doctor.answer");
+    match step_key(question, &hint) {
+        Ok(step) => step,
+        Err(_) => {
+            if ask_line(question, "[Y/n]", true) {
+                Step::Yes
+            } else {
+                Step::Skip
+            }
+        }
+    }
+}
+
+/// Single-keypress form of [`step`]; restores the terminal whatever happens.
+fn step_key(question: &str, hint: &str) -> io::Result<Step> {
+    let mut out = io::stdout();
+    write!(out, "{question} {hint} ")?;
+    out.flush()?;
+    terminal::enable_raw_mode()?;
+    let result = (|| -> io::Result<(Step, char)> {
+        loop {
+            if let Event::Key(k) = event::read()?
+                && k.kind == KeyEventKind::Press
+            {
+                match k.code {
+                    KeyCode::Char('y' | 'Y' | 'д' | 'Д') | KeyCode::Enter => {
+                        return Ok((Step::Yes, 'y'));
+                    }
+                    KeyCode::Char('n' | 'N' | 'н' | 'Н') | KeyCode::Esc => {
+                        return Ok((Step::Skip, 'n'));
+                    }
+                    KeyCode::Char('a' | 'A' | 'в' | 'В') => return Ok((Step::All, 'a')),
+                    KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Ok((Step::Skip, 'n'));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })();
+    let _ = terminal::disable_raw_mode();
+    match result {
+        Ok((step, echo)) => {
+            let _ = writeln!(out, "{echo}");
+            let _ = out.flush();
+            Ok(step)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// A plain yes/no confirmation (e.g. for removal). Honors `--no`/`--yes`/`--auto`;
 /// otherwise asks with the given default.
 pub fn confirm(renderer: &Renderer, question: &str, default_yes: bool, flags: &PromptFlags) -> bool {

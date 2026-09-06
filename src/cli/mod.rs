@@ -138,11 +138,14 @@ pub enum Commands {
         /// Package name(s); empty updates everything.
         packages: Vec<String>,
     },
-    /// Show candidates without installing.
+    /// Find every way to install something, and offer to.
     Search {
         /// Query terms.
         #[arg(required = true)]
         query: Vec<String>,
+        /// Show the hits that were set aside as name-squats too.
+        #[arg(long)]
+        all: bool,
     },
     /// Show availability, versions, trust and size for a package.
     Info {
@@ -335,7 +338,7 @@ impl Cli {
             Some(Commands::Update { packages }) => {
                 Some(format!("jii update {}", packages.join(" ")))
             }
-            Some(Commands::Search { query }) => Some(format!("jii search {}", query.join(" "))),
+            Some(Commands::Search { query, .. }) => Some(format!("jii search {}", query.join(" "))),
             Some(Commands::Info { package }) => Some(format!("jii info {package}")),
             Some(Commands::How { package }) => Some(format!("jii how {package}")),
             Some(Commands::List { audit }) => {
@@ -452,7 +455,7 @@ impl Cli {
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
 
-            Some(Commands::Search { query }) => self.search(query, config, &renderer).await,
+            Some(Commands::Search { query, all }) => self.search(query, *all, config, &renderer).await,
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
             Some(Commands::Sources { all, action }) => match action {
                 None => self.sources(*all, config, &renderer).await,
@@ -588,6 +591,9 @@ impl Cli {
         let mut alternates: Vec<Vec<PackageCandidate>> = Vec::new();
         let mut not_found: Vec<String> = Vec::new();
         let mut chose_interactively = false;
+        // Whether the offer above already said what will be installed and why — the
+        // friendly one-line preview would then repeat it back, which rule 4 forbids.
+        let mut told_story = false;
         for spec in &specs {
             // A per-package `:source` (ADR-0031) pins the provider and, like `--source`,
             // suppresses the chooser; it takes precedence over the whole-command `--source`.
@@ -736,44 +742,66 @@ impl Cli {
                 // auto never installs untrusted, so it's never presented as the pick either). When
                 // nothing trusted matches, we star nothing and say so, leaving an explicit choice
                 // (the `jii google` report: an untrusted `google` crate was wrongly "recommended").
-                let palette = renderer.palette();
                 let rec = crate::engine::ranking::recommended_index(&ranked);
                 if rec.is_none() {
                     renderer.warn(&crate::t!("install.no_trusted_match", name = name));
                 }
-                let labels: Vec<String> = ranked
+                // The house voice (ADR-0089): say what was found and why this one wins, then
+                // number the alternatives and let one keypress take any of them. This replaces
+                // the arrow-key chooser — a menu answers "which line", prose answers "why".
+                let shown: Vec<crate::ui::story::Alternative> = ranked
                     .iter()
-                    .enumerate()
-                    .map(|(i, c)| {
-                        if Some(i) == rec {
-                            format!(
-                                "{}  {} {}",
-                                candidate_line(c, palette),
-                                palette.mark_star(),
-                                crate::t!("install.recommended_tag")
-                            )
-                        } else {
-                            candidate_line(c, palette)
-                        }
-                    })
+                    .take(crate::ui::story::MAX_NUMBERED)
+                    .map(|c| crate::ui::story::Alternative::of(c, engine.source_nature(&c.source_id)))
                     .collect();
-                let header = crate::t!("install.choose_header", name = name);
-                match prompt::choose(renderer, &header, &labels, rec.unwrap_or(0)) {
-                    Some(index) => {
-                        chose_interactively = true;
-                        ranked.remove(index)
-                    }
-                    None => {
-                        renderer.info(&crate::t!("common.aborted"));
+                let rec = rec.unwrap_or(0).min(shown.len().saturating_sub(1));
+                renderer.info(&crate::ui::story::wrap(
+                    &crate::tn!("offer.found", ranked.len() as u64, name = name.clone()),
+                    2,
+                ));
+                crate::ui::story::verdict(renderer, &shown, rec);
+                crate::ui::story::alternatives(renderer, &shown, rec);
+                renderer.info("");
+                told_story = true;
+                let index = match prompt::decide(
+                    renderer,
+                    &crate::t!("offer.install_q"),
+                    shown.len(),
+                    rec,
+                    &self.prompt_flags(effective_auto),
+                ) {
+                    prompt::Pick::Best => rec,
+                    prompt::Pick::Other(i) => i,
+                    prompt::Pick::None => {
+                        renderer.info(&crate::t!("offer.cancelled"));
                         return Ok(());
                     }
-                }
+                };
+                chose_interactively = true;
+                ranked.remove(index)
             } else {
-                let best = ranked.remove(0);
-                if single {
-                    self.show_alternatives(&ranked, renderer);
+                // No question to ask — a pinned source, `--auto`/`--yes`, or no terminal — but
+                // the explanation is still owed. A scripted run gets the same sentence and the
+                // same list, just without the prompt at the end (rule 2 is about never *hiding*
+                // the alternatives; it can't conjure someone to answer).
+                if single && ranked.len() > 1 && !renderer.is_json() {
+                    let shown: Vec<crate::ui::story::Alternative> = ranked
+                        .iter()
+                        .take(crate::ui::story::MAX_NUMBERED)
+                        .map(|c| {
+                            crate::ui::story::Alternative::of(c, engine.source_nature(&c.source_id))
+                        })
+                        .collect();
+                    renderer.info(&crate::ui::story::wrap(
+                        &crate::tn!("offer.found", ranked.len() as u64, name = name.clone()),
+                        2,
+                    ));
+                    // The pointer marks what will actually be installed: the top rank.
+                    crate::ui::story::verdict(renderer, &shown, 0);
+                    crate::ui::story::alternatives(renderer, &shown, 0);
+                    told_story = true;
                 }
-                best
+                ranked.remove(0)
             };
             chosen.push(best);
             // Keep what came second, third… If the winner turns out to need a manager this
@@ -941,8 +969,14 @@ impl Cli {
         // 4. Preview. Friendly (and not a dry-run) gets one short line per package — name,
         //    version, source, a one-word "why", and whether it needs sudo. `--dry-run` and
         //    Advanced still show the full plan (the whole point of a dry-run is the detail).
+        // The offer ends on a list; whatever follows needs air between it and them.
+        if told_story {
+            renderer.info("");
+        }
         if renderer.is_friendly() && !self.global.dry_run {
-            self.preview_batch_friendly(&batch, &engine, renderer);
+            if !told_story {
+                self.preview_batch_friendly(&batch, &engine, renderer);
+            }
         } else {
             self.preview_batch(&batch, renderer);
         }
@@ -1008,8 +1042,27 @@ impl Cli {
         }
 
         // 6. One escalation, one run; records are written as each plan succeeds.
+        //    When the offer told the story, the only thing left to say beforehand is what it
+        //    costs — the password and the download — on one dim line (rule 3).
+        if told_story {
+            let mut facts: Vec<String> = Vec::new();
+            if batch.iter().any(|b| b.plan.needs_root()) {
+                facts.push(root_label());
+            }
+            if let Some(bytes) = batch.iter().filter_map(|b| b.plan.download_size).reduce(|a, b| a + b) {
+                facts.push(human_size(bytes));
+            }
+            if !facts.is_empty() {
+                renderer.info(&renderer.palette().dim(&format!("  {}", facts.join(" · "))));
+            }
+        }
         engine.install_batch(&batch, renderer).await?;
-        renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
+        if let Some(line) = self.finish_line(&engine, &batch, told_story) {
+            renderer.info("");
+            renderer.info(&crate::ui::story::wrap(&line, 2));
+        } else {
+            renderer.success(&crate::t!("install.installed", names = installed.join(", ")));
+        }
         let pinned = specs.iter().any(|s| s.source.is_some());
         self.record_install(&batch, installed.len(), pinned, renderer);
 
@@ -1127,35 +1180,35 @@ impl Cli {
     }
 
     /// Print the non-recommended candidates as a compact "also available" list.
-    fn show_alternatives(&self, alternatives: &[crate::model::PackageCandidate], renderer: &Renderer) {
-        if alternatives.is_empty() || renderer.is_json() {
-            return;
+/// The last line of an install told in the house voice: what landed, and how to start it.
+    ///
+    /// `None` whenever the offer wasn't told (a batch, `--auto`, a pinned source) — the old
+    /// "Installed a, b, c." is right there and repeating a name is not an improvement. Rule 5
+    /// puts a way forward on screen: the launch command when the source knows one, and
+    /// otherwise the spec that would install the runner-up instead.
+    fn finish_line(
+        &self,
+        engine: &Engine,
+        batch: &[crate::engine::BatchPlan],
+        told_story: bool,
+    ) -> Option<String> {
+        if !told_story {
+            return None;
         }
-        // A broadened search (ADR-0042) can surface many near-name matches; cap the list so
-        // it stays a hint, not a wall. The name is shown because alternatives may now differ
-        // from the recommended one (e.g. `git` → also `gitk`, `git-lfs`).
-        const MAX: usize = 6;
-        let palette = renderer.palette();
-        renderer.heading(&crate::t!("install.also_available"));
-        for candidate in alternatives.iter().take(MAX) {
-            let version = candidate
-                .version
-                .as_ref()
-                .map(|v| format!("{}, ", palette.version(&format!("v{v}"))))
-                .unwrap_or_default();
-            renderer.info(&format!(
-                "  {} — {} ({}{})",
-                candidate.name,
-                palette.source(&candidate.source_id),
-                version,
-                palette.trust(candidate.trust)
-            ));
-        }
-        let extra = alternatives.len().saturating_sub(MAX);
-        if extra > 0 {
-            renderer.info(&palette.dim(&format!("  {}", crate::t!("install.and_more", count = extra))));
-        }
+        let [bp] = batch else { return None };
+        let [candidate] = bp.candidates.as_slice() else { return None };
+        let version = candidate.version.as_ref().map(|v| v.0.clone()).unwrap_or_default();
+        Some(match engine.launch_command(candidate) {
+            Some(argv) => crate::t!(
+                "offer.done_run",
+                name = candidate.name.clone(),
+                version = version,
+                cmd = argv.join(" ")
+            ),
+            None => crate::t!("offer.done", name = candidate.name.clone(), version = version),
+        })
     }
+
 
     /// The GitHub-style by-name repo picker (ADR-0053): search the forges for `name`, show the
     /// top matches, and let the user pick one — with a "show more" entry that pages forever.
@@ -1905,10 +1958,11 @@ impl Cli {
     async fn search(
         &self,
         terms: &[String],
+        show_all: bool,
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
-        let engine = Engine::new(self.apply_profile(config))?;
+        let engine = Engine::new(self.apply_profile(config.clone()))?;
         if !self.ensure_usable_source(&engine, renderer).await {
             return Ok(());
         }
@@ -1929,13 +1983,64 @@ impl Cli {
             renderer.json_value(&serde_json::json!(ranked));
             return Ok(());
         }
-        let palette = renderer.palette();
-        renderer.heading(&crate::t!("search.header", name = name));
-        for (i, candidate) in ranked.iter().enumerate() {
-            let mark = if i == 0 { palette.good("→") } else { " ".to_string() };
-            renderer.info(&format!("{mark} {}", candidate_line(candidate, palette)));
+        // Split off the name-squats: a search that leads with "a lhk 1st training project"
+        // buries the real answer. They stay one keystroke away via `--all` (rule 5).
+        let (offered, aside): (Vec<&PackageCandidate>, Vec<&PackageCandidate>) = if show_all {
+            (ranked.iter().collect(), Vec::new())
+        } else {
+            ranked.iter().partition(|c| !c.suspicious)
+        };
+        // Everything looked like a squat: say so by showing them anyway rather than nothing.
+        let offered = if offered.is_empty() { ranked.iter().collect() } else { offered };
+        let owned: Vec<PackageCandidate> = offered.iter().map(|c| (*c).clone()).collect();
+
+        let shown: Vec<crate::ui::story::Alternative> = offered
+            .iter()
+            .take(crate::ui::story::MAX_NUMBERED)
+            .map(|c| crate::ui::story::Alternative::of(c, engine.source_nature(&c.source_id)))
+            .collect();
+        let best = crate::engine::ranking::recommended_index(&owned)
+            .unwrap_or(0)
+            .min(shown.len().saturating_sub(1));
+
+        renderer.info(&crate::ui::story::wrap(
+            &crate::tn!("offer.found", offered.len() as u64, name = name.clone()),
+            2,
+        ));
+        crate::ui::story::verdict(renderer, &shown, best);
+        crate::ui::story::alternatives(renderer, &shown, best);
+
+        let mut aside_sources: Vec<String> = aside.iter().map(|c| c.source_id.clone()).collect();
+        aside_sources.dedup();
+        crate::ui::story::set_aside(renderer, &aside_sources, &format!("jii search {name} --all"));
+
+        // Rule 2: a search that found the answer must not make the user retype it as an
+        // install. Only ever asked on a real terminal — a piped or scripted `jii search` is
+        // a question, and answering it "yes" would install software nobody asked for.
+        if !crate::platform::Platform::detect().is_tty || self.global.no {
+            return Ok(());
         }
-        Ok(())
+        renderer.info("");
+        let pick = crate::ui::prompt::decide(
+            renderer,
+            &crate::t!("offer.install_q"),
+            shown.len(),
+            best,
+            &self.prompt_flags(engine.config().install.auto),
+        );
+        let index = match pick {
+            crate::ui::prompt::Pick::Best => best,
+            crate::ui::prompt::Pick::Other(i) => i,
+            crate::ui::prompt::Pick::None => {
+                renderer.info(&crate::t!("offer.cancelled"));
+                return Ok(());
+            }
+        };
+        let chosen = offered[index];
+        // Pin the exact line the user pointed at (`name:source`, ADR-0031) so the install
+        // path installs *that* one and never re-decides.
+        let spec = format!("{}:{}", chosen.name, chosen.source_id);
+        self.install_inner(&[spec], config, renderer, false, false).await
     }
 
     /// Info path: show every enabled source that offers a package, the recommended one,
@@ -2019,9 +2124,15 @@ impl Cli {
         renderer.info("");
 
         renderer.heading(&crate::t!("info.available_from", count = ranked.len()));
-        for candidate in &ranked {
-            renderer.info(&format!("  {}", candidate_line(candidate, palette)));
-        }
+        // The same numbered list the offer uses, so a source reads identically wherever it
+        // appears — `info` is the detail view, not a second dialect (ADR-0089).
+        let shown: Vec<crate::ui::story::Alternative> = ranked
+            .iter()
+            .take(crate::ui::story::MAX_NUMBERED)
+            .map(|c| crate::ui::story::Alternative::of(c, engine.source_nature(&c.source_id)))
+            .collect();
+        crate::ui::story::alternatives(renderer, &shown, 0);
+        renderer.info("");
         renderer.info(&crate::t!(
             "info.recommended",
             source = palette.source(&best.source_id)
@@ -3462,18 +3573,44 @@ impl Cli {
         }
 
         let flags = self.prompt_flags(config.install.auto);
+        // One walk-through, numbered: the old form was a wall where every line looked
+        // equally important and the command to act on it hid at the end of it (ADR-0089).
+        let total = fixes.len() + suggestions.len();
+        let mut nth = 0usize;
+        // Set by answering `a`: the rest is applied without asking again.
+        let mut take_all = false;
         renderer.info("");
-        renderer.info(&crate::t!("doctor.setup_intro"));
+        renderer.info(&crate::ui::story::wrap(&crate::tn!("doctor.found", total as u64), 2));
 
         // A) Fixable system checks.
         for (check, fix) in fixes {
-            let question = match fix {
-                Fix::Install(pkg) => crate::t!("doctor.q_install", pkg = pkg),
-                Fix::PathExport { dir } => crate::t!("doctor.q_add_path", dir = dir.display()),
-                Fix::Command { .. } => crate::t!("doctor.q_fix", label = check.label),
+            nth += 1;
+            let (headline, detail) = match fix {
+                Fix::Install(pkg) => {
+                    (crate::t!("doctor.q_install", pkg = pkg), check.label.clone())
+                }
+                Fix::PathExport { dir } => (
+                    crate::t!("doctor.q_add_path", dir = dir.display()),
+                    check.advice.clone().unwrap_or_default(),
+                ),
+                Fix::Command { show, .. } => {
+                    (crate::t!("doctor.q_fix", label = check.label.clone()), show.clone())
+                }
             };
-            if !prompt::confirm(renderer, &format!("  {question}"), true, &flags) {
-                continue;
+            crate::ui::story::step_header(
+                renderer,
+                nth,
+                total,
+                &crate::t!("doctor.cat_system"),
+                &headline,
+                &[detail],
+            );
+            if !take_all {
+                match prompt::step(renderer, &format!("  {}", crate::t!("doctor.apply_q")), &flags) {
+                    prompt::Step::Skip => continue,
+                    prompt::Step::All => take_all = true,
+                    prompt::Step::Yes => {}
+                }
             }
             self.apply_fix(fix, config.clone(), renderer).await?;
         }
@@ -3482,19 +3619,32 @@ impl Cli {
         //    A dependent entry (codecs/VLC) enables its prerequisite repo (RPM Fusion) first,
         //    so it never fails with a bare "not found" because the repo was skipped (ADR-0055).
         let mut enabled_repos: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut last_category: Option<&str> = None;
         for r in &suggestions {
-            if last_category != Some(r.category.as_str()) {
-                renderer.info(&format!("  [{}]", r.category));
-                last_category = Some(r.category.as_str());
+            nth += 1;
+            let mut lines = vec![r.why().to_string()];
+            if !r.packages.is_empty() {
+                lines.push(crate::t!(
+                    "doctor.will_install",
+                    packages = crate::ui::story::join_and(&r.packages)
+                ));
             }
-            renderer.info(&format!("    {} — {}", r.title, r.why));
-            if let Some(note) = &r.note {
-                renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
+            if let Some(note) = r.note() {
+                lines.push(note.to_string());
             }
-            let question = crate::t!("doctor.q_setup", title = r.title);
-            if !prompt::confirm(renderer, &format!("    {question}"), true, &flags) {
-                continue;
+            crate::ui::story::step_header(
+                renderer,
+                nth,
+                total,
+                &crate::t!(&format!("doctor.cat_{}", r.category)),
+                r.title(),
+                &lines,
+            );
+            if !take_all {
+                match prompt::step(renderer, &format!("  {}", crate::t!("doctor.apply_q")), &flags) {
+                    prompt::Step::Skip => continue,
+                    prompt::Step::All => take_all = true,
+                    prompt::Step::Yes => {}
+                }
             }
             // Enable a prerequisite repo first (e.g. RPM Fusion for codecs/VLC). The exact
             // command is shown before it runs (apply_suggestion prints it); the "yes" to the
@@ -3503,9 +3653,9 @@ impl Cli {
             if let Some(prereq) =
                 crate::recommend::prerequisite(r, &all_suggestions, &installed, &enabled_repos)
             {
-                renderer.info(&format!("    {}", crate::t!("doctor.prereq", title = prereq.title)));
-                if let Some(note) = &prereq.note {
-                    renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
+                renderer.info(&format!("  {}", crate::t!("doctor.prereq", title = prereq.title())));
+                if let Some(note) = prereq.note() {
+                    renderer.info(&crate::ui::story::wrap(&crate::t!("common.note", note = note), 4));
                 }
                 self.apply_suggestion(prereq, config.clone(), renderer).await?;
                 enabled_repos.insert(prereq.id.clone());
@@ -3659,12 +3809,23 @@ impl Cli {
             return;
         }
 
+        // The read-only twin of the walk-through: nobody is here to answer, so each entry is
+        // stated once with the command that does it, instead of the old one-line-per-entry
+        // wall where the command hid behind a middle dot at the end of a 200-column line.
+        let palette = renderer.palette();
         renderer.info("");
-        renderer.info(&crate::t!("doctor.suggestions_header"));
+        renderer.info(&crate::ui::story::wrap(
+            &crate::tn!("doctor.found", entries.len() as u64),
+            2,
+        ));
         let mut last_category: Option<&str> = None;
-        for r in &entries {
+        for (i, r) in entries.iter().enumerate() {
             if last_category != Some(r.category.as_str()) {
-                renderer.info(&format!("  [{}]", r.category));
+                renderer.info("");
+                renderer.info(&format!(
+                    "  {}",
+                    palette.heading(&crate::t!(&format!("doctor.cat_{}", r.category)))
+                ));
                 last_category = Some(r.category.as_str());
             }
             let how = if !r.packages.is_empty() {
@@ -3674,12 +3835,21 @@ impl Cli {
             } else {
                 String::new()
             };
-            renderer.info(&format!("    {} — {}  ·  {}", r.title, r.why, how));
-            if let Some(note) = &r.note {
-                renderer.info(&format!("        {}", crate::t!("common.note", note = note)));
+            renderer.info("");
+            renderer.info(&format!("  {} {}", palette.dim(&format!("{}", i + 1)), r.title()));
+            renderer.info(&crate::ui::story::wrap(r.why(), 5));
+            if let Some(note) = r.note() {
+                renderer.info(&crate::ui::story::wrap(
+                    &palette.dim(&crate::t!("common.note", note = note)),
+                    5,
+                ));
+            }
+            if !how.is_empty() {
+                renderer.info(&format!("     {}", palette.dim(&how)));
             }
         }
-        renderer.info(&crate::t!("doctor.suggestions_info"));
+        renderer.info("");
+        renderer.info(&crate::ui::story::wrap(&crate::t!("doctor.suggestions_info"), 2));
     }
 
     /// Show installation history, newest first.
@@ -4241,6 +4411,22 @@ impl Cli {
 /// It used to be the fixed string "[needs sudo]", which was a lie on three kinds of
 /// host at once: a root shell (nothing is needed), a `doas` distro, and a container
 /// with no helper at all. Names the mechanism that will actually be used.
+/// A size a person reads at a glance: "1.2 MB", not "1258291".
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["size.b", "size.kb", "size.mb", "size.gb"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    // Whole numbers below a kilobyte; one decimal above, because "1 MB" hides the difference
+    // between 1.0 and 1.9 and that is exactly the range people are deciding in.
+    let number =
+        if unit == 0 { format!("{value:.0}") } else { format!("{value:.1}").trim_end_matches(".0").to_string() };
+    format!("{number} {}", crate::t!(UNITS[unit]))
+}
+
 fn root_label() -> String {
     use crate::platform::ElevationKind;
     match crate::platform::Platform::detect().elevation_kind() {
@@ -4323,21 +4509,6 @@ fn humanize_count(n: u64) -> String {
     }
 }
 
-fn candidate_line(candidate: &PackageCandidate, palette: crate::ui::Palette) -> String {
-    // Pad the source id to width *before* colouring so the ANSI codes don't skew alignment.
-    let src = palette.source(&format!("{:8}", candidate.source_id));
-    let version = candidate
-        .version
-        .as_ref()
-        .map(|v| format!("{}  ", palette.version(&format!("v{v}"))))
-        .unwrap_or_default();
-    let summary = candidate
-        .summary
-        .as_deref()
-        .map(|s| palette.dim(&format!("  — {}", one_line(s, 80))))
-        .unwrap_or_default();
-    format!("{src} {version}{}{summary}", palette.trust(candidate.trust))
-}
 
 /// Collapse a (possibly multi-line) summary to a single trimmed line, truncated to
 /// `max` chars with an ellipsis — keeps `search`/`info` rows one line each.
@@ -5258,16 +5429,6 @@ mod tests {
         assert!(out.ends_with('…'));
     }
 
-    #[test]
-    fn candidate_line_includes_source_version_trust() {
-        let line = candidate_line(
-            &candidate(TrustLevel::Official, true, Some("2.0")),
-            crate::ui::Palette::plain(),
-        );
-        assert!(line.contains("dnf"));
-        assert!(line.contains("v2.0"));
-        assert!(line.contains("official"));
-    }
 
     fn facts_all_good() -> SystemFacts {
         SystemFacts {

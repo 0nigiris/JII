@@ -55,6 +55,11 @@ impl Provider for Nix {
         TrustLevel::Community
     }
 
+    /// Its own isolated store, outside the system's packaging.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::SelfContained
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

@@ -53,6 +53,11 @@ impl Provider for Copr {
         TrustLevel::Community
     }
 
+    /// A community rebuild, but installed by the system's own package manager.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::CommunityRepo
+    }
+
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
         vec![crate::t!("reason.copr_community"), crate::t!("reason.copr_enables")]
     }

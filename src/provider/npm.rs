@@ -52,6 +52,11 @@ impl Provider for Npm {
         TrustLevel::Community
     }
 
+    /// An open registry: anyone may publish under any name.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::LanguageRegistry
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

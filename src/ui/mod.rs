@@ -2,6 +2,7 @@
 //! `--no-color` are honored in one place and the rest of the code stays quiet.
 
 pub mod prompt;
+pub mod story;
 
 use owo_colors::OwoColorize;
 
@@ -21,12 +22,6 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// A never-colouring palette (for tests and any plain-text context).
-    #[cfg(test)]
-    pub fn plain() -> Self {
-        Palette { enabled: false, unicode: true }
-    }
-
     /// Success marker — `✓`, or `+` where the terminal can't render it.
     pub fn mark_ok(&self) -> &'static str {
         if self.unicode { "✓" } else { "+" }
@@ -42,10 +37,6 @@ impl Palette {
         if self.unicode { "⚠" } else { "!" }
     }
 
-    /// "Recommended" flag — `⭐`, or `*` where the terminal can't render it.
-    pub fn mark_star(&self) -> &'static str {
-        if self.unicode { "⭐" } else { "*" }
-    }
 
     /// Informational prefix — `ℹ`, or `i` as a fallback.
     pub fn mark_info(&self) -> &'static str {

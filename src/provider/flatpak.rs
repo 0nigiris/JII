@@ -51,6 +51,11 @@ impl Provider for Flatpak {
         TrustLevel::Community
     }
 
+    /// A sandboxed bundle with its own runtime.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::Sandboxed
+    }
+
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
         vec![crate::t!("reason.flatpak_sandboxed"), crate::t!("reason.flatpak_crossdistro")]
     }

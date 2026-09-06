@@ -34,6 +34,49 @@ pub mod snap;
 pub mod void;
 pub mod zypper;
 
+/// What installing from this source is actually *like* — the trade-off a person weighs
+/// when the same program is offered by four different places.
+///
+/// The core needs to say "snap has the newer version, but it carries its own runtime"
+/// without ever writing `if source == "snap"` (ADR-0004). So the character of a source is
+/// a property the source declares, and presentation maps the character — never the id —
+/// onto words. There is deliberately **no default**: a new provider must decide what it is,
+/// and the compiler asks the question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceNature {
+    /// The distribution's own packaging: updates with the rest of the system.
+    SystemNative,
+    /// A community rebuild that plugs into the system's own package manager.
+    CommunityRepo,
+    /// A sandboxed bundle that ships its own runtime.
+    Sandboxed,
+    /// A self-contained bundle with its own runtime, not sandboxed by the distro.
+    SelfContained,
+    /// Compiled on this machine from source — slow to install, current afterwards.
+    BuiltFromSource,
+    /// A language ecosystem's registry, where anyone may publish under any name.
+    LanguageRegistry,
+    /// A binary published by the program's own authors, taken straight from their release.
+    UpstreamBinary,
+}
+
+impl SourceNature {
+    /// The locale key *stem* for this character. Presentation appends `.long` for the
+    /// clause used in a sentence and `.short` for the two words that fit on a list line.
+    pub fn key(self) -> &'static str {
+        match self {
+            SourceNature::SystemNative => "nature.system_native",
+            SourceNature::CommunityRepo => "nature.community_repo",
+            SourceNature::Sandboxed => "nature.sandboxed",
+            SourceNature::SelfContained => "nature.self_contained",
+            SourceNature::BuiltFromSource => "nature.built_from_source",
+            SourceNature::LanguageRegistry => "nature.language_registry",
+            SourceNature::UpstreamBinary => "nature.upstream_binary",
+        }
+    }
+}
+
 /// A source of installable software (a package manager, a repo, a registry).
 ///
 /// Providers **plan but never execute privileged actions** — they return steps
@@ -45,6 +88,11 @@ pub trait Provider: Send + Sync {
 
     /// Base trust level of this source.
     fn trust(&self) -> TrustLevel;
+
+    /// What installing from here is like — see [`SourceNature`]. Presentation turns this
+    /// into the one clause that explains why this source won or lost, without the core
+    /// ever naming a source (ADR-0004).
+    fn nature(&self) -> SourceNature;
 
     /// Whether this source is usable on the current machine (binary present, etc.).
     async fn is_available(&self) -> bool;

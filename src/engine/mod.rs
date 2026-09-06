@@ -974,6 +974,13 @@ impl Engine {
         self.providers.get(source_id).map(|p| p.trust())
     }
 
+    /// What installing from a source is like, if it is enabled — see
+    /// [`SourceNature`](crate::provider::SourceNature). Presentation asks for this instead of
+    /// keeping its own table of source ids, so the core stays free of `if source == "…"`.
+    pub fn source_nature(&self, source_id: &str) -> Option<crate::provider::SourceNature> {
+        self.providers.get(source_id).map(|p| p.nature())
+    }
+
     /// Source-specific recommendation highlights for a candidate (UX D5), asked of its
     /// owning provider (ADR-0022 optional `highlights`). Empty if the source is no longer
     /// enabled or offers none; the CLI concatenates these with the model-derived facts.

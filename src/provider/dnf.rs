@@ -50,6 +50,11 @@ impl Provider for Dnf {
         TrustLevel::Official
     }
 
+    /// The distro's own packaging — the default answer, and the one that keeps working.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::SystemNative
+    }
+
     fn highlights(&self, candidate: &PackageCandidate) -> Vec<String> {
         let mut h = vec![crate::t!("reason.dnf_official"), crate::t!("reason.dnf_native")];
         if let Some(repo) = candidate.raw.get("repoid").and_then(|v| v.as_str())

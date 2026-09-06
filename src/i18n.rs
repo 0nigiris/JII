@@ -76,6 +76,46 @@ pub fn tr_args(key: &str, args: &[(&str, String)]) -> String {
     s
 }
 
+/// Which grammatical form a count takes in the active language.
+///
+/// English needs two (one / other), Russian three: `1` (but not 11), `2–4` (but not 12–14),
+/// and everything else. Getting this wrong is the single most obvious sign that software was
+/// translated rather than written — "Найдено 3 вариантов" reads as a machine talking. So a
+/// counted phrase is three keys (`<stem>.one` / `.few` / `.many`), and a language with fewer
+/// forms simply repeats one of them.
+fn plural_form(lang: &str, count: u64) -> &'static str {
+    match lang {
+        "ru" => {
+            let (n10, n100) = (count % 10, count % 100);
+            if n10 == 1 && n100 != 11 {
+                "one"
+            } else if (2..=4).contains(&n10) && !(12..=14).contains(&n100) {
+                "few"
+            } else {
+                "many"
+            }
+        }
+        // English and the fallback: singular or not.
+        _ => {
+            if count == 1 {
+                "one"
+            } else {
+                "many"
+            }
+        }
+    }
+}
+
+/// Look up a **counted** phrase: `stem` names a group of `.one`/`.few`/`.many` keys, and the
+/// active language's rule for `count` picks one. `{count}` is substituted automatically, on
+/// top of any `args` given. See [`plural_form`].
+pub fn tr_count(stem: &str, count: u64, args: &[(&str, String)]) -> String {
+    let key = format!("{stem}.{}", plural_form(active().lang, count));
+    let mut all: Vec<(&str, String)> = vec![("count", count.to_string())];
+    all.extend(args.iter().map(|(k, v)| (*k, v.clone())));
+    tr_args(&key, &all)
+}
+
 /// Translate a key in a *specific* shipped language, bypassing the globally active one
 /// (which is fixed for the process by [`init`]). `jii lang <code>` uses this to confirm in
 /// the language just chosen. `code` accepts `auto` — it resolves against the environment.
@@ -166,6 +206,18 @@ macro_rules! t {
     };
     ($key:expr, $($name:ident = $val:expr),+ $(,)?) => {
         $crate::i18n::tr_args($key, &[$((stringify!($name), ($val).to_string())),+])
+    };
+}
+
+/// Counted sibling of [`t!`]: `tn!("search.found", n)` picks `search.found.one` /
+/// `.few` / `.many` by the active language's plural rule and fills `{count}`.
+#[macro_export]
+macro_rules! tn {
+    ($stem:expr, $count:expr $(,)?) => {
+        $crate::i18n::tr_count($stem, $count as u64, &[])
+    };
+    ($stem:expr, $count:expr, $($name:ident = $val:expr),+ $(,)?) => {
+        $crate::i18n::tr_count($stem, $count as u64, &[$((stringify!($name), ($val).to_string())),+])
     };
 }
 

@@ -155,13 +155,9 @@ already_installed = "{name} already installed via {source}{version}"
 already_installed_outdated = "{name} is already installed via {source} ({current}). Available: {available}."
 update_now = "Update now?"
 keeping = "Keeping the installed version."
-choose_header = "'{name}' is available from several sources — you choose:"
-recommended_tag = "recommended"
 no_trusted_match = "Nothing from a verified source matches '{name}'. JII can't confirm who published what's below — pick one explicitly only if you're sure it's the right thing."
 continue_rest = "Continue installing the rest?"
 installed = "Installed {names}."
-also_available = "Also available:"
-and_more = "…and {count} more"
 summary = "Summary:"
 preview = "Install {name}{version} via {source}{why}{sudo}"
 gh_searching = "Searching GitHub for '{name}'…"
@@ -180,7 +176,17 @@ checks_header = "System checks:"
 all_looks_good = "Everything looks good."
 things_to_look = "Some items above need a look ({count})."
 run_interactive = "Run `jii doctor` in a terminal to set these up interactively."
-setup_intro = "Let's set up what's missing — Enter to accept, n to skip:"
+step_of = "{nth} of {total} · {category}"
+apply_q = "Do it?"
+answer = "[Yes / no / a — all the rest]"
+will_install = "Will install: {packages}."
+cat_system = "System"
+cat_repos = "Repositories"
+cat_media = "Sound and video"
+cat_fonts = "Fonts"
+cat_gaming = "Games"
+cat_power = "Battery"
+cat_drivers = "Drivers"
 q_install = "Install {pkg}?"
 q_add_path = "Add {dir} to your PATH?"
 q_fix = "{label} — fix it now?"
@@ -197,7 +203,6 @@ already_on_path = "{file} already references {dir} — nothing to do."
 couldnt_update = "Couldn't update {file}: {error}"
 couldnt_write = "Couldn't write {file}: {error}"
 added_to_path = "Added to {file}. Run `source {file}` or open a new terminal."
-suggestions_header = "Suggestions for your system:"
 suggestions_info = "Informational — run `jii doctor` in a terminal to set these up."
 
 [selfupdate]
@@ -326,7 +331,6 @@ untrusted = "unverified"
 
 [search]
 none = "No candidates found for '{name}'."
-header = "Candidates for '{name}' (best first):"
 
 [info]
 none_found = "No information found for '{name}' in your enabled sources."
@@ -675,3 +679,69 @@ desc = "Beat Omega Flowey both ways — normal once, hard once."
 [achieve.boss-slayer]
 title = "Nobody Left"
 desc = "Beat every secret boss JII hides."
+
+# ── The character of a source ────────────────────────────────────────────────────
+# What installing from here is *like*. `long` goes in the verdict sentence; `short`
+# is the two words that fit at the end of a list line. Presentation looks these up by
+# the character a provider declares — never by its id (ADR-0004/0089).
+[nature.system_native]
+long = "the distribution's own package, so it updates along with the rest of the system"
+short = "system package"
+[nature.community_repo]
+long = "a community rebuild, but installed by the system's own package manager"
+short = "community rebuild"
+[nature.sandboxed]
+long = "a sandboxed bundle that carries its own runtime"
+short = "sandboxed"
+[nature.self_contained]
+long = "a self-contained build with its own runtime, kept apart from the system"
+short = "own runtime"
+[nature.built_from_source]
+long = "compiled here from source — slower to install, but current afterwards"
+short = "built here"
+[nature.language_registry]
+long = "a language registry, where anyone may publish under any name"
+short = "language registry"
+[nature.upstream_binary]
+long = "the authors' own release binary, taken straight from upstream"
+short = "from upstream"
+
+# ── The offer: what was found, which one wins, and what else there is ────────────
+[word]
+# The conjunction that turns a list into a sentence.
+and = "and"
+
+[offer]
+verdict = "Best is {source}, version {version} — {nature}."
+verdict_bare = "Best is {source}, version {version}."
+no_version = "unnumbered"
+show_all = "Show everything, including those: {cmd}"
+install_q = "Install?"
+# The bracketed hint after a question. `range` is e.g. "2-4"; the single-alternative
+# form drops it, because there is no other number to type.
+answer = "[Yes / no / number {range}]"
+answer_only = "[Yes / no]"
+done_run = "Done. {name} {version} — start it with: {cmd}"
+done = "Done. {name} {version} is installed."
+cancelled = "Nothing installed."
+
+[offer.found]
+one = "Found one match for {name}."
+few = "Found {count} ways to install {name}."
+many = "Found {count} ways to install {name}."
+
+[offer.set_aside]
+one = "{sources} matched something else that merely shares the name — it is not offered."
+few = "{sources} matched other software that merely shares the name — they are not offered."
+many = "{sources} matched other software that merely shares the name — they are not offered."
+
+[size]
+b = "B"
+kb = "KB"
+mb = "MB"
+gb = "GB"
+
+[doctor.found]
+one = "One thing is worth doing on this system. Here it is."
+few = "{count} things are worth doing on this system — one at a time."
+many = "{count} things are worth doing on this system — one at a time."

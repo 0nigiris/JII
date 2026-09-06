@@ -52,6 +52,11 @@ impl Provider for Snap {
         TrustLevel::Community
     }
 
+    /// A sandboxed bundle with its own runtime.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::Sandboxed
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

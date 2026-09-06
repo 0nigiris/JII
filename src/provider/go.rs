@@ -57,6 +57,11 @@ impl Provider for Go {
         TrustLevel::Community
     }
 
+    /// An open registry: anyone may publish under any name.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::LanguageRegistry
+    }
+
     async fn is_available(&self) -> bool {
         // `go` uses `go version` (not `--version`), so the shared `which` doesn't fit.
         run_capture(&[BIN, "version"]).await.is_ok()

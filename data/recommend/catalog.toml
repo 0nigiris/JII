@@ -18,34 +18,46 @@
 #   requires id of a prerequisite entry to enable first (optional) — e.g. "rpmfusion"
 #   note     a caveat worth surfacing (optional) — e.g. a trust boundary
 #
+# `title_ru` / `why_ru` / `note_ru` carry the Russian rendering of the three prose
+# fields. The catalog is data, so its prose travels with the entry rather than living in
+# `locales/*.toml` (ADR-0090); a language with no translation falls back to English.
+#
 # Keep entries conservative and honest. Fedora-first (the MVP target); other
 # distros get entries as they are verified on a real host.
 
 [[recommendation]]
 id = "rpmfusion"
 title = "RPM Fusion repositories (free + nonfree)"
+title_ru = "Репозитории RPM Fusion (free + nonfree)"
 why = "Unlocks codecs, some drivers, and apps Fedora can't ship for legal reasons. Many other recommendations below need it first."
+why_ru = "Открывает кодеки, часть драйверов и программы, которые Fedora не вправе поставлять сама. Многим пунктам ниже он нужен первым."
 category = "repos"
 distros = ["fedora"]
 manual = "sudo dnf install https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
 note = "Third-party repositories — you are extending who you trust for packages. Official RPM Fusion instructions: https://rpmfusion.org/Configuration"
+note_ru = "Сторонние репозитории — вы расширяете круг тех, кому доверяете пакеты. Официальная инструкция RPM Fusion: https://rpmfusion.org/Configuration"
 # Already-enabled check: the free release package is installed once RPM Fusion is set up.
 check = "rpmfusion-free-release"
 
 [[recommendation]]
 id = "multimedia-codecs"
 title = "Multimedia codecs (H.264/H.265, AAC, …)"
+title_ru = "Мультимедийные кодеки (H.264/H.265, AAC, …)"
 why = "Play the video and audio formats Fedora omits by default, in browsers and media players alike."
+why_ru = "Видео и звук в форматах, которые Fedora по умолчанию не умеет, — и в браузере, и в плеерах."
 category = "media"
 distros = ["fedora"]
 packages = ["gstreamer1-plugins-bad-free", "gstreamer1-plugins-ugly", "gstreamer1-plugin-openh264"]
 requires = "rpmfusion"
 note = "Needs RPM Fusion enabled first — doctor enables it for you when you accept this."
+note_ru = "Сначала нужен включённый RPM Fusion — doctor включит его сам, если согласиться."
 
 [[recommendation]]
 id = "vlc"
 title = "VLC media player"
+title_ru = "Медиаплеер VLC"
 why = "Plays practically any media file without hunting for codecs."
+why_ru = "Играет почти любой медиафайл, не заставляя искать кодеки."
 category = "media"
 distros = ["fedora"]
 packages = ["vlc"]
@@ -54,7 +66,9 @@ requires = "rpmfusion"
 [[recommendation]]
 id = "fonts-core"
 title = "Common fonts (emoji + broad Unicode coverage)"
+title_ru = "Базовые шрифты (эмодзи и широкий охват Юникода)"
 why = "Emoji and non-Latin text render instead of showing empty boxes."
+why_ru = "Эмодзи и нелатинский текст рисуются, а не превращаются в пустые квадратики."
 category = "fonts"
 distros = ["fedora"]
 packages = ["google-noto-emoji-fonts", "google-noto-sans-cjk-fonts"]
@@ -62,7 +76,9 @@ packages = ["google-noto-emoji-fonts", "google-noto-sans-cjk-fonts"]
 [[recommendation]]
 id = "wine"
 title = "Wine"
+title_ru = "Wine"
 why = "Run many Windows applications and games directly on Linux."
+why_ru = "Многие программы и игры для Windows запускаются прямо в Linux."
 category = "gaming"
 distros = ["fedora"]
 packages = ["wine"]
@@ -70,11 +86,14 @@ packages = ["wine"]
 [[recommendation]]
 id = "power-tuned"
 title = "Laptop power tuning (tuned-ppd)"
+title_ru = "Энергосбережение для ноутбука (tuned-ppd)"
 why = "Better battery life and a power-profile switch on laptops."
+why_ru = "Ноутбук дольше живёт от батареи, и появляется переключатель профилей питания."
 category = "power"
 distros = ["fedora"]
 packages = ["tuned-ppd"]
 note = "Mainly useful on laptops; harmless on a desktop but unnecessary."
+note_ru = "Нужно в основном на ноутбуке; на настольном компьютере безвредно, но бессмысленно."
 
 # --- Arch (and Arch-based: CachyOS, Manjaro, EndeavourOS…) -------------------
 # Arch ships codecs/VLC straight from the official repos — no extra-repo prerequisite
@@ -84,7 +103,9 @@ note = "Mainly useful on laptops; harmless on a desktop but unnecessary."
 [[recommendation]]
 id = "vlc-arch"
 title = "VLC media player"
+title_ru = "Медиаплеер VLC"
 why = "Plays practically any media file without hunting for codecs."
+why_ru = "Играет почти любой медиафайл, не заставляя искать кодеки."
 category = "media"
 distros = ["arch"]
 packages = ["vlc"]
@@ -92,7 +113,9 @@ packages = ["vlc"]
 [[recommendation]]
 id = "multimedia-codecs-arch"
 title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+title_ru = "Мультимедийные кодеки (плагины GStreamer + ffmpeg)"
 why = "Lets most players and browsers decode H.264/H.265/AAC and friends."
+why_ru = "Большинство плееров и браузеров начинают понимать H.264, H.265, AAC и им подобные."
 category = "media"
 distros = ["arch"]
 packages = ["gst-plugins-good", "gst-plugins-bad", "gst-plugins-ugly", "gst-libav"]
@@ -100,7 +123,9 @@ packages = ["gst-plugins-good", "gst-plugins-bad", "gst-plugins-ugly", "gst-liba
 [[recommendation]]
 id = "fonts-core-arch"
 title = "Common fonts (emoji + broad Unicode coverage)"
+title_ru = "Базовые шрифты (эмодзи и широкий охват Юникода)"
 why = "Emoji and non-Latin text render instead of showing empty boxes."
+why_ru = "Эмодзи и нелатинский текст рисуются, а не превращаются в пустые квадратики."
 category = "fonts"
 distros = ["arch"]
 packages = ["noto-fonts", "noto-fonts-emoji", "noto-fonts-cjk"]
@@ -111,7 +136,9 @@ packages = ["noto-fonts", "noto-fonts-emoji", "noto-fonts-cjk"]
 [[recommendation]]
 id = "steam-flatpak"
 title = "Steam (Flatpak)"
+title_ru = "Steam (Flatpak)"
 why = "The main PC games store; the Flatpak build is sandboxed and cross-distro."
+why_ru = "Главный магазин игр для ПК; сборка Flatpak работает в песочнице и одинаково на любом дистрибутиве."
 category = "gaming"
 distros = []
 packages = ["steam:flatpak"]
@@ -126,7 +153,9 @@ check = "com.valvesoftware.Steam"
 [[recommendation]]
 id = "multimedia-codecs-deb"
 title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+title_ru = "Мультимедийные кодеки (плагины GStreamer + ffmpeg)"
 why = "Lets most players and browsers decode H.264/H.265/AAC and friends."
+why_ru = "Большинство плееров и браузеров начинают понимать H.264, H.265, AAC и им подобные."
 category = "media"
 distros = ["debian", "ubuntu"]
 packages = ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-plugins-ugly", "gstreamer1.0-libav"]
@@ -134,7 +163,9 @@ packages = ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1
 [[recommendation]]
 id = "vlc-deb"
 title = "VLC media player"
+title_ru = "Медиаплеер VLC"
 why = "Plays practically any media file without hunting for codecs."
+why_ru = "Играет почти любой медиафайл, не заставляя искать кодеки."
 category = "media"
 distros = ["debian", "ubuntu"]
 packages = ["vlc"]
@@ -142,7 +173,9 @@ packages = ["vlc"]
 [[recommendation]]
 id = "fonts-core-deb"
 title = "Common fonts (emoji + broad Unicode coverage)"
+title_ru = "Базовые шрифты (эмодзи и широкий охват Юникода)"
 why = "Emoji and non-Latin text render instead of showing empty boxes."
+why_ru = "Эмодзи и нелатинский текст рисуются, а не превращаются в пустые квадратики."
 category = "fonts"
 distros = ["debian", "ubuntu"]
 packages = ["fonts-noto-core", "fonts-noto-color-emoji", "fonts-noto-cjk"]
@@ -150,7 +183,9 @@ packages = ["fonts-noto-core", "fonts-noto-color-emoji", "fonts-noto-cjk"]
 [[recommendation]]
 id = "wine-deb"
 title = "Wine"
+title_ru = "Wine"
 why = "Run many Windows applications and games directly on Linux."
+why_ru = "Многие программы и игры для Windows запускаются прямо в Linux."
 category = "gaming"
 distros = ["debian", "ubuntu"]
 packages = ["wine"]
@@ -163,26 +198,34 @@ packages = ["wine"]
 [[recommendation]]
 id = "packman"
 title = "Packman repository"
+title_ru = "Репозиторий Packman"
 why = "The community repo openSUSE points at for codecs and the media apps it can't ship itself."
+why_ru = "Репозиторий сообщества, на который openSUSE сама указывает за кодеками и медиапрограммами, которые не вправе поставлять."
 category = "repos"
 distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
 manual = "sudo zypper --non-interactive addrepo --refresh --priority 90 https://ftp.gwdg.de/pub/linux/misc/packman/suse/openSUSE_Tumbleweed/ packman"
 note = "A third-party repository — you are extending who you trust for packages. Official instructions: https://en.opensuse.org/Additional_package_repositories#Packman. On Leap, replace openSUSE_Tumbleweed in the URL with your release (e.g. openSUSE_Leap_15.6)."
+note_ru = "Сторонний репозиторий — вы расширяете круг тех, кому доверяете пакеты. Официальная инструкция: https://en.opensuse.org/Additional_package_repositories#Packman. На Leap замените в адресе openSUSE_Tumbleweed на свой выпуск (например, openSUSE_Leap_15.6)."
 
 [[recommendation]]
 id = "multimedia-codecs-suse"
 title = "Multimedia codecs (GStreamer plugins + ffmpeg)"
+title_ru = "Мультимедийные кодеки (плагины GStreamer + ffmpeg)"
 why = "Play the video and audio formats openSUSE omits by default, in browsers and media players alike."
+why_ru = "Видео и звук в форматах, которые openSUSE по умолчанию не умеет, — и в браузере, и в плеерах."
 category = "media"
 distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
 packages = ["gstreamer-plugins-good", "gstreamer-plugins-bad", "gstreamer-plugins-ugly", "gstreamer-plugins-libav"]
 requires = "packman"
 note = "Needs Packman enabled first — doctor enables it for you when you accept this."
+note_ru = "Сначала нужен включённый Packman — doctor включит его сам, если согласиться."
 
 [[recommendation]]
 id = "vlc-suse"
 title = "VLC media player"
+title_ru = "Медиаплеер VLC"
 why = "Plays practically any media file without hunting for codecs."
+why_ru = "Играет почти любой медиафайл, не заставляя искать кодеки."
 category = "media"
 distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
 packages = ["vlc"]
@@ -191,7 +234,9 @@ requires = "packman"
 [[recommendation]]
 id = "fonts-core-suse"
 title = "Common fonts (emoji + broad Unicode coverage)"
+title_ru = "Базовые шрифты (эмодзи и широкий охват Юникода)"
 why = "Emoji and non-Latin text render instead of showing empty boxes."
+why_ru = "Эмодзи и нелатинский текст рисуются, а не превращаются в пустые квадратики."
 category = "fonts"
 distros = ["opensuse", "opensuse-leap", "opensuse-tumbleweed", "suse"]
 packages = ["noto-sans-fonts", "noto-coloremoji-fonts", "noto-sans-cjk-fonts"]

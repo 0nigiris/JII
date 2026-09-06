@@ -51,6 +51,11 @@ impl Provider for Cargo {
         TrustLevel::Community
     }
 
+    /// An open registry: anyone may publish under any name.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::LanguageRegistry
+    }
+
     fn highlights(&self, _candidate: &PackageCandidate) -> Vec<String> {
         vec![crate::t!("reason.cargo_source"), crate::t!("reason.cargo_user")]
     }

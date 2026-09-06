@@ -23,10 +23,18 @@ pub struct Recommendation {
     /// Stable slug, unique within the catalog. Used as the anchor a dependent entry's
     /// [`requires`](Recommendation::requires) points at (e.g. codecs → `rpmfusion`).
     pub id: String,
-    /// One-line human name.
-    pub title: String,
-    /// What the user gains.
-    pub why: String,
+    /// One-line human name, in English (the catalog's source language).
+    #[serde(rename = "title")]
+    pub title_en: String,
+    /// Russian rendering of the name, when the catalog carries one.
+    #[serde(default)]
+    pub title_ru: Option<String>,
+    /// What the user gains, in English.
+    #[serde(rename = "why")]
+    pub why_en: String,
+    /// Russian rendering of the gain.
+    #[serde(default)]
+    pub why_ru: Option<String>,
     /// Grouping bucket (media | repos | drivers | fonts | gaming | power).
     pub category: String,
     /// Distro ids this applies to; empty means "all distros".
@@ -49,8 +57,11 @@ pub struct Recommendation {
     #[serde(default)]
     pub requires: Option<String>,
     /// A caveat worth surfacing (e.g. a trust boundary, or "laptops only").
+    #[serde(default, rename = "note")]
+    pub note_en: Option<String>,
+    /// Russian rendering of the caveat.
     #[serde(default)]
-    pub note: Option<String>,
+    pub note_ru: Option<String>,
     /// Optional identifier whose installed presence means this entry is **already
     /// satisfied**, so `doctor` skips offering it (#1). Use it when the installed name
     /// differs from the install spec — a Flatpak app-id (`com.valvesoftware.Steam` for
@@ -58,6 +69,40 @@ pub struct Recommendation {
     /// absent, satisfaction is derived from `packages` (their bare names).
     #[serde(default)]
     pub check: Option<String>,
+}
+
+impl Recommendation {
+    /// The name in the active UI language.
+    ///
+    /// The catalog is data, not `locales/*.toml`, so its prose travels with the entry
+    /// (ADR-0090): an entry carries `title_ru` alongside `title`, and a language with no
+    /// translation yet falls back to English rather than showing a key. Without this a
+    /// Russian user got a Russian program listing English advice, which is exactly the
+    /// "written by a machine" feeling the house voice exists to remove.
+    pub fn title(&self) -> &str {
+        pick(&self.title_ru, &self.title_en)
+    }
+
+    /// What the user gains, in the active UI language. See [`title`](Self::title).
+    pub fn why(&self) -> &str {
+        pick(&self.why_ru, &self.why_en)
+    }
+
+    /// The caveat, in the active UI language, if the entry has one.
+    pub fn note(&self) -> Option<&str> {
+        match (crate::i18n::lang(), &self.note_ru, &self.note_en) {
+            ("ru", Some(ru), _) => Some(ru.as_str()),
+            (_, _, en) => en.as_deref(),
+        }
+    }
+}
+
+/// Choose the Russian rendering when the active language is Russian and one exists.
+fn pick<'a>(ru: &'a Option<String>, en: &'a str) -> &'a str {
+    match (crate::i18n::lang(), ru) {
+        ("ru", Some(ru)) => ru.as_str(),
+        _ => en,
+    }
 }
 
 impl Recommendation {
@@ -157,14 +202,32 @@ mod tests {
         assert!(!catalog.recommendation.is_empty());
         // Every entry has the required human fields and a category.
         for r in &catalog.recommendation {
-            assert!(!r.title.is_empty());
-            assert!(!r.why.is_empty());
+            assert!(!r.title_en.is_empty());
+            assert!(!r.why_en.is_empty());
             assert!(!r.category.is_empty());
             // An entry must offer *something* to do: packages or a manual command.
             assert!(
                 !r.packages.is_empty() || r.manual.is_some(),
                 "{} does nothing",
-                r.title
+                r.title_en
+            );
+        }
+    }
+
+#[test]
+    fn every_entry_is_translated_into_every_shipped_language() {
+        // The locale files have this guarantee already (en/ru key parity); the catalog is
+        // the other half of the user-facing prose and needs the same one, or a Russian
+        // session quietly reads English advice (ADR-0090).
+        let catalog = Catalog::load().expect("catalog parses");
+        for r in &catalog.recommendation {
+            assert!(r.title_ru.is_some(), "{} has no title_ru", r.id);
+            assert!(r.why_ru.is_some(), "{} has no why_ru", r.id);
+            assert_eq!(
+                r.note_en.is_some(),
+                r.note_ru.is_some(),
+                "{} has a note in only one language",
+                r.id
             );
         }
     }
@@ -177,7 +240,7 @@ mod tests {
         for distro in ["fedora", "arch", "debian", "ubuntu", "opensuse"] {
             let family = vec![distro.to_string()];
             let mut titles: Vec<&str> =
-                catalog.for_distro(&family).iter().map(|r| r.title.as_str()).collect();
+                catalog.for_distro(&family).iter().map(|r| r.title_en.as_str()).collect();
             titles.sort_unstable();
             let before = titles.len();
             titles.dedup();
@@ -189,14 +252,17 @@ mod tests {
     fn empty_distros_applies_everywhere() {
         let r = Recommendation {
             id: "x".into(),
-            title: "X".into(),
-            why: "w".into(),
+            title_ru: None,
+            why_ru: None,
+            note_ru: None,
+            title_en: "X".into(),
+            why_en: "w".into(),
             category: "media".into(),
             distros: vec![],
             packages: vec!["x".into()],
             manual: None,
             requires: None,
-            note: None,
+            note_en: None,
             check: None,
         };
         assert!(r.applies_to(&["fedora".to_string()]));
@@ -208,14 +274,17 @@ mod tests {
     fn satisfied_ids_prefers_check_then_strips_package_specs() {
         let mut r = Recommendation {
             id: "steam".into(),
-            title: "Steam".into(),
-            why: "games".into(),
+            title_ru: None,
+            why_ru: None,
+            note_ru: None,
+            title_en: "Steam".into(),
+            why_en: "games".into(),
             category: "gaming".into(),
             distros: vec!["fedora".into()],
             packages: vec!["steam:flatpak".into()],
             manual: None,
             requires: None,
-            note: None,
+            note_en: None,
             check: Some("com.valvesoftware.Steam".into()),
         };
         // Explicit check wins (Flatpak app-id, not the "steam" spec).
@@ -229,14 +298,17 @@ mod tests {
     fn is_satisfied_only_when_all_ids_installed() {
         let r = Recommendation {
             id: "codecs".into(),
-            title: "Codecs".into(),
-            why: "media".into(),
+            title_ru: None,
+            why_ru: None,
+            note_ru: None,
+            title_en: "Codecs".into(),
+            why_en: "media".into(),
             category: "media".into(),
             distros: vec![],
             packages: vec!["a".into(), "b".into()],
             manual: None,
             requires: None,
-            note: None,
+            note_en: None,
             check: None,
         };
         let mut set = std::collections::HashSet::new();
@@ -248,14 +320,17 @@ mod tests {
         // An entry with no identifiers (manual-only, no check) is never "satisfied".
         let manual = Recommendation {
             id: "repo".into(),
-            title: "Repo".into(),
-            why: "w".into(),
+            title_ru: None,
+            why_ru: None,
+            note_ru: None,
+            title_en: "Repo".into(),
+            why_en: "w".into(),
             category: "repos".into(),
             distros: vec![],
             packages: vec![],
             manual: Some("do it".into()),
             requires: None,
-            note: None,
+            note_en: None,
             check: None,
         };
         assert!(!manual.is_satisfied(&set));
@@ -264,14 +339,17 @@ mod tests {
     fn entry(id: &str, requires: Option<&str>, check: Option<&str>) -> Recommendation {
         Recommendation {
             id: id.into(),
-            title: id.into(),
-            why: "w".into(),
+            title_ru: None,
+            why_ru: None,
+            note_ru: None,
+            title_en: id.into(),
+            why_en: "w".into(),
             category: "media".into(),
             distros: vec![],
             packages: vec![],
             manual: requires.is_none().then(|| "enable repo".into()),
             requires: requires.map(str::to_string),
-            note: None,
+            note_en: None,
             check: check.map(str::to_string),
         }
     }

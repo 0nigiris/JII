@@ -52,6 +52,11 @@ impl Provider for Gentoo {
         TrustLevel::Official
     }
 
+    /// Compiled here on the machine.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::BuiltFromSource
+    }
+
     async fn is_available(&self) -> bool {
         which(BIN).await
     }

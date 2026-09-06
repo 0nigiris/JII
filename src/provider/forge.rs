@@ -175,6 +175,11 @@ impl Provider for ForgeProvider {
         TrustLevel::Untrusted
     }
 
+    /// The authors' own release artifact.
+    fn nature(&self) -> super::SourceNature {
+        super::SourceNature::UpstreamBinary
+    }
+
     fn credential_origin(&self) -> Option<crate::secret::Origin> {
         self.resolved_token().map(|t| t.origin.clone())
     }
