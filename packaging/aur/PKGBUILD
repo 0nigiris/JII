@@ -6,7 +6,7 @@
 # then `makepkg --printsrcinfo > .SRCINFO` and push. See packaging/README.md.
 pkgname=jii-bin
 _pkgname=jii
-pkgver=0.1.5_beta
+pkgver=0.1.20_beta
 pkgrel=1
 pkgdesc="A smart universal package installer for Linux — searches DNF/Flatpak/GitHub/Cargo/npm/…, ranks, installs the best, explains why"
 arch=('x86_64' 'aarch64')
@@ -18,9 +18,9 @@ conflicts=('jii')
 _tag="v${pkgver//_/-}"
 source_x86_64=("jii-${pkgver}-x86_64.tar.gz::${url}/releases/download/${_tag}/jii-${_tag}-x86_64-linux.tar.gz")
 source_aarch64=("jii-${pkgver}-aarch64.tar.gz::${url}/releases/download/${_tag}/jii-${_tag}-aarch64-linux.tar.gz")
-# Digests of the v0.1.5-beta release tarballs. Refresh with `updpkgsums` on each bump.
-sha256sums_x86_64=('33b5be49f61c85c61a7cdf11fffc6a7cc7889c81c64a056c924cd4cbe4378201')
-sha256sums_aarch64=('1844096e6f57552cd236d39a4518670e51fafce8ac26d657513756b543cfd424')
+# Digests of the v0.1.20-beta release tarballs. Refresh with `updpkgsums` on each bump.
+sha256sums_x86_64=('15efe4b219966ec592c14d24cf90636566c367e2d3e1afc37c660518fea6593f')
+sha256sums_aarch64=('51ddcba262c4d57d6c3cc0c88e6002b225dcbf554d39edb0d24fbd663a3e6322')
 
 package() {
   cd "${srcdir}/jii-${_tag}-${CARCH}-linux"

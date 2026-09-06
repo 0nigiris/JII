@@ -98,10 +98,10 @@ works.
    cp ~/JII/packaging/jii.spec .
    # the spec is multi-arch → commit BOTH release tarballs (Source0 + Source1):
    for a in x86_64 aarch64; do
-     curl -fLO https://github.com/0nigiris/JII/releases/download/v0.1.5-beta/jii-v0.1.5-beta-$a-linux.tar.gz
+     curl -fLO https://github.com/0nigiris/JII/releases/download/v0.1.20-beta/jii-v0.1.20-beta-$a-linux.tar.gz
    done
    osc add jii.spec *.tar.gz
-   osc commit -m "jii 0.1.5-beta"
+   osc commit -m "jii 0.1.20-beta"
    ```
    (Alternatively add a `_service` with the `download_url` service so OBS fetches the
    tarball itself instead of committing it.)
@@ -132,7 +132,7 @@ Arch/CachyOS box (`sudo pacman -S --needed base-devel git pacman-contrib`).
    ```
 3. Commit and push (AUR's branch is `master`):
    ```sh
-   git add PKGBUILD .SRCINFO && git commit -m "jii-bin 0.1.5_beta" && git push origin master
+   git add PKGBUILD .SRCINFO && git commit -m "jii-bin 0.1.20_beta" && git push origin master
    ```
 4. Users then: `yay -S jii-bin` (or any AUR helper).
 

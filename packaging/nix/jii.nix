@@ -15,18 +15,18 @@
 }:
 
 let
-  version = "0.1.5-beta";
+  version = "0.1.20-beta";
   tag = "v${version}";
   base = "https://github.com/0nigiris/JII/releases/download/${tag}";
 
   sources = {
     "x86_64-linux" = {
       arch = "x86_64";
-      hash = "sha256-M7W+SfYchcYafN8R//xqfMeInIHGSgVskkzUy+Q3ggE=";
+      hash = "sha256-Fe/kshmWbsWSwU0kz5BjZWbDZ+LT4a/DfGYFGP6mWT8=";
     };
     "aarch64-linux" = {
       arch = "aarch64";
-      hash = "sha256-GEQJbm9XVSzSNtOaRRhnDlH6/OisJtZXUTdWtUPP1CQ=";
+      hash = "sha256-Ud3LomLE1X1sPMDIjmACsiXcv1VNOe2w0k+9Zjo+YyI=";
     };
   };
 

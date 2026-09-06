@@ -11,17 +11,17 @@
 class Jii < Formula
   desc "Smart universal package installer for Linux"
   homepage "https://github.com/0nigiris/JII"
-  version "0.1.5-beta"
+  version "0.1.20-beta"
   license "GPL-3.0-or-later"
 
   on_linux do
     on_intel do
-      url "https://github.com/0nigiris/JII/releases/download/v0.1.5-beta/jii-v0.1.5-beta-x86_64-linux.tar.gz"
-      sha256 "33b5be49f61c85c61a7cdf11fffc6a7cc7889c81c64a056c924cd4cbe4378201"
+      url "https://github.com/0nigiris/JII/releases/download/v0.1.20-beta/jii-v0.1.20-beta-x86_64-linux.tar.gz"
+      sha256 "15efe4b219966ec592c14d24cf90636566c367e2d3e1afc37c660518fea6593f"
     end
     on_arm do
-      url "https://github.com/0nigiris/JII/releases/download/v0.1.5-beta/jii-v0.1.5-beta-aarch64-linux.tar.gz"
-      sha256 "1844096e6f57552cd236d39a4518670e51fafce8ac26d657513756b543cfd424"
+      url "https://github.com/0nigiris/JII/releases/download/v0.1.20-beta/jii-v0.1.20-beta-aarch64-linux.tar.gz"
+      sha256 "51ddcba262c4d57d6c3cc0c88e6002b225dcbf554d39edb0d24fbd663a3e6322"
     end
   end
 
