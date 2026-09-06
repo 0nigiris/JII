@@ -3724,3 +3724,50 @@ contributor adding a distro's entries would have to touch two locale files to sa
 
 **Consequences.** Adding a catalog entry now means writing it twice. That is the price of the
 guarantee, and it is the same price `locales/*.toml` already charges.
+
+---
+
+## ADR-0091 — Topics: answering the concept, not the string
+
+**Status.** Accepted (2026-09-06).
+
+**Context.** The owner's ask: `jii search "markdown"` should suggest Obsidian. It did not — it
+answered with an npm library literally named `markdown`, because every provider searches by name
+and the query happened to be one. `jii search браузер` was worse: no source anywhere carries a
+Russian word as a package name, so the answer was "No candidates found" for a question with an
+obvious answer.
+
+**Decision.** `data/topics.toml` maps a concept to the programs that answer it: a list of terms
+someone might type (in every shipped language) and a short, curated `picks` list. `jii search`
+consults it *after* the literal search and answers with the topic when one matches. The literal
+hits are never discarded silently — a line names them and `--exact` skips the layer entirely. An
+install that resolves nothing points at the topic search instead of dead-ending on two
+search-engine URLs.
+
+The gate is one rule: **the topic answers unless the query is itself one of its picks.** `docker`
+and `steam` are terms of the container and gaming topics, but someone typing them named a program
+and gets that program. Everything else — including a package that merely carries the word, like
+npm's `markdown` — is exactly the collision this exists to route around.
+
+`picks` order is the curator's order and is *not* re-ranked: a topic is a curated reply ("for
+markdown, people install Obsidian"), and re-ranking it by source priority turns it back into
+whatever the registries happen to hold. Within one program the usual ranking still decides which
+source wins, and the resolution is bounded by the same budget as `broaden_search` (ADR-0086).
+
+Term matching is whole-query equality, not substring: a substring rule makes `jii search vim`
+answer "virtual machines" (`vm` is a term). When JII cannot be sure what someone meant, saying
+nothing is honest — the literal results are already on screen.
+
+**Alternatives.** *Semantic search over package descriptions* (embeddings, or `dnf search --all`)
+— the general answer, and a bad first one: it needs a model or a per-source description index, it
+answers differently on every distro, and its failures are unexplainable. A curated table is
+inspectable, reviewable in a pull request, and translatable. *Only description search* — `dnf
+search --all markdown` returns forty libraries before it returns an editor. The two can coexist
+later; the curated layer is what makes the common questions right today.
+
+**Consequences.** A hand-maintained list that will always have gaps, and every topic must be
+written in both languages. In exchange the questions people actually ask — "браузер", "заметки",
+"запись экрана", "markdown" — get the answer a knowledgeable friend would give. Reverse-DNS app
+ids are shown by their last segment (`md.obsidian.Obsidian` → `Obsidian`) in display only, since
+a column of addresses is not a list of names. And identical offers from one source are now
+collapsed in ranking — Fedora's `steam` appeared five times, once per repository carrying it.

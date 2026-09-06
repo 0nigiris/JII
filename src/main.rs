@@ -23,6 +23,7 @@ mod registry;
 mod secret;
 mod selfupdate;
 mod shellrc;
+mod topics;
 mod ui;
 
 use crate::cli::Cli;

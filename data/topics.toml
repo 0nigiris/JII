@@ -1,0 +1,231 @@
+# JII topic catalog — what a person means when they type a concept, not a package name.
+#
+# `jii search markdown` used to answer with a library literally named "markdown", because
+# every source searches by name and the query happened to be one. What the person wanted was
+# a markdown *editor*. This file is the bridge: a topic collects the words someone might type
+# — in every shipped language — and names the programs that actually answer them.
+#
+# It is DATA, not code (the core never learns a package name). The engine looks a query up
+# here only when the literal search found no exact name match, so typing a real package name
+# always wins; `--exact` skips this layer entirely.
+#
+# Fields:
+#   id        stable slug, unique
+#   terms     what the user might type; matched lowercased, whole-word, any language
+#   title     English name of the topic
+#   title_ru  Russian name (required — same parity rule as the recommend catalog, ADR-0090)
+#   picks     program names, best first, that JII should look for. Bare names only: every
+#             source gets to answer, and ranking/trust decide as usual.
+#
+# Keep `picks` short and defensible: the three to six programs a knowledgeable person would
+# actually name. This is a curated answer, not a directory.
+
+[[topic]]
+id = "markdown-editor"
+terms = ["markdown", "md", "маркдаун", "разметка"]
+title = "Markdown editors"
+title_ru = "Редакторы Markdown"
+picks = ["obsidian", "marktext", "ghostwriter", "zettlr", "apostrophe"]
+
+[[topic]]
+id = "browser"
+terms = ["browser", "webbrowser", "web browser", "браузер", "броузер", "интернет"]
+title = "Web browsers"
+title_ru = "Браузеры"
+picks = ["firefox", "chromium", "brave", "vivaldi", "librewolf"]
+
+[[topic]]
+id = "code-editor"
+terms = ["editor", "code editor", "ide", "редактор кода", "редактор", "среда разработки"]
+title = "Code editors"
+title_ru = "Редакторы кода"
+picks = ["code", "neovim", "helix", "zed", "kate"]
+
+[[topic]]
+id = "video-player"
+terms = ["video player", "player", "видеоплеер", "плеер", "видео", "смотреть фильмы"]
+title = "Video players"
+title_ru = "Видеоплееры"
+picks = ["vlc", "mpv", "celluloid", "haruna"]
+
+[[topic]]
+id = "music-player"
+terms = ["music", "music player", "музыка", "музыкальный плеер", "слушать музыку"]
+title = "Music players"
+title_ru = "Музыкальные плееры"
+picks = ["spotify", "rhythmbox", "audacious", "strawberry", "amberol"]
+
+[[topic]]
+id = "image-editor"
+terms = ["image editor", "photo editor", "photoshop", "фоторедактор", "графический редактор", "фотошоп"]
+title = "Image editors"
+title_ru = "Редакторы изображений"
+picks = ["gimp", "krita", "inkscape", "darktable"]
+
+[[topic]]
+id = "video-editor"
+terms = ["video editor", "видеоредактор", "монтаж", "монтаж видео"]
+title = "Video editors"
+title_ru = "Видеоредакторы"
+picks = ["kdenlive", "shotcut", "openshot", "davinci-resolve"]
+
+[[topic]]
+id = "audio-editor"
+terms = ["audio editor", "sound editor", "аудиоредактор", "звуковой редактор", "запись звука"]
+title = "Audio editors"
+title_ru = "Аудиоредакторы"
+picks = ["audacity", "ardour", "tenacity"]
+
+[[topic]]
+id = "screenshot"
+terms = ["screenshot", "screen capture", "скриншот", "снимок экрана"]
+title = "Screenshot tools"
+title_ru = "Снимки экрана"
+picks = ["flameshot", "spectacle", "shutter", "grim"]
+
+[[topic]]
+id = "screen-recorder"
+terms = ["screen recorder", "record screen", "obs", "запись экрана", "стрим", "стриминг"]
+title = "Screen recording"
+title_ru = "Запись экрана"
+picks = ["obs-studio", "kooha", "simplescreenrecorder"]
+
+[[topic]]
+id = "torrent"
+terms = ["torrent", "bittorrent", "торрент", "торренты"]
+title = "Torrent clients"
+title_ru = "Торрент-клиенты"
+picks = ["qbittorrent", "transmission", "deluge", "fragments"]
+
+[[topic]]
+id = "terminal"
+terms = ["terminal", "terminal emulator", "терминал", "консоль", "эмулятор терминала"]
+title = "Terminal emulators"
+title_ru = "Эмуляторы терминала"
+picks = ["kitty", "alacritty", "wezterm", "foot", "ghostty"]
+
+[[topic]]
+id = "archiver"
+terms = ["archive", "archiver", "zip", "unzip", "rar", "архиватор", "архив", "распаковать"]
+title = "Archive tools"
+title_ru = "Архиваторы"
+picks = ["p7zip", "unrar", "file-roller", "ark"]
+
+[[topic]]
+id = "office"
+terms = ["office", "word", "excel", "spreadsheet", "офис", "ворд", "эксель", "таблицы", "документы"]
+title = "Office suites"
+title_ru = "Офисные пакеты"
+picks = ["libreoffice", "onlyoffice-desktopeditors", "wps-office"]
+
+[[topic]]
+id = "pdf"
+terms = ["pdf", "pdf reader", "читалка", "пдф", "просмотр pdf"]
+title = "PDF readers"
+title_ru = "Просмотр PDF"
+picks = ["okular", "evince", "zathura", "papers"]
+
+[[topic]]
+id = "password-manager"
+terms = ["password", "password manager", "пароли", "менеджер паролей", "хранить пароли"]
+title = "Password managers"
+title_ru = "Менеджеры паролей"
+picks = ["keepassxc", "bitwarden", "pass"]
+
+[[topic]]
+id = "vpn"
+terms = ["vpn", "вэпэн", "впн", "обход блокировок"]
+title = "VPN clients"
+title_ru = "VPN-клиенты"
+picks = ["wireguard-tools", "openvpn", "protonvpn-cli"]
+
+[[topic]]
+id = "messenger"
+terms = ["messenger", "chat", "мессенджер", "чат", "общение", "переписка"]
+title = "Messengers"
+title_ru = "Мессенджеры"
+picks = ["telegram-desktop", "element-desktop", "signal-desktop", "discord"]
+
+[[topic]]
+id = "email"
+terms = ["email", "mail", "mail client", "почта", "почтовый клиент", "электронная почта"]
+title = "Email clients"
+title_ru = "Почтовые клиенты"
+picks = ["thunderbird", "geary", "evolution"]
+
+[[topic]]
+id = "file-manager"
+terms = ["file manager", "files", "файловый менеджер", "проводник", "файлы"]
+title = "File managers"
+title_ru = "Файловые менеджеры"
+picks = ["nautilus", "dolphin", "thunar", "nnn", "yazi"]
+
+[[topic]]
+id = "system-monitor"
+terms = ["system monitor", "task manager", "процессы", "диспетчер задач", "монитор системы", "нагрузка"]
+title = "System monitors"
+title_ru = "Мониторы системы"
+picks = ["btop", "htop", "mission-center", "bottom"]
+
+[[topic]]
+id = "disk-usage"
+terms = ["disk usage", "disk space", "место на диске", "занятое место", "чем забит диск"]
+title = "Disk usage tools"
+title_ru = "Что занимает место на диске"
+picks = ["ncdu", "baobab", "dust", "gdu"]
+
+[[topic]]
+id = "virtualization"
+terms = ["virtual machine", "vm", "virtualbox", "виртуальная машина", "виртуалка", "вм"]
+title = "Virtual machines"
+title_ru = "Виртуальные машины"
+picks = ["virt-manager", "virtualbox", "gnome-boxes", "quickemu"]
+
+[[topic]]
+id = "containers"
+terms = ["docker", "containers", "kubernetes", "контейнеры", "докер"]
+title = "Containers"
+title_ru = "Контейнеры"
+picks = ["podman", "docker", "podman-desktop", "distrobox"]
+
+[[topic]]
+id = "notes"
+terms = ["notes", "note taking", "заметки", "записи", "блокнот"]
+title = "Note taking"
+title_ru = "Заметки"
+picks = ["obsidian", "logseq", "joplin", "standard-notes"]
+
+[[topic]]
+id = "game-launcher"
+terms = ["games", "gaming", "steam", "игры", "игровой лаунчер", "поиграть"]
+title = "Games and launchers"
+title_ru = "Игры и лаунчеры"
+picks = ["steam", "lutris", "heroic-games-launcher", "bottles"]
+
+[[topic]]
+id = "drawing"
+terms = ["drawing", "paint", "рисование", "рисовать", "графический планшет"]
+title = "Drawing"
+title_ru = "Рисование"
+picks = ["krita", "mypaint", "drawing", "pinta"]
+
+[[topic]]
+id = "3d"
+terms = ["3d", "3d modeling", "blender", "3д", "моделирование", "трёхмерная графика"]
+title = "3D modelling"
+title_ru = "Трёхмерная графика"
+picks = ["blender", "freecad", "openscad"]
+
+[[topic]]
+id = "ssh-ftp"
+terms = ["ssh", "sftp", "ftp", "ftp client", "ftp клиент", "подключиться к серверу"]
+title = "Remote file transfer"
+title_ru = "Передача файлов на сервер"
+picks = ["filezilla", "openssh-clients", "rsync", "lftp"]
+
+[[topic]]
+id = "backup"
+terms = ["backup", "бэкап", "резервная копия", "бекап"]
+title = "Backups"
+title_ru = "Резервное копирование"
+picks = ["restic", "borgbackup", "deja-dup", "timeshift"]

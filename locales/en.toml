@@ -119,6 +119,7 @@ searching_for = "Searching for '{name}'..."
 searching_wider = "Nothing exact — looking wider…"
 not_found = "Not found: {names}"
 not_found_via = "Not found via source '{source}': {names}"
+try_topic = "'{name}' reads as a topic ({topic}) rather than a package. See what answers it: jii search {name}"
 browse_hint = "Not in your sources — browse for it and see how to install:"
 browse_github = "GitHub:  {url}"
 browse_flathub = "Flathub: {url}"
@@ -713,9 +714,13 @@ and = "and"
 
 [offer]
 verdict = "Best is {source}, version {version} — {nature}."
+verdict_named = "Best is {name} from {source}, version {version} — {nature}."
 verdict_bare = "Best is {source}, version {version}."
 no_version = "unnumbered"
 show_all = "Show everything, including those: {cmd}"
+topic_looking = "Looking up what usually answers that…"
+topic = "'{query}' reads as a topic rather than a package name. For {topic}, these are the usual answers."
+topic_literal = "Something is literally named {name} too — see it with: jii search {name} --exact"
 install_q = "Install?"
 # The bracketed hint after a question. `range` is e.g. "2-4"; the single-alternative
 # form drops it, because there is no other number to type.

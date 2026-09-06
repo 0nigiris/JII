@@ -112,6 +112,7 @@ searching_for = "Ищу «{name}»..."
 searching_wider = "Точного совпадения нет — ищу шире…"
 not_found = "Не найдено: {names}"
 not_found_via = "Не найдено через источник «{source}»: {names}"
+try_topic = "«{name}» — это скорее тема ({topic}), чем пакет. Посмотреть, чем её закрывают: jii search {name}"
 browse_hint = "В ваших источниках нет — можно поискать вручную и посмотреть, как установить:"
 browse_github = "GitHub:  {url}"
 browse_flathub = "Flathub: {url}"
@@ -698,9 +699,13 @@ and = "и"
 
 [offer]
 verdict = "Лучший — {source}, версия {version}: {nature}."
+verdict_named = "Лучший — {name} из {source}, версия {version}: {nature}."
 verdict_bare = "Лучший — {source}, версия {version}."
 no_version = "без номера"
 show_all = "Показать всё, включая их: {cmd}"
+topic_looking = "Смотрю, чем это обычно закрывают…"
+topic = "«{query}» — это скорее тема, чем имя пакета. Для раздела «{topic}» обычно ставят вот это."
+topic_literal = "Пакет с именем {name} тоже существует — показать: jii search {name} --exact"
 install_q = "Установить?"
 # Подсказка в скобках после вопроса. `range` — например «2–4»; когда вариант один,
 # форма без диапазона: набирать нечего.

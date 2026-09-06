@@ -439,6 +439,43 @@ impl Engine {
         Vec::new()
     }
 
+/// Resolve a topic's named programs to installable candidates — one per program, best
+    /// first in the catalog's own order, dropping the ones nothing here offers.
+    ///
+    /// The curator's order is the answer's order on purpose: a topic is a *curated* reply
+    /// ("for markdown, people install Obsidian"), and re-ranking it by source priority would
+    /// turn it back into whatever the registries happen to hold. Within one program the usual
+    /// ranking still decides which source wins.
+    ///
+    /// Bounded like [`broaden_search`](Self::broaden_search): this is several searches at once
+    /// and must never be the reason a terminal sits silent (ADR-0086). Programs are looked up
+    /// concurrently, and whatever has arrived when the budget runs out is what gets shown.
+    pub async fn topic_candidates(&self, picks: &[String]) -> Vec<PackageCandidate> {
+        let budget = Budget::for_secs(self.config.network.timeout_secs * 2);
+        let lookups = picks.iter().map(|name| async move {
+            let found = self.search(&Query::name(name)).await.candidates;
+            // Keep only what really is this program: a topic pick is an exact name, and a
+            // substring match here would reintroduce the very name-squats topics exist to
+            // route around.
+            let exact: Vec<PackageCandidate> = found
+                .into_iter()
+                .filter(|c| {
+                    let n = c.name.to_lowercase();
+                    n == name.to_lowercase()
+                        || n.rsplit('.').next().is_some_and(|tail| tail == name.to_lowercase())
+                })
+                .collect();
+            self.rank(name, exact).into_iter().next()
+        });
+        let each = futures::future::join_all(lookups);
+        match tokio::time::timeout(budget.remaining(), each).await {
+            Ok(results) => results.into_iter().flatten().collect(),
+            // Out of budget: the literal results are already on screen, so an empty topic
+            // block is a missing extra, never a missing answer.
+            Err(_) => Vec::new(),
+        }
+    }
+
     /// Group a batch of candidates by owning source and, for each group, ask the source
     /// for a single batched plan ([`Provider::plan_install_many`]); when it declines
     /// (`None`), fall back to one `plan_install` per candidate. A single-package install
@@ -1319,6 +1356,11 @@ impl Budget {
 
     /// Whether the allowance is used up. Checked *between* rounds, never mid-round: a
     /// round already under way keeps its own per-source timeout.
+    /// How much of the budget is left — for a whole fan-out awaited under one timeout.
+    fn remaining(&self) -> Duration {
+        self.until.saturating_duration_since(std::time::Instant::now())
+    }
+
     fn spent(&self) -> bool {
         std::time::Instant::now() >= self.until
     }

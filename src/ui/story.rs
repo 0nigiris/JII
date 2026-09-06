@@ -25,6 +25,10 @@ use crate::ui::Renderer;
 /// One offerable candidate, flattened for display: everything the voice needs and nothing
 /// the engine cares about.
 pub struct Alternative {
+    /// The package's own name. Shown as a column only when the lines differ in it — for
+    /// `search htop` every line is `htop` and the column would be four identical words; for
+    /// a topic answer the name is the whole point.
+    pub name: String,
     pub source: String,
     pub version: Option<String>,
     pub trust: TrustLevel,
@@ -33,9 +37,26 @@ pub struct Alternative {
 }
 
 impl Alternative {
+    /// The name as a person would say it.
+    ///
+    /// A Flatpak app-id is reverse-DNS — `md.obsidian.Obsidian`, `org.gnome.gitlab.somas.
+    /// Apostrophe` — which is an address, not a name, and reading a column of them is work.
+    /// Three or more dotted segments with no spaces is the shape of an id, and its last
+    /// segment is the name; everything else (`p7zip`, `node-fetch`, `gnome-boxes`) is left
+    /// alone. Only ever display: the real name is what gets installed.
+    pub fn display_name(&self) -> &str {
+        let segments = self.name.split('.').count();
+        if segments >= 3 && !self.name.contains(' ') {
+            self.name.rsplit('.').next().unwrap_or(&self.name)
+        } else {
+            &self.name
+        }
+    }
+
     /// Flatten a ranked candidate. `nature` comes from the engine, which asks the provider.
     pub fn of(candidate: &PackageCandidate, nature: Option<SourceNature>) -> Self {
         Alternative {
+            name: candidate.name.clone(),
             source: candidate.source_id.clone(),
             version: candidate.version.as_ref().map(|v| v.0.clone()),
             trust: candidate.trust,
@@ -50,6 +71,13 @@ impl Alternative {
 /// stops being a choice and becomes a search result to scroll — which is what `--all` is
 /// for (rule 4).
 pub const MAX_NUMBERED: usize = 9;
+
+/// Whether these lines offer *different* programs (a topic answer) rather than the same one
+/// from different places (an ordinary search). Decides both the name column and whether the
+/// verdict names the program.
+fn names_differ(shown: &[Alternative]) -> bool {
+    shown.iter().any(|a| Some(&a.name) != shown.first().map(|f| &f.name))
+}
 
 /// The full spoken form of a source's character ("a sandboxed bundle that carries its own
 /// runtime"), for the verdict sentence.
@@ -69,12 +97,19 @@ fn nature_short(nature: Option<SourceNature>) -> Option<String> {
 pub fn verdict(renderer: &Renderer, shown: &[Alternative], best: usize) {
     let Some(pick) = shown.get(best) else { return };
     let version = pick.version.clone().unwrap_or_else(|| crate::t!("offer.no_version"));
+    // When every line offers the same program, naming it in the verdict just repeats the
+    // query. When they differ — a topic answer — the program *is* the answer and the source
+    // is the footnote.
+    let key = if names_differ(shown) { "offer.verdict_named" } else { "offer.verdict" };
     let sentence = match nature_long(pick.nature) {
-        Some(nature) => crate::t!(
-            "offer.verdict",
-            source = pick.source.clone(),
-            version = version,
-            nature = nature
+        Some(nature) => crate::i18n::tr_args(
+            key,
+            &[
+                ("name", pick.display_name().to_string()),
+                ("source", pick.source.clone()),
+                ("version", version),
+                ("nature", nature),
+            ],
         ),
         None => crate::t!("offer.verdict_bare", source = pick.source.clone(), version = version),
     };
@@ -87,6 +122,13 @@ pub fn verdict(renderer: &Renderer, shown: &[Alternative], best: usize) {
 pub fn alternatives(renderer: &Renderer, shown: &[Alternative], best: usize) {
     let palette = renderer.palette();
     let rows = shown.len().min(MAX_NUMBERED);
+    // The name column earns its place only when it says something different on each line.
+    let show_names = names_differ(&shown[..rows]);
+    let name_w = if show_names {
+        shown[..rows].iter().map(|a| a.display_name().chars().count()).max().unwrap_or(0)
+    } else {
+        0
+    };
     let src_w = shown[..rows].iter().map(|a| a.source.chars().count()).max().unwrap_or(0);
     let ver_w = shown[..rows]
         .iter()
@@ -103,8 +145,10 @@ pub fn alternatives(renderer: &Renderer, shown: &[Alternative], best: usize) {
             Some(s) => format!("{} · {s}", palette.trust(alt.trust)),
             None => palette.trust(alt.trust),
         };
+        let name =
+            if show_names { format!("{}  ", pad(alt.display_name(), name_w)) } else { String::new() };
         renderer.info(&format!(
-            "  {mark} {}  {}  {}  {tail}",
+            "  {mark} {}  {name}{}  {}  {tail}",
             palette.dim(&format!("{}", i + 1)),
             palette.source(&pad(&alt.source, src_w)),
             palette.version(&pad(&version, ver_w)),
@@ -214,6 +258,7 @@ mod tests {
 
     fn alt(source: &str, version: &str, trust: TrustLevel, nature: SourceNature) -> Alternative {
         Alternative {
+            name: "htop".to_string(),
             source: source.to_string(),
             version: Some(version.to_string()),
             trust,
@@ -246,6 +291,23 @@ mod tests {
         assert_eq!(join_and(&three[..2]), "cargo and pipx");
         assert_eq!(join_and(&three[..1]), "cargo");
         assert_eq!(join_and(&[]), "");
+    }
+
+    #[test]
+    fn a_reverse_dns_app_id_is_shown_by_its_last_segment() {
+        let id = |n: &str| Alternative {
+            name: n.to_string(),
+            source: "flatpak".into(),
+            version: None,
+            trust: TrustLevel::Community,
+            nature: None,
+        };
+        assert_eq!(id("md.obsidian.Obsidian").display_name(), "Obsidian");
+        assert_eq!(id("org.gnome.gitlab.somas.Apostrophe").display_name(), "Apostrophe");
+        // Ordinary names keep every character, dots and all.
+        assert_eq!(id("p7zip").display_name(), "p7zip");
+        assert_eq!(id("node-fetch").display_name(), "node-fetch");
+        assert_eq!(id("gstreamer1.0").display_name(), "gstreamer1.0");
     }
 
     #[test]

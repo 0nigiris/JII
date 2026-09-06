@@ -146,6 +146,9 @@ pub enum Commands {
         /// Show the hits that were set aside as name-squats too.
         #[arg(long)]
         all: bool,
+        /// Treat the query as a package name only — never answer with a topic.
+        #[arg(long)]
+        exact: bool,
     },
     /// Show availability, versions, trust and size for a package.
     Info {
@@ -455,7 +458,9 @@ impl Cli {
 
             Some(Commands::Update { packages }) => self.update(packages, config, &renderer).await,
 
-            Some(Commands::Search { query, all }) => self.search(query, *all, config, &renderer).await,
+            Some(Commands::Search { query, all, exact }) => {
+                self.search(query, *all, *exact, config, &renderer).await
+            }
             Some(Commands::Info { package }) => self.info(package, config, &renderer).await,
             Some(Commands::Sources { all, action }) => match action {
                 None => self.sources(*all, config, &renderer).await,
@@ -920,6 +925,27 @@ impl Cli {
                     renderer.info(&format!("  → {msg}"));
                 }
             }
+            // Before the browse links: the name may have been a *concept* all along. If the
+            // topic catalog knows the word, point at the search that answers it — a curated
+            // answer beats two search-engine URLs (ADR-0091).
+            let mut answered_by_topic: Vec<&String> = Vec::new();
+            if !renderer.is_json()
+                && let Ok(topics) = crate::topics::Topics::load()
+            {
+                for name in &not_found {
+                    if let Some(topic) = topics.lookup(name) {
+                        renderer.info(&crate::ui::story::wrap(
+                            &crate::t!(
+                                "install.try_topic",
+                                name = name.clone(),
+                                topic = topic.title()
+                            ),
+                            2,
+                        ));
+                        answered_by_topic.push(name);
+                    }
+                }
+            }
             // Even after broadening and (interactively) the repo picker, nothing resolved. Don't
             // dead-end: hand the user links to *browse* for it themselves and read the project's
             // own install docs (owner ask) — GitHub search finds the repo, Flathub a desktop app.
@@ -927,8 +953,15 @@ impl Cli {
             // that one source, not "where do I find this at all").
             if !renderer.is_json() && self.global.source.is_none() {
                 let palette = renderer.palette();
+                // A name the topic catalog answered already has a better next step than two
+                // search-engine URLs; only the genuinely unknown ones need those.
+                let unknown: Vec<&String> =
+                    not_found.iter().filter(|n| !answered_by_topic.contains(n)).collect();
+                if unknown.is_empty() {
+                    return Ok(());
+                }
                 renderer.info(&crate::t!("install.browse_hint"));
-                for name in &not_found {
+                for name in unknown {
                     let q = url_query_encode(name);
                     renderer.info(&palette.dim(&crate::t!(
                         "install.browse_github",
@@ -1959,6 +1992,7 @@ impl Cli {
         &self,
         terms: &[String],
         show_all: bool,
+        exact_only: bool,
         config: Config,
         renderer: &Renderer,
     ) -> crate::error::Result<()> {
@@ -1970,7 +2004,37 @@ impl Cli {
         // query verbatim; `--source` still narrows the results.
         let name = terms.join(" ");
         let ranked = self.ranked_for(&engine, &name, self.global.source.as_ref(), renderer).await;
-        if ranked.is_empty() {
+
+        // A concept, not a package name (ADR-0091). `jii search markdown` used to answer with
+        // a library literally called `markdown`; what was wanted was an editor. And a Russian
+        // word like «браузер» is not a package name anywhere, so without this the answer was
+        // nothing at all.
+        //
+        // The topic answers unless the query *is* one of the programs it would name: `docker`
+        // and `steam` are terms of the container and gaming topics, but someone typing them
+        // named a program and must get that program, not its neighbours. Anything else — even
+        // when a package happens to carry the word, as npm's `markdown` library does — is the
+        // collision topics exist to route around.
+        let topic = if exact_only || show_all {
+            None
+        } else {
+            crate::topics::Topics::load()
+                .ok()
+                .and_then(|t| t.lookup(&name).cloned())
+                .filter(|t| !t.picks.iter().any(|p| p.eq_ignore_ascii_case(&name)))
+        };
+        let topical: Vec<PackageCandidate> = match &topic {
+            Some(t) => {
+                let spinner = crate::ui::Spinner::start(renderer, &crate::t!("offer.topic_looking"));
+                let found = engine.topic_candidates(&t.picks).await;
+                drop(spinner);
+                found
+            }
+            None => Vec::new(),
+        };
+        let answering_topic = !topical.is_empty();
+
+        if ranked.is_empty() && !answering_topic {
             renderer.error(&crate::t!("search.none", name = name));
             if let Some(msg) = engine.explain_miss(&name).await {
                 renderer.info(&format!("  → {msg}"));
@@ -1980,18 +2044,27 @@ impl Cli {
         // A search that actually surfaced something counts as exploring (unlocks silently in JSON).
         self.grant_achievement("explorer");
         if renderer.is_json() {
-            renderer.json_value(&serde_json::json!(ranked));
+            // Machine output says *why* these are the answer: a topic reply is a different
+            // kind of result from a name match, and a script must be able to tell.
+            renderer.json_value(&match (&topic, answering_topic) {
+                (Some(t), true) => {
+                    serde_json::json!({ "topic": t.id, "candidates": topical })
+                }
+                _ => serde_json::json!({ "topic": serde_json::Value::Null, "candidates": ranked }),
+            });
             return Ok(());
         }
+
         // Split off the name-squats: a search that leads with "a lhk 1st training project"
         // buries the real answer. They stay one keystroke away via `--all` (rule 5).
+        let pool: &[PackageCandidate] = if answering_topic { &topical } else { &ranked };
         let (offered, aside): (Vec<&PackageCandidate>, Vec<&PackageCandidate>) = if show_all {
-            (ranked.iter().collect(), Vec::new())
+            (pool.iter().collect(), Vec::new())
         } else {
-            ranked.iter().partition(|c| !c.suspicious)
+            pool.iter().partition(|c| !c.suspicious)
         };
         // Everything looked like a squat: say so by showing them anyway rather than nothing.
-        let offered = if offered.is_empty() { ranked.iter().collect() } else { offered };
+        let offered = if offered.is_empty() { pool.iter().collect() } else { offered };
         let owned: Vec<PackageCandidate> = offered.iter().map(|c| (*c).clone()).collect();
 
         let shown: Vec<crate::ui::story::Alternative> = offered
@@ -1999,16 +2072,33 @@ impl Cli {
             .take(crate::ui::story::MAX_NUMBERED)
             .map(|c| crate::ui::story::Alternative::of(c, engine.source_nature(&c.source_id)))
             .collect();
-        let best = crate::engine::ranking::recommended_index(&owned)
-            .unwrap_or(0)
-            .min(shown.len().saturating_sub(1));
+        // A curated topic answer keeps the curator's order — its first pick is the answer.
+        let best = if answering_topic {
+            0
+        } else {
+            crate::engine::ranking::recommended_index(&owned)
+                .unwrap_or(0)
+                .min(shown.len().saturating_sub(1))
+        };
 
-        renderer.info(&crate::ui::story::wrap(
-            &crate::tn!("offer.found", offered.len() as u64, name = name.clone()),
-            2,
-        ));
+        let lead = match &topic {
+            Some(t) if answering_topic => {
+                crate::t!("offer.topic", query = name.clone(), topic = t.title())
+            }
+            _ => crate::tn!("offer.found", offered.len() as u64, name = name.clone()),
+        };
+        renderer.info(&crate::ui::story::wrap(&lead, 2));
         crate::ui::story::verdict(renderer, &shown, best);
         crate::ui::story::alternatives(renderer, &shown, best);
+
+        if answering_topic && !ranked.is_empty() {
+            // Never quietly discard what the person literally typed (rule 5).
+            renderer.info("");
+            renderer.info(&crate::ui::story::wrap(
+                &crate::t!("offer.topic_literal", name = name.clone()),
+                2,
+            ));
+        }
 
         let mut aside_sources: Vec<String> = aside.iter().map(|c| c.source_id.clone()).collect();
         aside_sources.dedup();

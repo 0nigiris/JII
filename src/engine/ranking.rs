@@ -21,6 +21,11 @@ pub fn rank(config: &Config, query: &str, mut candidates: Vec<PackageCandidate>)
     // Hard filter: drop anything incompatible with the current arch/libc.
     candidates.retain(|c| c.arch_ok);
 
+    // One source offering the same package five times is five identical lines and no extra
+    // information: Fedora's `steam` appears once per repository that carries it. Collapsed to
+    // the first of each (source, name) below — after ranking, so the survivor is the
+    // best-ranked one. Version is deliberately not a tie-break: `PkgVersion` is an opaque
+    // string, and comparing "1.0.0.9" against "1.0.0.10" lexically would pick the older one.
     candidates.sort_by(|a, b| {
         name_match_tier(query, &a.name)
             .cmp(&name_match_tier(query, &b.name))
@@ -30,6 +35,8 @@ pub fn rank(config: &Config, query: &str, mut candidates: Vec<PackageCandidate>)
             // (`git` before `git-core` for the query `git`).
             .then(a.name.len().cmp(&b.name.len()))
     });
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    candidates.retain(|c| seen.insert((c.source_id.clone(), c.name.to_lowercase())));
     candidates
 }
 
