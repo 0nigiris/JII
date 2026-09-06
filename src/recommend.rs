@@ -218,6 +218,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_category_has_a_heading_in_every_language() {
+        // Category headings are looked up as `doctor.cat_<category>`, composed at runtime —
+        // so a new category in the catalog with no matching locale key prints the raw key
+        // as a heading. Nothing else would catch that.
+        for r in &Catalog::load().expect("catalog parses").recommendation {
+            let key = format!("doctor.cat_{}", r.category);
+            for lang in ["en", "ru"] {
+                let text = crate::i18n::tr_in(lang, &key, &[]);
+                assert_ne!(text, key, "{lang} has no heading for category {:?}", r.category);
+            }
+        }
+    }
 #[test]
     fn every_entry_is_translated_into_every_shipped_language() {
         // The locale files have this guarantee already (en/ru key parity); the catalog is

@@ -53,10 +53,15 @@ impl Topic {
 }
 
 impl Topics {
-    /// Parse the embedded catalog. Fails only on malformed shipped TOML, which a unit test
-    /// guards against — so in practice this is infallible at runtime.
-    pub fn load() -> Result<Topics, toml::de::Error> {
-        toml::from_str(TOPICS_TOML)
+    /// The embedded catalog, parsed once per process.
+    ///
+    /// Both `search` and the install miss-path consult it, and re-parsing a few kilobytes of
+    /// TOML per lookup is pure waste in a program whose whole job is to feel instant. Fails
+    /// only on malformed shipped TOML, which a unit test guards against.
+    pub fn load() -> Result<&'static Topics, &'static toml::de::Error> {
+        static PARSED: std::sync::OnceLock<Result<Topics, toml::de::Error>> =
+            std::sync::OnceLock::new();
+        PARSED.get_or_init(|| toml::from_str(TOPICS_TOML)).as_ref()
     }
 
     /// The topic a query names, if any.
@@ -85,7 +90,7 @@ fn normalize(s: &str) -> String {
 mod tests {
     use super::*;
 
-    fn catalog() -> Topics {
+    fn catalog() -> &'static Topics {
         Topics::load().expect("the shipped catalog parses")
     }
 

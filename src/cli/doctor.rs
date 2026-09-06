@@ -484,7 +484,7 @@ impl Cli {
         } else {
             // Read-only run (JSON handled earlier; here it's --no or a non-TTY). List the
             // suggestions catalog for reference and point at the interactive run.
-            self.list_suggestions(renderer);
+            self.list_suggestions(&engine.installed_index().await, renderer);
             if checks.iter().any(|c| !c.ok && c.fix.is_some()) {
                 renderer.info("");
                 renderer.info(&crate::t!("doctor.run_interactive"));
@@ -762,13 +762,21 @@ impl Cli {
     /// List the curated, distro-aware catalog for a read-only `doctor` run (`--no`, no TTY):
     /// title, why, and the exact way to add it. Nothing is changed. Silent when the catalog
     /// has nothing for this distro, so it never nags.
-    fn list_suggestions(&self, renderer: &Renderer) {
+    fn list_suggestions(
+        &self,
+        installed: &std::collections::HashSet<String>,
+        renderer: &Renderer,
+    ) {
         let catalog = match crate::recommend::Catalog::load() {
             Ok(c) => c,
             Err(_) => return, // a broken catalog must never break `doctor`
         };
         let distro_ids = &crate::platform::Platform::detect().distro_ids;
-        let entries = catalog.for_distro(distro_ids);
+        // Only what this machine actually lacks. The interactive walk-through has always
+        // filtered on the installed set; this listing did not, so on a well-configured host
+        // it announced seven things to fix and every one of them was already done.
+        let entries: Vec<_> =
+            catalog.for_distro(distro_ids).into_iter().filter(|r| !r.is_satisfied(installed)).collect();
         if entries.is_empty() {
             return;
         }

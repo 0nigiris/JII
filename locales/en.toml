@@ -55,7 +55,6 @@ col_package = "PACKAGE"
 col_source = "SOURCE"
 
 [how]
-no_record = "'{package}' was not installed by jii (no record). Try `jii {package}`."
 system_owned = "{package} is installed via {source} — by your system, not by jii"
 not_by_jii = "jii has no record of it, so there is no install date. `jii remove {package}` still removes it, and `jii update {package}` still updates it."
 would_install = "{package} is not installed. jii would install it via {source}:"
@@ -143,7 +142,6 @@ bootstrap_no_pkg = "No package on this system sets up {manager}, so JII can't in
 bootstrap_fallback = "Using {source} for {app} instead, since {manager} can't be set up here."
 # The last word when nothing else can serve. A skipped app must still leave a way forward.
 bootstrap_by_hand = "To use {manager} anyway, install it yourself and run `jii sources add {id}` — or look at what else offers this package with `jii search`."
-bootstrap_failed = "{manager} didn't install — skipping {app}."
 bootstrap_skipped_app = "Skipped {app}."
 run_starting = "starting {cmd}…"
 run_unknown = "{name} is installed, but JII can't tell what to run for it — it may not install a program of that name."
@@ -191,7 +189,6 @@ cat_drivers = "Drivers"
 q_install = "Install {pkg}?"
 q_add_path = "Add {dir} to your PATH?"
 q_fix = "{label} — fix it now?"
-q_setup = "Set up {title}?"
 prereq = "{title} is required first — enabling it:"
 refreshing_meta = "refreshing package metadata for the new repository…"
 would_run = "would run:  {cmd}"
