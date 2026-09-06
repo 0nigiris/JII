@@ -13,6 +13,30 @@
 # * `date` is the release date, ISO `YYYY-MM-DD`.
 
 [[release]]
+version = "0.1.21-beta"
+date = "2026-09-06"
+en = [
+  "**JII talks in sentences now.** Every screen was a table: `jii search htop` printed six aligned rows in which the official Fedora package and an HTML-to-PDF converter that merely shares the name looked equally plausible, and `jii doctor` hid the command that would fix a thing at the far right of a very long line. Now the finding is a sentence — what was found, which one wins, and *why* it wins — and the machinery sits underneath it, indented and quiet.",
+  "**There is always a choice.** Wherever JII picked something for you, the alternatives are numbered right there and the prompt takes a number: `Install? [Yes / no / number 2-4]`. Taking a different source no longer means re-running the command with a flag.",
+  "**`jii search markdown` now answers with markdown editors.** It used to answer with a library literally called `markdown`, because every source searches by name. Thirty topics — browsers, torrent clients, screen recording, note taking, virtual machines and more — now map what you *meant* to the programs that answer it, in English and in Russian. `jii search браузер` works; it used to find nothing at all.",
+  "**`jii doctor` walks you through it, one thing at a time.** Each suggestion gets its own step with a number, a category, and plain prose about what it gains you — answerable with yes, no, or `a` to take all the rest. Its read-only listing also stopped announcing work that was already done.",
+  "**The suggestions are in your language.** The codec, VLC, font, Wine and Steam advice was English even in a Russian session. It is translated now, and a test keeps it that way.",
+  "**A source now explains itself.** Every line says what installing from there is *like* — the system's own package, a sandbox with its own runtime, built here from source, a registry anyone can publish to — so you can tell what a newer version from Snap actually costs you.",
+  "Smaller things: a Flatpak app id shows as `Obsidian`, not `md.obsidian.Obsidian`; one source offering the same package five times is collapsed to one line (Fedora's `steam` did exactly that); counted phrases use real plural forms in Russian.",
+  "Under the hood: the project is now a library plus a thin binary, the licensing of every file is machine-checkable, and the six downstream packaging recipes (AUR, Alpine, Void, Nix, Homebrew, Gentoo) are current again after being three months stale.",
+]
+ru = [
+  "**JII теперь говорит фразами.** Каждый экран был таблицей: `jii search htop` печатал шесть выровненных строк, в которых официальный пакет Fedora и конвертер HTML в PDF, просто совпавший именем, выглядели одинаково убедительно, а `jii doctor` прятал команду-исправление в конце очень длинной строки. Теперь находка — это предложение: что нашлось, что лучше и **почему** лучше, — а вся механика уходит вниз, в отступ и в тусклый цвет.",
+  "**Выбор есть всегда.** Везде, где JII выбрал за вас, рядом пронумерованы альтернативы, и приглашение принимает номер: `Установить? [Да / нет / номер 2–4]`. Чтобы взять другой источник, больше не нужно перезапускать команду с флагом.",
+  "**`jii search markdown` теперь отвечает редакторами Markdown.** Раньше он отвечал библиотекой, которая буквально называется `markdown`, — потому что все источники ищут по имени. Тридцать тем — браузеры, торренты, запись экрана, заметки, виртуальные машины и другие — сопоставляют то, что вы **имели в виду**, с программами, которые это закрывают, по-русски и по-английски. `jii search браузер` работает; раньше он не находил вообще ничего.",
+  "**`jii doctor` проводит по одному пункту за раз.** У каждого совета свой шаг с номером, разделом и человеческим объяснением, что он даёт, — отвечать «да», «нет» или «в», чтобы согласиться на всё остальное. А справочный список перестал сообщать о работе, которая уже сделана.",
+  "**Советы стали на вашем языке.** Подсказки про кодеки, VLC, шрифты, Wine и Steam были английскими даже в русском сеансе. Теперь они переведены, и тест следит, чтобы так и осталось.",
+  "**Источник объясняет сам себя.** В каждой строке написано, каково ставить именно оттуда: родной пакет системы, песочница со своим рантаймом, сборка здесь из исходников, реестр, куда публиковать может кто угодно, — так видно, чего на самом деле стоит более свежая версия из Snap.",
+  "Мелочи: идентификатор Flatpak показывается как `Obsidian`, а не `md.obsidian.Obsidian`; пять одинаковых предложений одного источника схлопываются в одну строку (Fedora так выдавала `steam`); числительные в русском получили правильные формы.",
+  "Внутри: проект разделён на библиотеку и тонкий бинарник, лицензия каждого файла проверяется машинно, а шесть рецептов упаковки (AUR, Alpine, Void, Nix, Homebrew, Gentoo) снова актуальны — они три месяца висели на старой версии.",
+]
+
+[[release]]
 version = "0.1.20-beta"
 date = "2026-09-05"
 en = [

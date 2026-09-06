@@ -8,11 +8,62 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-09-05_
+_Last updated: 2026-09-06_
 
 ---
 
-## Most recent work (2026-09-05, batch 22) — read this first
+## Most recent work (2026-09-06, batch 23) — read this first
+
+**The owner approved a new voice for the whole program and then said "делай всё": the output
+rewrite, semantic search, the lib/CLI split, the licensing work, upac, and a general cleanup.
+Five ADRs (0089–0093). Released as `v0.1.21-beta`.**
+
+- **JII speaks in sentences now** (ADR-0089). His verdict on the old output: it looked "как
+  типичный пакетный менеджер который пишет сухо и прячет важную информацию среди тонны текста
+  лишнего." Four voices were mocked up and put to him; he chose prose, corrected it to be
+  **impersonal** ("не нашёл например а найдено"), and added the rule that decided everything
+  else: **there must ALWAYS be a choice.** `src/ui/story.rs` owns the five rules and every
+  command renders through it. `prompt::decide` → `Pick` replaced the arrow-key chooser;
+  `prompt::step` → `Step` (yes / no / all-the-rest) drives doctor's walk-through.
+- **Why a source wins is asked of the source.** New `Provider::nature() -> SourceNature`
+  (system-native, community-repo, sandboxed, self-contained, built-from-source,
+  language-registry, upstream-binary). Presentation maps the *character* onto words, so JII can
+  say "snap has the newer version but carries its own runtime" with ADR-0004 intact. **No
+  default on the trait method** — a new provider must decide what it is.
+- **Topic search** (ADR-0091): `data/topics.toml`, thirty concepts → the programs that answer
+  them, in both languages. `jii search markdown` gives Obsidian; `jii search браузер` used to
+  give *nothing*. Gate rule: the topic answers unless the query is itself one of its picks
+  (`docker`, `steam` name programs). `--exact` skips the layer; `--all` shows the squats.
+- **The recommend catalog is translated** (ADR-0090) — `title_ru`/`why_ru`/`note_ru`, with a
+  parity test. A Russian session was reading English advice under Russian headings.
+- **Library + thin binary** (ADR-0092). `src/lib.rs` declares every module `pub`; `main.rs` is
+  70 lines. `cli/mod.rs` went 5,456 → ~3,000 lines, with `install.rs`, `doctor.rs`,
+  `sources.rs`, `bootstrap.rs` alongside it as further `impl Cli` blocks.
+- **Licensing is machine-checkable** (ADR-0093) — the good half of PR #12, with its licence
+  split corrected: `data/`/`locales/` are `include_str!`-ed into the binary, so they are GPL,
+  not CC-BY-SA. `reuse lint` is a CI gate.
+- **Bug found while testing the new wording:** doctor's *read-only* suggestion list never
+  filtered on what is installed, so on a configured host it announced seven things to do that
+  were all already done — while the same run's interactive path correctly said there was
+  nothing to set up. The old header hid it; a counted sentence made it a visible lie.
+- **upac**: the owner said yes to promoting it. README has a "Related projects" section and
+  `jii --version` names it as a companion — described by what it *does today* (atomic composefs
+  deploys, rollback, installs from local package files). Deliberately **not** in the
+  "package not found" message: it does not resolve names over a network yet, so pointing at it
+  there would be advertising dressed as help.
+- **Cleanup**: `packaging/bump.sh` now moves all six downstream recipes at once (they were
+  stuck on v0.1.5 — three months, fifteen releases); `indicatif` dropped as an unused
+  dependency; the topic and recommend catalogs parse once per process; three dead locale keys
+  removed; `~/vgb-build/` (171 MB), the Godot3 Flatpak and the old test guide deleted from the
+  owner's disk.
+- 356 tests, clippy clean, build clean, `reuse lint` clean. **Released as `v0.1.21-beta`**
+  (2026-09-06).
+- **Still open:** the reply to justpav05 on PR #12 (drafted, waiting for the owner to post it —
+  it is a public comment under his name); the deferred `reqwest` 0.12→0.13 migration; the
+  `jii doctor` codec re-offer bug (needs a live Fedora VM the owner will provide); `cargo fmt`
+  still not run and still not gated (ADR-0013).
+
+## Previous work (2026-09-05, batch 22)
 
 **The owner ran the tester checklist on five distros (Ubuntu, Fedora, Arch, openSUSE, Gentoo,
 Void) in phone containers and pasted the whole log. Nine real defects, all fixed; four ADRs
@@ -52,11 +103,9 @@ Void) in phone containers and pasted the whole log. Nine real defects, all fixed
 - **Achievements are earned quietly** (ADR-0087) — `jii achievements` is where they show; boss
   fights keep their toast. `jii --version` grew a real body; `-V` stays terse for scripts. The
   tester checklist gained a 13th step (whole-system update).
-- 344 tests, clippy clean, build clean. **Released as `v0.1.20-beta`** (2026-09-05).
-- **Still open from the round, not started:** semantic search (`jii search markdown` → editors);
-  a broader "friendly output is prettier and more minimal" pass; and the owner's idea of pointing
-  at `upac` (github.com/justpav05/upac) where no native package exists — that one needs his call,
-  since it advertises a third party.
+- 344 tests, clippy clean, build clean. **Released as `v0.1.20-beta`** (2026-09-05). All three
+  items left open by this round — semantic search, the output rewrite and the `upac` question —
+  were done in batch 23.
 
 ## Previous work (2026-08-22, batch 21)
 

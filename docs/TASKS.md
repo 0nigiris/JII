@@ -814,6 +814,27 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   native package exists — the last needs the owner's call, as it advertises a third
                   party.
                   **Released as `v0.1.20-beta` (2026-09-05).**
+            - [x] **The house voice, topic search, and the split (2026-09-06)**
+                  (ADR-0089…0093). The owner's verdict on the output: it looked "как типичный
+                  пакетный менеджер который пишет сухо и прячет важную информацию среди тонны
+                  текста лишнего." Four voices were mocked up; he chose prose, made it
+                  **impersonal**, and added the rule that decided the rest — **there must always
+                  be a choice**. `src/ui/story.rs` owns five rules and every command renders
+                  through it; `prompt::decide`/`prompt::step` replaced the arrow-key chooser and
+                  the yes/no chain. Why a source wins is asked of the source
+                  (`Provider::nature() -> SourceNature`, no default), so ADR-0004 holds.
+                  **Topic search**: `data/topics.toml`, thirty concepts in both languages —
+                  `jii search markdown` gives Obsidian, `jii search браузер` used to give nothing.
+                  **The recommend catalog is translated**, with a parity test. **The crate is now
+                  a library plus a thin binary**; `cli/mod.rs` 5,456 → ~3,000 lines with
+                  `install.rs`/`doctor.rs`/`sources.rs`/`bootstrap.rs` beside it. **Licensing is
+                  REUSE-clean and gated in CI** (the good half of PR #12, its licence split
+                  corrected). Found while testing: doctor's read-only list never filtered on what
+                  is installed and announced seven things already done. upac promoted in the
+                  README and `--version`, described by what it does today. `packaging/bump.sh`
+                  moves all six downstream recipes at once — they had been on v0.1.5 for three
+                  months. 356 tests.
+                  **Released as `v0.1.21-beta` (2026-09-06).**
             - [x] **Outside PR review + the token it exposed (2026-08-22)** (ADR-0083, ADR-0084).
                   Reviewed `justpav05`'s PR #12. Its one genuinely important finding: JII's own
                   setup told the user to `export GITHUB_TOKEN=…` in `~/.bashrc`, which hands the
@@ -883,7 +904,8 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
         4–5. **T6 (bootstrap a missing manager) is FROZEN** — parked in BETA_ROADMAP, post-Beta.
       - **Frozen backlog (do NOT start pre-Beta):** doctor --fix, catalog aliases, version chooser,
         GitHub repo chooser, bootstrap (T6), undo, streaming search, declarative providers, plus the
-        tech-debt items (cli/mod.rs split, flag-shed, update-staleness, model.rs dead_code). See
+        tech-debt items (flag-shed, update-staleness, model.rs dead_code — the cli/mod.rs split
+        landed in ADR-0092). See
         BETA_ROADMAP.md "Frozen" — post-Beta feedback reorders and promotes them.
 
 ---

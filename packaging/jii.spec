@@ -10,10 +10,10 @@
 # (A from-source spec using the Fedora rust-packaging macros is a post-Beta option once
 # the crate is submitted to Fedora proper.)
 
-%global _tag v0.1.20-beta
+%global _tag v0.1.21-beta
 
 Name:           jii
-Version:        0.1.20~beta
+Version:        0.1.21~beta
 Release:        1%{?dist}
 Summary:        A smart universal package installer for Linux
 
@@ -61,6 +61,15 @@ install -Dm0644 completions/jii.fish %{buildroot}%{_datadir}/fish/vendor_complet
 %{_datadir}/fish/vendor_completions.d/jii.fish
 
 %changelog
+* Sun Sep 06 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.21~beta-1
+- Rebuild against the v0.1.21-beta release: the output is prose in a house voice
+  (ADR-0089) — every command states its finding in a sentence, numbers the
+  alternatives, and takes a number at the prompt; a source explains what installing
+  from it is like via a new Provider::nature(). Topic search answers concepts rather
+  than strings (ADR-0091), the recommend catalog is translated (ADR-0090), the crate
+  is now a library plus a thin binary (ADR-0092), and licensing is REUSE-compliant
+  and gated in CI (ADR-0093).
+
 * Sat Sep 05 2026 0nigiris <0nigiris@users.noreply.github.com> - 0.1.20~beta-1
 - Rebuild against the v0.1.20-beta release: a five-distro tester round, nine fixes
   (ADR-0085…0088). Elevation reads the euid and what is installed (AlreadyRoot/doas/
