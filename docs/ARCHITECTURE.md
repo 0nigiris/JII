@@ -102,9 +102,12 @@ jii/
 ├─ docs/               ARCHITECTURE.md · ROADMAP.md · TASKS.md
 ├─ data/
 │  ├─ catalog.toml     name aliases + category → packages
+│  ├─ topics.toml      concept → the programs that answer it
+│  ├─ recommend/       curated per-distro onboarding suggestions
 │  └─ sources/*.toml   declarative (data-driven) sources
 ├─ src/
-│  ├─ main.rs          entrypoint, wiring
+│  ├─ main.rs          binary: parse, dispatch, report (wiring only)
+│  ├─ lib.rs           the library: every module, documented
 │  ├─ error.rs         thiserror error types
 │  ├─ model.rs         Query, PackageCandidate, InstallPlan, Step, TrustLevel…
 │  ├─ config.rs        TOML config load/merge/validate
@@ -131,23 +134,35 @@ jii/
 │  │  ├─ progress.rs   spinners / progress bars (indicatif)
 │  │  └─ table.rs      candidate & reason tables
 │  └─ cli/
-│     ├─ mod.rs        clap definitions, global flags
-│     └─ commands/     install · remove · update · search · info ·
-│                      why · doctor · history · undo · audit · config
+│     ├─ mod.rs        clap definitions, dispatch, the smaller commands
+│     ├─ install.rs    search → rank → offer → plan → confirm → run
+│     ├─ doctor.rs     health, environment checks, the fix walk-through
+│     ├─ sources.rs    show/enable/disable/add/remove a source
+│     └─ bootstrap.rs  setting up a manager that isn't here yet
 └─ tests/              integration tests (dry-run, ranking, parsers)
 ```
 
 > **As built (current, honest).** The tree above is the *target* layout; the code is
-> deliberately flatter until a module earns a split (YAGNI). Today: `engine/` is
-> `mod.rs` + `ranking.rs` only — search fan-out lives inline in `engine/mod.rs` (no
-> `search.rs`), and plan assembly is each provider's `plan_*` (no `plan.rs`). `ui/` is
-> `mod.rs` + `prompt.rs` (no `progress.rs`/`table.rs`; the renderer prints inline).
-> `cli/` is a single `mod.rs` — every command handler is a method on `Cli`, not a
-> `commands/` module (split it when it grows unwieldy — see AI_CONTEXT tech debt).
-> `provider/` has the eight native sources (dnf, copr, flatpak, github, cargo, npm, pipx,
-> go) plus shared helpers; `declarative.rs`, `appimage.rs`, and `data/sources/*.toml` are
-> **not built yet** (declarative providers are future work). `data/catalog.toml` aliases
-> are likewise pending.
+> deliberately flatter until a module earns a split (YAGNI). Today:
+>
+> - The crate has **both a `[lib]` and a `[[bin]]` target** (ADR-0092). `src/lib.rs` is the
+>   library — every module, publicly documented; `src/main.rs` is seventy lines of wiring
+>   over it. Still one Cargo crate, not a workspace (ADR-0001).
+> - `engine/` is `mod.rs` + `ranking.rs` only — search fan-out lives inline in
+>   `engine/mod.rs` (no `search.rs`), and plan assembly is each provider's `plan_*`
+>   (no `plan.rs`).
+> - `ui/` is `mod.rs` + `prompt.rs` + **`story.rs`** — the house voice, which every
+>   command's output goes through (ADR-0089). No `progress.rs`/`table.rs`; the renderer
+>   prints inline.
+> - `cli/` is `mod.rs` (definitions, dispatch, the smaller commands) plus one module per
+>   large flow: **`install.rs`**, **`doctor.rs`**, **`sources.rs`**, **`bootstrap.rs`**.
+>   They are additional `impl Cli` blocks in the same crate, not a `commands/` registry.
+> - `provider/` has the eighteen native sources plus shared helpers; `declarative.rs`,
+>   `appimage.rs`, and `data/sources/*.toml` are **not built yet** (declarative providers
+>   are future work).
+> - `data/` holds three catalogs, all embedded at build time and all translated:
+>   `changelog.toml`, `recommend/catalog.toml` (ADR-0090) and **`topics.toml`**
+>   (ADR-0091). `data/catalog.toml` name aliases are still pending.
 
 ---
 

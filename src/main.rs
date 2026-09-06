@@ -1,33 +1,10 @@
-//! JII — Just Install It. Entry point: parse args, load config, dispatch.
+//! JII — Just Install It. The binary: parse args, load config, dispatch, report.
 //!
-//! Wiring only. The command surface lives in [`cli`], presentation in [`ui`], and
-//! the domain model in [`model`]. See `docs/ARCHITECTURE.md` for the full picture.
+//! Wiring only, and deliberately the whole of it — everything else is the `jii` library
+//! (`src/lib.rs`) in the same crate. See `docs/ARCHITECTURE.md` for the full picture.
 
-mod achievements;
-mod cache;
-mod changelog;
-mod cli;
-mod config;
-mod devtest;
-mod engine;
-mod error;
-mod exec;
-mod i18n;
-mod model;
-mod platform;
-mod privilege;
-mod progress;
-mod provider;
-mod recommend;
-mod registry;
-mod secret;
-mod selfupdate;
-mod shellrc;
-mod topics;
-mod ui;
-
-use crate::cli::Cli;
-use crate::config::Config;
+use jii::cli::Cli;
+use jii::config::Config;
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
@@ -42,7 +19,7 @@ async fn main() -> std::process::ExitCode {
     };
 
     // Resolve the UI language once, before anything renders: --lang › config › env › English.
-    crate::i18n::init(cli.global.lang.as_deref(), &config.ui.locale);
+    jii::i18n::init(cli.global.lang.as_deref(), &config.ui.locale);
 
     match cli.run(config).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
@@ -73,18 +50,18 @@ fn parse_cli() -> Cli {
 /// Print a top-level failure, followed by its actionable remedy when it has one (D7).
 /// Kept here (not the `Renderer`) because a config-load failure happens before a renderer
 /// exists; JSON callers surface their own structured errors upstream.
-fn report(err: &crate::error::JiiError) {
+fn report(err: &jii::error::JiiError) {
     // A failed plan step was already reported where it happened — the failing command, and
     // either the source's own explanation or a tail of its output. Repeating it here would
     // just print the same command twice, in English, under a second ✗.
     // Likewise a failure the command already explained: it carries the exit code, not a message.
     if matches!(
         err,
-        crate::error::JiiError::StepFailed { .. } | crate::error::JiiError::AlreadyReported
+        jii::error::JiiError::StepFailed { .. } | jii::error::JiiError::AlreadyReported
     ) {
         return;
     }
-    let uni = crate::platform::Platform::detect().unicode;
+    let uni = jii::platform::Platform::detect().unicode;
     let (bad, arrow) = if uni { ("✗", "→") } else { ("x", "->") };
     eprintln!("{bad} {err}");
     if let Some(remedy) = err.remedy() {

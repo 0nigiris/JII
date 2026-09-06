@@ -3771,3 +3771,33 @@ written in both languages. In exchange the questions people actually ask — "б
 ids are shown by their last segment (`md.obsidian.Obsidian` → `Obsidian`) in display only, since
 a column of addresses is not a list of names. And identical offers from one source are now
 collapsed in ranking — Fedora's `steam` appeared five times, once per repository carrying it.
+
+---
+
+## ADR-0092 — A library and a binary, in one crate
+
+**Status.** Accepted (2026-09-06).
+
+**Context.** JII was a bin-only crate: `src/main.rs` declared every module privately and held
+the entry point. A contributor's review called out the missing lib/CLI split, and by this point
+`src/cli/mod.rs` had reached 5,456 lines — install, doctor, sources, bootstrap, search, info,
+history, achievements, self-update and every helper in one file, with its test module a thousand
+lines of unrelated assertions.
+
+**Decision.** One crate, two targets: `src/lib.rs` declares every module `pub` and documents the
+shape; `src/main.rs` is seventy lines that parse, dispatch and report. ADR-0001 still holds — this
+is a `[lib]` plus a `[[bin]]`, not a workspace, and it adds nothing to the build graph.
+
+The large flows moved out of `cli/mod.rs` into `cli/install.rs`, `cli/doctor.rs`,
+`cli/sources.rs` and `cli/bootstrap.rs`, each an additional `impl Cli` block with its own tests.
+`mod.rs` keeps the clap definitions, dispatch and the small commands: 3,050 lines from 5,456.
+
+**Alternatives.** *A `cli/commands/` registry with a trait per command* — the shape the original
+architecture sketch proposed, and more indirection than a dispatch `match` deserves; the flows
+share `Cli`'s flags and helpers, which is exactly what an `impl` block is for. *A workspace with a
+`jii-core` crate* — reversed by ADR-0001 for good reasons that have not changed.
+
+**Consequences.** `cargo doc` produces a real API reference, integration tests under `tests/` can
+drive JII as a caller instead of spawning a process, and a few helpers had to become `pub(super)`
+to cross the new module lines — a small, visible list of what the flows actually share. Nothing
+about the runtime changed.
