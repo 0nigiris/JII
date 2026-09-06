@@ -264,7 +264,7 @@ impl Cli {
                 told_story = true;
                 let index = match prompt::decide(
                     renderer,
-                    &crate::t!("offer.install_q"),
+                    &format!("  {}", crate::t!("offer.install_q")),
                     shown.len(),
                     rec,
                     &self.prompt_flags(effective_auto),
@@ -272,7 +272,7 @@ impl Cli {
                     prompt::Pick::Best => rec,
                     prompt::Pick::Other(i) => i,
                     prompt::Pick::None => {
-                        renderer.info(&crate::t!("offer.cancelled"));
+                        renderer.info(&format!("  {}", crate::t!("offer.cancelled")));
                         return Ok(());
                     }
                 };

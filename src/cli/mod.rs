@@ -1348,7 +1348,7 @@ impl Cli {
         renderer.info("");
         let pick = crate::ui::prompt::decide(
             renderer,
-            &crate::t!("offer.install_q"),
+            &format!("  {}", crate::t!("offer.install_q")),
             shown.len(),
             best,
             &self.prompt_flags(engine.config().install.auto),
@@ -1357,7 +1357,7 @@ impl Cli {
             crate::ui::prompt::Pick::Best => best,
             crate::ui::prompt::Pick::Other(i) => i,
             crate::ui::prompt::Pick::None => {
-                renderer.info(&crate::t!("offer.cancelled"));
+                renderer.info(&format!("  {}", crate::t!("offer.cancelled")));
                 return Ok(());
             }
         };

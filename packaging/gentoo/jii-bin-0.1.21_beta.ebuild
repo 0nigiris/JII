@@ -2,8 +2,8 @@
 # Distributed under the terms of the GNU General Public License v3
 #
 # Prebuilt-binary ebuild for JII. Install into an overlay:
-#   <overlay>/app-admin/jii-bin/jii-bin-0.1.5_beta.ebuild
-# then `ebuild jii-bin-0.1.5_beta.ebuild manifest` (generates the Manifest with hashes
+#   <overlay>/app-admin/jii-bin/jii-bin-0.1.21_beta.ebuild
+# then `ebuild jii-bin-0.1.21_beta.ebuild manifest` (generates the Manifest with hashes
 # from the fetched tarballs) and `emerge app-admin/jii-bin`. The release binary is a
 # static musl build, so RESTRICT=strip and no toolchain is needed.
 EAPI=8
