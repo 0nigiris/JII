@@ -3484,7 +3484,8 @@ rewrite, and the deletion of `Cargo.lock`. Reviewing it forced decisions on four
 update. **`reqwest` 0.12→0.13 was deliberately deferred**: 0.13 renamed `rustls-tls` to `rustls` and
 split the feature set, which changes how TLS roots are selected — and JII's release binaries are
 static musl builds where getting that wrong breaks every download silently. That migration needs to
-be verified against an actual release build, so it gets its own change.
+be verified against an actual release build, so it gets its own change. **Resolved in ADR-0094:
+the migration was performed on a throwaway branch, the graph was read, and the answer is no.**
 
 **Consequences.** CI now resolves dependencies under a 1.88 floor, so `cargo add` picks
 MSRV-compatible versions on its own. `zip` 2→8 and `sha2` 0.10→0.11 are on the GitHub-release
@@ -3835,3 +3836,51 @@ are the cost; being packageable without a licence audit is the return.
 **Consequences.** A new file needs a header, and CI says so immediately. The two-licence split is
 now written down in `REUSE.toml` itself, so the next person does not have to guess which half a
 file belongs to.
+
+---
+
+## ADR-0094 — `reqwest` stays on 0.12: 0.13 changes what a static binary trusts
+
+**Status.** Accepted (2026-09-08). Closes the deferral opened in ADR-0084.
+
+**Context.** ADR-0084 raised six majors and deferred `reqwest` 0.12→0.13 with a guess: that the
+feature rename "changes how TLS roots are selected" and needed checking against a real release
+build. The guess was not enough to decide on, so the upgrade was actually performed on a throwaway
+branch and the resulting dependency graph read.
+
+Three facts came out of it, none of them visible from the changelog:
+
+- **`query` moved behind its own feature.** Three call sites (`copr.rs`, `github.rs`) stop
+  compiling until `features = [… "query" …]` is added. Trivial, and the compiler says so.
+- **The crypto provider changed from *ring* to *aws-lc-rs*.** In 0.13 the `rustls` feature pulls
+  `__rustls-aws-lc-rs` unconditionally; the build now compiles `aws-lc-sys` through `cmake`, i.e.
+  a C toolchain, inside every target. Release artifacts are cross-compiled to `x86_64-` **and**
+  `aarch64-unknown-linux-musl` under `cross`, which is exactly where a C build step is most likely
+  to fail, and it fails in CI on a tag — after the tag exists, which ADR-0081 says is permanent.
+- **Root certificates changed from bundled to system.** 0.12's `rustls-tls` compiled Mozilla's
+  root list *into* the binary (`webpki-roots`). 0.13's `rustls` pulls `rustls-platform-verifier`,
+  whose only Linux source is `rustls-native-certs` — it reads the host's CA bundle at runtime.
+  `ClientBuilder::tls_built_in_root_certs` is gone; the only way back is `use_preconfigured_tls`
+  with a hand-built rustls `ClientConfig`, a direct `webpki-roots` dependency and an explicitly
+  chosen provider.
+
+**Decision.** Stay on `reqwest` 0.12 and keep `rustls-tls`. The upgrade offers JII no capability it
+does not already have, and costs it the property the whole distribution model rests on: one static
+binary that works on a host we know nothing about. A JII that cannot reach `api.github.com` because
+the machine has no `/etc/ssl/certs` is a JII that fails at the only thing it exists to do, and it
+fails on the user's machine, not in CI.
+
+Revisit when 0.12 stops receiving fixes — it is still maintained (0.12.28) — and then do it as its
+own change: pin the provider, take `webpki-roots` directly, build the `ClientConfig` in
+`provider::http_client`, and prove it by cross-building both musl targets before tagging.
+
+**Alternatives.** *Upgrade and configure TLS by hand now* — the same end state, paid for today with
+new code in the network path in exchange for nothing. *Upgrade and accept system roots* — silently
+narrows where JII runs, and the failure is a TLS error on a stranger's machine, which is the worst
+place to learn about it. *Keep deferring without deciding* — leaves an open question in the tree
+that the next agent has to re-derive; that is what this ADR exists to stop.
+
+**Consequences.** `Cargo.toml` is unchanged, so there is nothing to test. Dependabot will keep
+offering 0.13; the offer is declined with a link to this ADR rather than re-investigated. If the
+migration ever happens, `features` must gain `"query"` — that one is already known and costs a
+compile, not a debugging session.

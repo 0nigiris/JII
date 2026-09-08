@@ -8,11 +8,26 @@
 > **Keep this file current.** Updating it at the end of every session is mandatory
 > (see the AI Handoff Policy in [CLAUDE.md](../CLAUDE.md)).
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-08_
 
 ---
 
-## Most recent work (2026-09-06, batch 23) — read this first
+## Most recent work (2026-09-08, batch 24) — read this first
+
+**Two loose ends from batch 23, both closed by deciding rather than deferring.**
+
+- **`reqwest` stays on 0.12 — ADR-0094.** The migration was actually run, not estimated. See the
+  bullet at the end of the batch-23 list for what the dependency graph said and when to revisit.
+- **PR #12 answered.** The owner gave the go-ahead to post; the reply says what was taken (the
+  licensing work, with its split corrected; the lib/CLI split, arrived at independently;
+  `rustfmt.toml`; the dependency majors; the MSRV correction), what was not (`Cargo.lock`, the
+  whole-tree reformat, `reqwest` 0.13), and asks for one PR per topic next time.
+- No code changed in this batch. 356 tests, clippy clean, `reuse lint` clean, `v0.1.21-beta`
+  remains the released version.
+
+---
+
+## Previous work (2026-09-06, batch 23)
 
 **The owner approved a new voice for the whole program and then said "делай всё": the output
 rewrite, semantic search, the lib/CLI split, the licensing work, upac, and a general cleanup.
@@ -58,12 +73,17 @@ Five ADRs (0089–0093). Released as `v0.1.21-beta`.**
   owner's disk.
 - 356 tests, clippy clean, build clean, `reuse lint` clean. **Released as `v0.1.21-beta`**
   (2026-09-06).
-- **Still open:** the reply to justpav05 on PR #12 (drafted, waiting for the owner to post it —
-  it is a public comment under his name); the deferred `reqwest` 0.12→0.13 migration; the
-  `jii doctor` codec re-offer bug (needs a live Fedora VM the owner will provide); `cargo fmt`
-  still not run and still not gated (ADR-0013).
+- **`reqwest` stays on 0.12** (ADR-0094, 2026-09-08) — the deferral from ADR-0084 is closed with
+  an answer, not another deferral. The upgrade was performed on a throwaway branch: 0.13 swaps the
+  crypto provider to `aws-lc-rs` (a `cmake`/C build inside both `cross` musl targets) and swaps
+  bundled Mozilla roots for `rustls-platform-verifier` → `rustls-native-certs`, i.e. the host's CA
+  bundle at runtime. `tls_built_in_root_certs` is gone. A static binary that trusts whatever the
+  stranger's machine has is the wrong trade for zero new capability. Revisit when 0.12 stops
+  getting fixes; `features` will need `"query"`.
+- **Still open:** the `jii doctor` codec re-offer bug (needs a live Fedora VM the owner will
+  provide); `cargo fmt` still not run and still not gated (ADR-0013).
 
-## Previous work (2026-09-05, batch 22)
+## Earlier work (2026-09-05, batch 22)
 
 **The owner ran the tester checklist on five distros (Ubuntu, Fedora, Arch, openSUSE, Gentoo,
 Void) in phone containers and pasted the whole log. Nine real defects, all fixed; four ADRs
@@ -128,9 +148,7 @@ parts that were right, and fixed the security problem they found. ADR-0083 and A
   `stable` (not the floor — pinning here would pin CI off current clippy).
 - **Six dependency majors raised**: `toml` 0.8→1, `directories` 5→6, `indicatif` 0.17→0.18,
   `sha2` 0.10→0.11, `zip` 2→8, `clap_mangen` 0.2→0.3, plus all in-range updates. **`reqwest`
-  0.12→0.13 deliberately deferred** — it renames `rustls-tls`→`rustls` and resplits the feature
-  set, which decides how TLS roots are found, and our release binaries are static musl. That one
-  needs verifying against a real release build.
+  0.12→0.13 deferred, and since declined for good** — see ADR-0094 and the batch-24 note above.
 - **`rustfmt.toml` added, `cargo fmt` still not run and still not gated** (ADR-0013 stands). The
   load-bearing line is `use_small_heuristics = "Max"`; without it rustfmt turns each of the 34
   entries in `achievements.rs` from one line into five. That was the contributor's actual question.

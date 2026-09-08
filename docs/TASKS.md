@@ -850,8 +850,10 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
                   deleted. 330 tests.
                   **Rejected from the PR:** deleting `Cargo.lock` (CI and release build `--locked`),
                   and the whole-tree reformat riding along with licensing work.
-                  **Deferred:** `reqwest` 0.12 → 0.13 — it resplits the TLS features, and the
-                  release binaries are static musl; needs verifying against a real release build.
+                  **Deferred, and since declined:** `reqwest` 0.12 → 0.13. Tried on a throwaway
+                  branch 2026-09-08 — 0.13 changes the crypto provider to `aws-lc-rs` (C build in
+                  both `cross` musl targets) and the root certs from bundled to the host's store.
+                  Staying on 0.12; ADR-0094 records the evidence and when to revisit.
                   **Still worth taking from #12:** the SPDX headers, `LICENSES/`, `REUSE.toml`.
                   **Released as `v0.1.19-beta` (2026-08-24)** — version bumped in `Cargo.toml`,
                   `data/changelog.toml` and `packaging/jii.spec`; tag pushed, release workflow ran.
