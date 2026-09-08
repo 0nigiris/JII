@@ -41,16 +41,9 @@ precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 0nigiris"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
-# Agent instructions: how contributors (human or AI) are told to work on the program.
-[[annotations]]
-path = ".claude/**"
-precedence = "aggregate"
-SPDX-FileCopyrightText = "2026 0nigiris"
-SPDX-License-Identifier = "GPL-3.0-or-later"
-
 # ── Prose about the program ──────────────────────────────────────────────────────
 [[annotations]]
-path = ["README.md", "AGENTS.md", "CLAUDE.md", "LICENSE", "docs/**", "assets/**"]
+path = ["README.md", "LICENSE", "docs/**", "assets/**"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 0nigiris"
 SPDX-License-Identifier = "CC-BY-SA-4.0"

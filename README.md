@@ -572,9 +572,7 @@ x86_64 and aarch64, as static musl binaries — one file, no runtime deps, on an
 
 ## Architecture & docs
 
-- [**AGENTS.md**](AGENTS.md) — start here if you're an AI or a new contributor. *(Just a user? Skip it.)*
-- [**docs/AI_CONTEXT.md**](docs/AI_CONTEXT.md) — current state: phase, next task, build/test status.
-- [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md) — the source of truth for design.
+- [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md) — the source of truth for design. Start here.
 - [**docs/DECISIONS.md**](docs/DECISIONS.md) — ADRs: *why* the architecture is the way it is.
 - [**docs/ROADMAP.md**](docs/ROADMAP.md) — phased delivery plan.
 - [**docs/JII_EXPLAINED.ru.md**](docs/JII_EXPLAINED.ru.md) — the whole project explained in one
@@ -617,8 +615,8 @@ a real problem this one does not.
 
 Bug reports and real-world feedback from non-Fedora distros are the most valuable thing right now.
 
-1. Read [AGENTS.md](AGENTS.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the design is
-   fixed unless implementation reveals a concrete problem.
+1. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DECISIONS.md](docs/DECISIONS.md) —
+   the design is fixed unless implementation reveals a concrete problem, and the ADRs say why.
 2. Keep commits small and focused; `cargo build`, `cargo clippy` and `cargo test` must stay clean.
 3. Adding a source? Implement `Provider` — don't branch the core on a source name.
 

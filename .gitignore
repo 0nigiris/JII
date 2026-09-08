@@ -13,3 +13,13 @@ graphify-out/
 # Cargo.lock is deliberately NOT ignored. JII ships prebuilt binaries, so a released
 # tag has to name one exact dependency set (ADR-0081), and CI/release both build with
 # `--locked` — without the lockfile they fail before they compile.
+
+# Agent working files. These steer whatever assistant is helping build JII — they are
+# instructions *to a tool*, not part of the program and not documentation of it, so
+# they stay on the maintainer's machine rather than in the published tree. Removing
+# them here does not delete them locally, and does not touch the commits that already
+# contain them.
+CLAUDE.md
+AGENTS.md
+.claude/
+docs/AI_CONTEXT.md

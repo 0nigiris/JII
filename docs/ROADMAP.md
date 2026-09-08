@@ -160,7 +160,11 @@ one" — verified on five clean distros and presented as a polished public repo.
 - Semantic / AI search (Stage 4).
 - Cross-distro: apt, pacman, zypper, nix, AUR, snap.
 - Windows (winget), macOS (Homebrew) — planned in three waves, **macOS first** (ADR-0068);
-  gated on the external-tester round finding no criticals.
+  gated on the external-tester round finding no criticals, and — owner's ordering, 2026-09-08 —
+  on **"installable from anywhere on any Linux" being finished first**: every family served by a
+  provider, and every packaging channel actually published. Breadth on Linux outranks a second OS.
+- **Web fallback on Windows** — when no Windows manager has the program, find the vendor's own
+  installer, verify it, and ask. See "Future ideas".
 - **Landing page + demo** (a one-page site with an asciinema/GIF of `jii htop`) and
   **launch content** (a launch post for r/linux / Hacker News / Habr) — the pre-mortem
   said the biggest risk is "никто не узнал"; distribution work is scheduled here, after
@@ -408,3 +412,49 @@ as a **backend/provider** *there*.
 API**, never its internals; model it as just another `Provider`; and **implement
 nothing until that API exists** — for now this is architecture on paper only. JII must
 not depend on UPAC's internal types or unreleased behavior.
+
+### Web fallback on Windows — when no manager has it, verify before trusting
+
+**Priority:** Future, gated on the Windows port, which is itself gated on universal Linux
+availability. **Status:** idea only, owner-requested 2026-09-08.
+
+**Vision:** on Windows a program may exist in none of winget, Chocolatey or Scoop. Rather
+than dead-ending (JII never refuses without an offer), JII looks further out for the
+vendor's own `.exe`/`.msi`, checks it, and shows what it found — the source, the file, the
+signature, a reputation verdict — before asking whether to install.
+
+**The danger this idea has to survive:** "search the web for an installer and run it" is
+today's most productive malware-delivery route on Windows — poisoned search results and ads
+for exactly the names people type. An implementation that takes the first search hit would
+automate that attack. VirusTotal does not fix it: a fresh signed trojan reads 0/70 ("nothing
+known yet", not "safe"), while ordinary NSIS/Inno installers routinely trip a few engines as
+false positives, so a naive N/70 prompt trains users to click through warnings.
+
+**Hard architectural rule — ranked by *provenance*, never by search rank.** Descending:
+
+1. **A manifest that publishes a hash.** winget manifests require `InstallerSha256`; Scoop
+   manifests carry `hash`. So "the manager is absent" is solvable by *verification*: take the
+   publisher's URL, download, and prove the bytes are the ones the publisher named. This is
+   not trust, and it is the only tier that should ever be non-interactive.
+2. **The vendor's own domain, with a valid Authenticode signature** whose publisher matches
+   what was expected. Local, free, instant, no API key — a stronger signal than any scanner.
+3. **GitHub Releases** — already a JII provider.
+4. **Open web search** — behind an explicit opt-in flag, never in auto mode, never by default.
+
+Reputation (VirusTotal) is the *last* and a **non-binary** signal, queried **by SHA-256 only**
+— never by uploading the file, which would expose a user's binary to the service's customers.
+What gets shown is first-seen date and submission count, not a bare detection score. The key is
+the user's own (`jii vtkey`, à la `ghtoken`); absent, the check is skipped and said to be
+skipped.
+
+**Consent (owner, non-negotiable):** an install from a self-sourced binary shows an explicit
+at-your-own-risk notice at the moment of the action — not merely the licence's warranty
+disclaimer — stating that the file did not come from a distribution repository, that its
+origin cannot be fully verified, and that responsibility rests with whoever confirms it. It is
+worded in the house voice (impersonal, no accusatory second person) and it is **additional to**
+the technical gates, never a substitute: JII proposed the link, so "the user agreed" is not a
+defence.
+
+**Known unsolved pieces:** silent-install flags differ per installer family (NSIS `/S`, Inno
+`/VERYSILENT`, MSI `/qn`), and a raw portable `.exe` has no uninstall path at all — JII's
+registry would be its only record.

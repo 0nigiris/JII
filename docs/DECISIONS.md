@@ -239,12 +239,13 @@ see why a source was skipped.
 
 ## ADR-0011 — Repository is the single source of truth; AI-agnostic handoff
 
-**Status:** Accepted
+**Status:** Accepted — amended by ADR-0095: the policy stands, but its working files
+(`CLAUDE.md`, `AGENTS.md`, `AI_CONTEXT.md`) are no longer published in this repository.
 
 **Decision:** All knowledge required to continue development lives in the repo:
 [ARCHITECTURE.md](ARCHITECTURE.md) (design), [ROADMAP.md](ROADMAP.md) +
 [TASKS.md](TASKS.md) (plan/progress), this file (decisions), and
-[AI_CONTEXT.md](AI_CONTEXT.md) (current state). No important project knowledge is
+`AI_CONTEXT.md` (current state). No important project knowledge is
 allowed to exist only inside an AI conversation window.
 
 **Reason:** JII should be continuable by *any* agent — Claude Code, another AI, or a
@@ -256,7 +257,7 @@ lost on context reset, not shared across tools or people, not reviewable.
 
 **Consequences:** Every work session ends by updating TASKS.md and AI_CONTEXT.md,
 recording any architectural decision here, and committing — the mandatory **AI
-Handoff Policy** in [CLAUDE.md](../CLAUDE.md).
+Handoff Policy** in `CLAUDE.md`.
 
 ---
 
@@ -308,7 +309,7 @@ the dev host.
   hand-formatted; a fmt gate would fail and fmt is not part of our DoD.
 - **`rust-toolchain.toml`** — the dev host uses system Rust (no rustup), so the file
   is inert locally; CI already pins the toolchain via `dtolnay/rust-toolchain@stable`.
-- **`CONTRIBUTING.md`** — [AGENTS.md](../AGENTS.md) already is the onboarding/workflow
+- **`CONTRIBUTING.md`** — `AGENTS.md` already is the onboarding/workflow
   doc; a second one would duplicate and drift.
 - **`SECURITY.md`, issue/PR templates, `CODEOWNERS`** — the repo is private,
   pre-release, single-maintainer; these pay off with external contributors/a public
@@ -3884,3 +3885,41 @@ that the next agent has to re-derive; that is what this ADR exists to stop.
 offering 0.13; the offer is declined with a link to this ADR rather than re-investigated. If the
 migration ever happens, `features` must gain `"query"` — that one is already known and costs a
 compile, not a debugging session.
+
+---
+
+## ADR-0095 — Agent instructions leave the published tree
+
+**Status.** Accepted (2026-09-08). Owner's call. Amends ADR-0011, which put the handoff files *in
+the repository*; the policy itself is unchanged, only where its working files live.
+
+**Context.** The repository root carried `CLAUDE.md` and `AGENTS.md`, and `docs/` carried
+`AI_CONTEXT.md`, alongside `.claude/skills/`. These are instructions *to a tool*: how an assistant
+should work on JII, which file to read first, what to update before finishing. They are neither
+part of the program nor documentation of it, and a person arriving at the project has no use for
+them — `AI_CONTEXT.md` in particular is a session snapshot ("current task, next recommended task"),
+which is working state, not a document.
+
+**Decision.** Untrack all four paths and `.gitignore` them. They stay on the maintainer's machine
+and keep steering the work exactly as before; they simply stop being published. Everything a
+*contributor* needs stays in the tree and is where the README now points: `ARCHITECTURE.md` (the
+canonical design), `DECISIONS.md` (why it is that design), `ROADMAP.md`, `TASKS.md`.
+
+Git history is **not** rewritten. The files exist in past commits and that is where they stay:
+every released tag is signed-for by its exact tree (ADR-0081), and rewriting history would
+invalidate every tag, every published checksum and every existing clone — an enormous cost to hide
+something the commit trailers state openly anyway.
+
+**Alternatives.** *Move them under `docs/internal/`* — still published, so it does not answer the
+objection. *Keep them and explain them in the README* — the objection is that they are there at
+all, not that they are unexplained. *Purge them from history* — see above; refused.
+
+**Consequences.** `REUSE.toml` drops the `.claude/**` annotation and the two root files from its
+prose entry, so `reuse lint` stays clean. README's docs list and contributing step now open with
+`ARCHITECTURE.md`. Prose references in older ADRs and in `TASKS.md` are de-linked but not reworded
+— an ADR records what was decided then, and those decisions still hold.
+
+**The cost, stated plainly.** The AI Handoff Policy exists so that any agent can continue JII with
+minimal context loss, and its three working files now live on exactly one disk. A fresh clone, a
+second machine or a lost drive starts blind. Whoever maintains this should keep a copy somewhere
+that is not this working directory.

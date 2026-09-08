@@ -912,6 +912,25 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
 
 ---
 
+### Repository hygiene / product direction (2026-09-08)
+
+- [x] **Agent instructions left the published tree (ADR-0095).** `CLAUDE.md`, `AGENTS.md`,
+      `docs/AI_CONTEXT.md` and `.claude/` are untracked and `.gitignore`d — still on the
+      maintainer's machine, no longer shown to people reading the project. History is **not**
+      rewritten (tags are permanent, ADR-0081). `REUSE.toml`, the README docs list and the
+      contributing step were updated so nothing 404s; `reuse lint` stays clean (92/92).
+- [ ] **Owner's ordering, recorded in ROADMAP.** Finish Linux, then make JII installable from
+      *anywhere on any Linux* — that is the stated main goal — and only then port to another OS.
+      Two concrete gaps stand between here and that: **no `apk` provider** (Alpine/postmarketOS is
+      the last unserved family; packaging for Alpine exists, the provider does not) and **no hosted
+      apt repository** for Debian/Ubuntu (the `.deb` ships on Releases, so there are no updates).
+      Publishing the prepared channels (COPR, AUR, Homebrew tap, …) needs the owner's accounts, not
+      code — see `packaging/README.md`.
+- [ ] **Windows web fallback** — captured in ROADMAP "Future ideas" with its consent requirement
+      and its provenance ranking. Gated on the above; nothing to start.
+
+---
+
 ### Definition of Done (every task)
 
 1. Compiles with no warnings (`cargo clippy` clean).
@@ -921,4 +940,4 @@ Finish the whole terminal version before the first public Beta. Ordered T1→T8.
 4. Behavior verified end-to-end (`--dry-run` at minimum).
 5. No provider-specific branching leaked into the core.
 6. AI Handoff Policy done: `AI_CONTEXT.md` updated, any decision recorded in
-   `DECISIONS.md`, small descriptive commit (see [../CLAUDE.md](../CLAUDE.md)).
+   `DECISIONS.md`, small descriptive commit (see the maintainer's agent instructions).
