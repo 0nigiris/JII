@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="400" viewBox="0 0 720 400" font-family="ui-sans-serif,Segoe UI,Helvetica,Arial,sans-serif">
 <rect width="720" height="400" rx="12" fill="#000000"/>
 <text x="58" y="34" fill="#F5F4F5" font-size="20" font-weight="700">Downloads</text>
-<text x="694" y="34" fill="#22D3EE" font-size="20" font-weight="700" text-anchor="end">↓ 170</text>
+<text x="694" y="34" fill="#22D3EE" font-size="20" font-weight="700" text-anchor="end">↓ 173</text>
 <text x="58" y="386" fill="#8A8394" font-size="12">0nigiris/JII</text>
 <line x1="58" y1="354.0" x2="694" y2="354.0" stroke="#FFFFFF14" stroke-width="1"/>
 <text x="50" y="358.0" fill="#8A8394" font-size="11" text-anchor="end">0</text>
@@ -15,34 +15,34 @@
 <text x="50" y="62.0" fill="#8A8394" font-size="11" text-anchor="end">200</text>
 <text x="58.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="start">Jul 9, 2026</text>
 <text x="217.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="middle">Jul 28, 2026</text>
-<text x="376.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="middle">Aug 15, 2026</text>
-<text x="535.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="middle">Sep 3, 2026</text>
-<text x="694.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="end">Sep 22, 2026</text>
-<polygon points="58.0,354.0 58.0,352.5 59.1,349.6 59.6,349.6 59.6,342.2 65.0,336.2 67.6,288.9 90.4,283.0 95.0,280.0 112.0,277.0 124.8,271.1 188.7,251.9 359.2,251.9 371.8,251.9 372.4,248.9 375.3,222.3 375.4,216.4 375.4,213.4 375.6,207.5 399.7,203.0 400.2,203.0 425.5,197.1 426.0,194.2 448.7,155.7 554.0,132.0 561.0,102.4 694.0,102.4 694.0,354.0" fill="#22D3EE" fill-opacity="0.08"/>
-<polyline points="58.0,352.5 59.1,349.6 59.6,349.6 59.6,342.2 65.0,336.2 67.6,288.9 90.4,283.0 95.0,280.0 112.0,277.0 124.8,271.1 188.7,251.9 359.2,251.9 371.8,251.9 372.4,248.9 375.3,222.3 375.4,216.4 375.4,213.4 375.6,207.5 399.7,203.0 400.2,203.0 425.5,197.1 426.0,194.2 448.7,155.7 554.0,132.0 561.0,102.4 694.0,102.4" fill="none" stroke="#22D3EE" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="376.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="middle">Aug 16, 2026</text>
+<text x="535.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="middle">Sep 4, 2026</text>
+<text x="694.0" y="374.0" fill="#8A8394" font-size="11" text-anchor="end">Sep 23, 2026</text>
+<polygon points="58.0,354.0 58.0,352.5 59.1,349.6 59.6,349.6 59.6,342.2 64.9,336.2 67.4,288.9 90.0,283.0 94.5,280.0 111.2,277.0 123.9,271.1 187.0,251.9 355.2,251.9 367.7,251.9 368.3,248.9 371.2,222.3 371.2,216.4 371.2,213.4 371.4,207.5 395.2,203.0 395.7,203.0 420.6,197.1 421.2,194.2 443.5,155.7 547.5,132.0 554.4,98.0 694.0,98.0 694.0,354.0" fill="#22D3EE" fill-opacity="0.08"/>
+<polyline points="58.0,352.5 59.1,349.6 59.6,349.6 59.6,342.2 64.9,336.2 67.4,288.9 90.0,283.0 94.5,280.0 111.2,277.0 123.9,271.1 187.0,251.9 355.2,251.9 367.7,251.9 368.3,248.9 371.2,222.3 371.2,216.4 371.2,213.4 371.4,207.5 395.2,203.0 395.7,203.0 420.6,197.1 421.2,194.2 443.5,155.7 547.5,132.0 554.4,98.0 694.0,98.0" fill="none" stroke="#22D3EE" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="58.0" cy="352.5" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
 <circle cx="59.1" cy="349.6" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
 <circle cx="59.6" cy="349.6" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
 <circle cx="59.6" cy="342.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="65.0" cy="336.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="67.6" cy="288.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="90.4" cy="283.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="95.0" cy="280.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="112.0" cy="277.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="124.8" cy="271.1" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="188.7" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="359.2" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="371.8" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="372.4" cy="248.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="375.3" cy="222.3" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="375.4" cy="216.4" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="375.4" cy="213.4" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="375.6" cy="207.5" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="399.7" cy="203.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="400.2" cy="203.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="425.5" cy="197.1" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="426.0" cy="194.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="448.7" cy="155.7" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="554.0" cy="132.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
-<circle cx="561.0" cy="102.4" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="64.9" cy="336.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="67.4" cy="288.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="90.0" cy="283.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="94.5" cy="280.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="111.2" cy="277.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="123.9" cy="271.1" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="187.0" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="355.2" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="367.7" cy="251.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="368.3" cy="248.9" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="371.2" cy="222.3" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="371.2" cy="216.4" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="371.2" cy="213.4" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="371.4" cy="207.5" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="395.2" cy="203.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="395.7" cy="203.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="420.6" cy="197.1" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="421.2" cy="194.2" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="443.5" cy="155.7" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="547.5" cy="132.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
+<circle cx="554.4" cy="98.0" r="3.5" fill="#000000" stroke="#22D3EE" stroke-width="2"/>
 </svg>
